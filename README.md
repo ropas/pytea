@@ -4,15 +4,13 @@
 
 ```bash
 # install dependencies
-git clone https://github.com/ropas/PTTyR
-cd pyright
 npm install
-cd server
 
 # install Z3Py solver
 pip install z3-solver
 
 # single line
+cd packages/pytea
 python pytea.py path/to/entry_file.py
 
 # multi-line (seperate TS frontend & Z3 backend)
@@ -20,7 +18,7 @@ npm run test:torch path/to/entry_file.py
 python pytea.py --z3 path/to/entry_file_z3.json
 ```
 
-테스트 파일들은 `pyright/server/test` 폴더 내에 정리한다.
+테스트 파일들은 `packages/pytea/pytest` 폴더 내에 정리한다.
 
 ## pyteaconfig.json
 
@@ -45,20 +43,18 @@ pyright의 pyrightconfig.json과 비슷하게 json 파일로 PyTEA의 주요 세
 
 - `python == 3.8`
 - `pytorch == 1.7.0`
-- `pyright == 1.1.39`
+- `pyright == 1.1.95`
 - 기타 requirements 참조
 
-Python 분석 베이스 라이브러리로 `pyright` v1.1.39 이용. <br>
+Python 분석 베이스 라이브러리로 `pyright` v1.1.95 이용. <br>
 Python Code Formatting Provider로는 `black`을 이용. <br>
 VSCode의 Python > Formatting: Provider에서 세팅한 후 커밋 바람
 
 **반드시 VSCode Prettier extension을 설치하고 설정에서 Format on Save를 킨 후 커밋할 것!**
 
-이 리포지토리를 그대로 vscode로 열지 말고 `pyright` 폴더를 VSCode로 열어야 VSCode의 여러 가지 설정 (특히 Jest 디버깅)이 적용된다.
-
 ## Python Library API 구현 방법
 
-앞으로 언급되는 모든 path는 `pyright/server`를 base path로 둔다.
+앞으로 언급되는 모든 path는 `packages/pytea`를 base path로 둔다.
 
 ### 주요 참고 파일
 
