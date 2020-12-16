@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea for pyright
+about: Suggest an idea for pytea
 title: ''
 labels: enhancement
 assignees: ''

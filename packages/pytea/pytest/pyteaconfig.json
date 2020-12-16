@@ -1,0 +1,7 @@
+{
+    "pytLibPath": "../pylib",
+    "pythonCmdArgs": { "batch-size": 32.5 },
+    "logLevel": "reduced",
+    "printIR": true,
+    "immediateConstraintCheck": true
+}
