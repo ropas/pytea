@@ -1,0 +1,136 @@
+# This sample tests that generic type variables
+# with constrained types properly generate errors. It tests
+# both class-defined and function-defined type variables.
+
+from typing import Generic, Literal, TypeVar
+
+
+class Foo:
+    var1: int
+
+    def __call__(self, val: int):
+        pass
+
+    def do_stuff(self) -> int:
+        return 0
+
+    def __add__(self, val: "Foo") -> "Foo":
+        return val
+
+
+class Bar:
+    var1: int
+    var2: int
+
+    def __call__(self, val: int):
+        pass
+
+    def do_stuff(self) -> float:
+        return 0
+
+    def do_other_stuff(self) -> float:
+        return 0
+
+    def __add__(self, val: "Bar") -> "Bar":
+        return val
+
+
+_T1 = TypeVar("_T1", Foo, Bar)
+_T2 = TypeVar("_T2", Foo, Bar, str)
+
+
+class ClassA(Generic[_T1]):
+    async def func1(self, a: _T1) -> _T1:
+        _ = a.var1
+
+        # This should generate an error.
+        _ = a.var2
+
+        # This should generate an error.
+        _ = a(3.3)
+
+        # This should generate an error.
+        _ = a[0]
+
+        # This should generate an error.
+        _ = a + 1
+
+        _ = a + a
+
+        a += a
+
+        # This should generate an error.
+        _ = -a
+
+        # This should generate an error.
+        a += 3
+
+        # This should generate an error.
+        _ = await a
+
+        # This should generate an error.
+        for _ in a:
+            pass
+
+        a.do_stuff()
+
+        # This should generate an error.
+        a.do_other_stuff()
+
+        _ = a.__class__
+        _ = a.__doc__
+
+        return a
+
+    async def func1(self, a: _T2, b: _T1) -> _T1:
+        # This should generate an error.
+        _ = a.var2
+
+        # This should generate an error.
+        _ = a(3.3)
+
+        # This should generate an error.
+        _ = a[0]
+
+        # This should generate an error.
+        _ = a + 1
+
+        _ = a + a
+
+        a += a
+
+        # This should generate an error.
+        _ = a + b
+
+        # This should generate an error.
+        _ = -a
+
+        # This should generate an error.
+        a += 3
+
+        # This should generate an error.
+        _ = await a
+
+        # This should generate an error.
+        for _ in a:
+            pass
+
+        # This should generate an error.
+        a.do_other_stuff()
+
+        _ = a.__class__
+        _ = a.__doc__
+
+        return b
+
+
+_T3 = TypeVar("_T3", float, int, str)
+_T4 = TypeVar("_T4", float, int)
+
+
+def custom_add(a: _T3, b: _T4) -> float:
+    if isinstance(a, str):
+        return 0
+    c = a + b
+    t1: Literal["float | int"] = reveal_type(c)
+    return c
