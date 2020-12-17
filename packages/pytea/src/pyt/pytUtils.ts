@@ -10,11 +10,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as util from 'util';
 
-import { ImportResolver } from 'pyright-internal/analyzer/importResolver';
-import { Program } from 'pyright-internal/analyzer/program';
+import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { ConfigOptions } from 'pyright-internal/common/configOptions';
 import { ConsoleInterface } from 'pyright-internal/common/console';
-import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
 import { combinePaths, getPathComponents } from 'pyright-internal/common/pathUtils';
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
@@ -90,22 +88,6 @@ export function refineOptions(options: PytOptionsPart): PytOptions {
     return opt as PytOptions;
 }
 
-export function runProgram(filePaths: string[], configOptions: ConfigOptions): Program {
-    // Always enable "test mode".
-    configOptions.internalTestMode = true;
-    const importResolver = new ImportResolver(createFromRealFileSystem(), configOptions);
-
-    const program = new Program(importResolver, configOptions);
-    program.setTrackedFiles(filePaths);
-
-    while (program.analyze()) {
-        // Continue to call analyze until it completes. Since we're not
-        // specifying a timeout, it should complete the first time.
-    }
-
-    return program;
-}
-
 // return every .py filenames
 // e.g.) ['LibCall.py', 'torch/__init__.py', ...]
 export function getTorchLibFileNames(baseDirPath: string, configOptions: ConfigOptions): string[] {
@@ -161,14 +143,24 @@ export function filePathToQualId(path: string): string {
 
 // return module qualPath => ThStmt
 // e.g.) "torch.functional" => <some statement>
-export function getTorchStmtsFromDir(dirPath: string, configOptions = new ConfigOptions('.')): Map<string, ThStmt> {
+export function getTorchStmtsFromDir(
+    service: AnalyzerService,
+    dirPath: string,
+    configOptions = new ConfigOptions('.')
+): Map<string, ThStmt> {
     // Always enable "test mode".
     const parser = new TorchIRFrontend();
 
     const libFileNames = getTorchLibFileNames(dirPath, configOptions);
     const libFilePaths = libFileNames.map((fn) => path.resolve(dirPath, fn));
 
-    const program = runProgram(libFilePaths, configOptions);
+    const program = service.backgroundAnalysisProgram.program;
+    program.setTrackedFiles(libFilePaths);
+
+    while (program.analyze()) {
+        // Continue to call analyze until it completes. Since we're not
+        // specifying a timeout, it should complete the first time.
+    }
 
     // analyze single pytorch entry file
     const libMap: Map<string, ThStmt> = new Map();
@@ -181,7 +173,11 @@ export function getTorchStmtsFromDir(dirPath: string, configOptions = new Config
 
         let stmt: ThStmt | undefined;
         try {
-            stmt = program.parseToIR(parser, fp);
+            const parseResult = service.getParseResult(fp);
+
+            if (parseResult?.parseTree) {
+                stmt = parser.parse(parseResult.parseTree);
+            }
         } catch (e) {
             console.log(`Frontend parse failed: ${fp}\n${e}`);
             continue;

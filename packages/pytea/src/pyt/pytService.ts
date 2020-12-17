@@ -12,11 +12,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
 
+import { Program } from 'pyright-internal/analyzer/program';
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
-import { CommandLineOptions } from 'pyright-internal/common/commandLineOptions';
 import { ConfigOptions } from 'pyright-internal/common/configOptions';
-import { ConsoleInterface, NullConsole, StandardConsole } from 'pyright-internal/common/console';
-import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
+import { ConsoleInterface, StandardConsole } from 'pyright-internal/common/console';
 import { combinePaths } from 'pyright-internal/common/pathUtils';
 
 import { fetchAddr } from '../backend/backUtils';
@@ -33,7 +32,6 @@ let _service: PytService | undefined;
 
 export class PytService {
     private _options: PytOptions;
-    private _cmdOptions: CommandLineOptions;
     private _config: ConfigOptions;
 
     private _service: AnalyzerService;
@@ -50,14 +48,13 @@ export class PytService {
     private _currTime: number;
 
     constructor(
-        cmdOptions: CommandLineOptions,
+        service: AnalyzerService,
         pytOptions: PytOptionsPart,
         console?: ConsoleInterface,
         setDefault?: boolean
     ) {
         if (setDefault) _service = this;
 
-        this._cmdOptions = cmdOptions;
         this._options = PytUtils.refineOptions(pytOptions);
         this._console = console || new StandardConsole();
 
@@ -68,14 +65,10 @@ export class PytService {
         this._entryPath = '';
         this._entryName = '';
 
-        // ignore pyright logs.
-        const nullConsole = new NullConsole();
-        this._service = new AnalyzerService('<default>', createFromRealFileSystem(nullConsole), nullConsole);
-        this._service.setOptions(this._cmdOptions);
-
+        this._service = service;
         this._config = this._service.test_getConfigOptions(this._cmdOptions);
 
-        this._libStmt = PytUtils.getTorchStmtsFromDir(this._options.pytLibPath!, this._config);
+        this._libStmt = PytUtils.getTorchStmtsFromDir(service, this._options.pytLibPath!, this._config);
         if (this._options.entryPath) {
             this.setEntryPath(this._options.entryPath);
         }
@@ -155,7 +148,7 @@ export class PytService {
         this._entryPath = fullPath;
         this._entryName = path.basename(fullPath, path.extname(fullPath));
         this._projectPath = path.join(fullPath, '..');
-        this._projectStmt = PytUtils.getTorchStmtsFromDir(this._projectPath, this._config);
+        this._projectStmt = PytUtils.getTorchStmtsFromDir(this._service, this._projectPath, this._config);
 
         return;
     }

@@ -13,6 +13,9 @@
 import { timingStats } from 'pyright-internal/common/timing';
 /* eslint-enable */
 
+import * as fs from 'fs';
+import * as path from 'path';
+
 import chalk from 'chalk';
 import commandLineArgs from 'command-line-args';
 import { CommandLineOptions, OptionDefinition } from 'command-line-args';
@@ -27,6 +30,9 @@ import { FileDiagnostics } from 'pyright-internal/common/diagnosticSink';
 import { combinePaths, normalizePath } from 'pyright-internal/common/pathUtils';
 import { createFromRealFileSystem, FileSystem } from 'pyright-internal/common/fileSystem';
 import { isEmptyRange, Range } from 'pyright-internal/common/textRange';
+import { PytService } from './pyt/pytService';
+import { PytOptionsPart } from './pyt/pytOptions';
+import { NodeConsole } from './pyt/pytUtils';
 
 const toolName = 'pytea';
 
@@ -102,6 +108,34 @@ const cancellationNone = Object.freeze({
         };
     },
 });
+
+function getPytService(args: CommandLineOptions, service: AnalyzerService): PytService | undefined {
+    const cwd = path.normalize(process.cwd());
+    const entryName = args.files[0] as string | undefined;
+
+    if (!entryName) {
+        printUsage();
+        return;
+    }
+
+    // const entryName = './test/scratch.py';
+    const entryPath = normalizePath(combinePaths(cwd, entryName));
+
+    if (!fs.existsSync(entryPath)) {
+        console.error(`${entryPath} does not exists.`);
+        return;
+    }
+
+    const nodeConsole = new NodeConsole('torch_debug');
+
+    const dirPath = path.dirname(entryPath);
+    const configPath = path.join(dirPath, 'pyteaconfig.json');
+    const pytOptions: PytOptionsPart = { configPath, entryPath };
+
+    const pytService = new PytService(service, pytOptions, nodeConsole, true);
+
+    return pytService;
+}
 
 function processArgs() {
     const optionDefinitions: OptionDefinition[] = [
@@ -210,7 +244,9 @@ function processArgs() {
     }
     options.checkOnlyOpenFiles = false;
 
-    const output = args.outputjson ? new NullConsole() : undefined;
+    // ignore original pyright output.
+    // const output = args.outputjson ? new NullConsole() : undefined;
+    const output = new NullConsole();
     const realFileSystem = createFromRealFileSystem(output);
 
     // The package type verification uses a different path.
@@ -222,6 +258,7 @@ function processArgs() {
     options.watchForSourceChanges = watch;
 
     const service = new AnalyzerService('<default>', realFileSystem, output);
+    let pytService: PytService | undefined;
 
     service.setCompletionCallback((results) => {
         if (results.fatalErrorOccurred) {
@@ -279,6 +316,17 @@ function processArgs() {
             if (args.dependencies) {
                 service.printDependencies(!!args.verbose);
             }
+        }
+
+        if (!pytService) {
+            pytService = getPytService(args, service);
+        }
+
+        if (pytService) {
+            if (!pytService.validate()) {
+                process.exit(ExitStatus.FatalError);
+            }
+            pytService.checkWithLog();
         }
 
         if (!watch) {
