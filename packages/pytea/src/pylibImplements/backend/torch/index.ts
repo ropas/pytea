@@ -1,8 +1,10 @@
-import { reduceEachTrailingCommentRange } from 'typescript';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { LCImpl } from '..';
 import { fetchAddr } from '../../../backend/backUtils';
-import { Context, ContextSet } from '../../../backend/context';
 import { Constraint } from '../../../backend/constraintType';
+import { Context, ContextSet } from '../../../backend/context';
+import { ceilDiv, fetchSize, genTensor } from '../../../backend/expUtils';
 import {
     ShValue,
     SVAddr,
@@ -17,11 +19,7 @@ import {
 } from '../../../backend/sharpValues';
 import { ExpNum, ExpShape, ExpString, NumBopType, NumOpType, NumUopType } from '../../../backend/symExpressions';
 import { TorchBackend } from '../../../backend/torchBackend';
-import { ParseNode } from '../../../parser/parseNodes';
-import { KeywordToken } from '../../../parser/tokenizerTypes';
-
 import { LCBase } from '../libcall';
-import { fetchSize, genTensor, isSize, ceilDiv } from '../../../backend/expUtils';
 
 export namespace TorchLCImpl {
     export function tensorInit(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
@@ -369,8 +367,8 @@ export namespace TorchLCImpl {
                         const selfRank = selfRankRng.end;
                         let shape = sizes;
                         for (let i = 0; i < selfRank; i++) {
-                            let targetAxis = ExpNum.bop(NumBopType.Sub, sizeRank, i + 1, source);
-                            let newDim = ExpNum.bop(
+                            const targetAxis = ExpNum.bop(NumBopType.Sub, sizeRank, i + 1, source);
+                            const newDim = ExpNum.bop(
                                 NumBopType.Mul,
                                 ExpNum.index(sizes, targetAxis, source),
                                 ExpNum.index(selfShape, selfRank - 1 - i, source),
@@ -634,11 +632,10 @@ export namespace TorchLCImpl {
             return ctx.warnTensorWithMsg(`from 'LibCall.torch.view': ${selfSize}`, source);
         }
         const selfShape = selfSize.shape;
-        const selfRank = ExpShape.getRank(selfShape);
         const selfNumel = ExpNum.numel(selfShape, source);
 
         let shape: ExpShape = ExpShape.fromConst(0, []);
-        let shapeObj = fetchAddr(shapeAddr, heap);
+        const shapeObj = fetchAddr(shapeAddr, heap);
         if (shapeObj === undefined) {
             return ctx.warnTensorWithMsg(`from 'LibCall.torch.view': ${shapeObj}`, source);
         }
@@ -648,8 +645,8 @@ export namespace TorchLCImpl {
             shape = ExpShape.fromConst(1, [shapeObj.value], source);
         } else if (shapeObj.type === SVType.Object) {
             // else if size is a tensor.size().
-            let firstArg = shapeObj.getIndice(0);
-            let firstArgObj = fetchAddr(firstArg, heap);
+            const firstArg = shapeObj.getIndice(0);
+            const firstArgObj = fetchAddr(firstArg, heap);
             if (firstArgObj && firstArgObj.type === SVType.Object && firstArgObj?.shape !== undefined) {
                 shape = firstArgObj.shape;
             } else if (firstArgObj && firstArgObj.type === SVType.Object) {
@@ -666,7 +663,7 @@ export namespace TorchLCImpl {
                 if (shapeRank_.type !== SVType.Int) {
                     return ctx.warnTensorWithMsg(`from 'LibCall.torch.view': ${shapeRank_}`, source);
                 } else {
-                    let shapeRank: number = -1;
+                    let shapeRank = -1;
                     if (typeof shapeRank_.value === 'number') {
                         shapeRank = shapeRank_.value;
                     } else if (shapeRank_.value.opType === NumOpType.Const) {
@@ -677,7 +674,7 @@ export namespace TorchLCImpl {
 
                     const dimsMap = shapeObj.extractIndexedNumber(heap);
                     const dims: ExpNum[] = [];
-                    let wildCardIdx: number = -1; // index of -1
+                    let wildCardIdx = -1; // index of -1
 
                     for (let i = 0; i < shapeRank; i++) {
                         const dim = dimsMap.get(i);
@@ -706,7 +703,6 @@ export namespace TorchLCImpl {
                         const newShape = ExpShape.concat(newShape_, shape2);
 
                         const mod = ExpNum.bop(NumBopType.Mod, selfNumel, numel12, source);
-                        const i = ExpNum.fromSymbol(ctx.genSymInt('i', source));
 
                         return ctx
                             .require([
@@ -726,9 +722,7 @@ export namespace TorchLCImpl {
         } else {
             shape = ExpShape.fromConst(1, [100], source);
         }
-        const shapeRank = ExpShape.getRank(shape);
         const shapeNumel = ExpNum.numel(shape, source);
-        const i = ExpNum.fromSymbol(ctx.genSymInt('i', source));
 
         return ctx
             .require([
@@ -741,7 +735,7 @@ export namespace TorchLCImpl {
 
     export function conv2d(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
-        if (params.length != 7) {
+        if (params.length !== 7) {
             return ctx.warnTensorWithMsg(
                 `from 'LibCall.torch.conv2d': got insufficient number of argument: ${params.length}`,
                 source
@@ -854,7 +848,7 @@ export namespace TorchLCImpl {
 
     export function pool2d(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
-        if (params.length != 6) {
+        if (params.length !== 6) {
             return ctx.warnTensorWithMsg(
                 `from 'LibCall.torch.pool2d': got insufficient number of argument: ${params.length}`,
                 source
@@ -1022,7 +1016,6 @@ export namespace TorchLCImpl {
         const x1Shape = x1Size.shape;
         const x1Rank = x1Size.rank();
         const x2hape = x2Size.shape;
-        const x2Rank = x2Size.rank();
 
         const shape1 = ExpShape.slice(x1Shape, 0, dim.value, source);
         const shape2 = ExpShape.slice(x1Shape, ExpNum.bop(NumBopType.Add, dim.value, 1), x1Rank, source);
@@ -1069,7 +1062,7 @@ export namespace TorchLCImpl {
         const targetShape = targetSize.shape;
         const targetRank = ExpShape.getRank(targetShape);
 
-        let reduction = fetchAddr(reductionAddr, heap);
+        const reduction = fetchAddr(reductionAddr, heap);
         if (reduction === undefined || reduction.type !== SVType.Bool) {
             return ctx.failWithMsg(`from 'LibCall.torch.loss': cannot infer reduction as boolean`, source).toSet();
         }

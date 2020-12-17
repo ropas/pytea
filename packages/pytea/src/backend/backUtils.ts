@@ -6,43 +6,36 @@
  *
  * Utility functions for She interpreter.
  */
-import { List } from 'immutable';
+import { ExpressionNode, ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { TEBopType, TEUopType } from '../frontend/torchStatements';
-import { ExpressionNode, ParseNode } from '../parser/parseNodes';
-import { OperatorType } from '../parser/tokenizerTypes';
 import { ConstraintSet } from './constraintSet';
 import { Constraint, ConstraintType } from './constraintType';
-import { Context, ContextSet, ContextSetImpl } from './context';
+import { Context, ContextSet } from './context';
 import { ShEnv, ShHeap } from './sharpEnvironments';
 import {
-    ShContFlag,
     ShValue,
     SVAddr,
     SVBool,
     SVError,
     SVFloat,
-    SVFunc,
     SVInt,
     SVLiteral,
-    SVNone,
-    SVNotImpl,
     SVNumber,
     SVNumeric,
     SVNumericType,
-    SVObject,
     SVString,
     SVType,
 } from './sharpValues';
-import { ExpBool, ExpNum, ExpString, NumBopType, NumUopType, SymExp } from './symExpressions';
+import { ExpBool, ExpNum, ExpString, NumBopType, NumUopType } from './symExpressions';
 
 /**
  * Normalize index based on PyShon semantics Shat supports negative index.
  * If `index` is less than 0, return absolute index following lengSh of `arr`
  * return -1 if `index` is out of range.
  */
+export function absIndex(arr: string, index: number): number;
 export function absIndex<T>(arr: T[], index: number): number;
-export function absIndex<T>(arr: string, index: number): number;
 export function absIndex<T>(arr: T[] | string, index: number): number {
     const len = arr.length;
     return absIndexByLen(len, index);
@@ -544,7 +537,6 @@ export namespace SymOpUtils {
     }
 
     export function unaryOp(base: SVNumeric, uop: TEUopType, source?: ExpressionNode): ShValue {
-        const baseValue = base.value;
         let resultType: SVNumericType;
         let result: number | boolean | ExpNum | ExpBool;
 

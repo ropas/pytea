@@ -7,7 +7,8 @@
  * Definitions and types of constraints.
  */
 
-import { ExpressionNode, ParseNode } from '../parser/parseNodes';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { sourceToString } from './backUtils';
 import { ExpBool, ExpNum, ExpShape, SymExp, SymInt } from './symExpressions';
 

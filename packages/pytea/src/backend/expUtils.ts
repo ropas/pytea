@@ -1,8 +1,10 @@
-import { enumerateLiteralsForType } from '../analyzer/typeUtils';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { fetchAddr } from './backUtils';
 import { ConstraintSet } from './constraintSet';
 import { Constraint, ConstraintType } from './constraintType';
 import { Context, ContextSet } from './context';
+import { Fraction } from './fraction';
 import { ShHeap } from './sharpEnvironments';
 import { ShValue, SVSize, SVType } from './sharpValues';
 import {
@@ -21,12 +23,8 @@ import {
     StringOpType,
     SymbolType,
     SymExp,
-    SymShape,
-    SymString,
 } from './symExpressions';
 import { TorchBackend } from './torchBackend';
-import { ParseNode } from '../parser/parseNodes';
-import { Fraction, gcd } from './fraction';
 
 // expression with coefficient
 export interface CoExpNum<T extends ExpNum> {
@@ -51,7 +49,7 @@ function mergeCoExpList<T extends ExpNum>(list1: CoExpNum<T>[], list2: CoExpNum<
     const [mainList, subList] = list1.length >= list2.length ? [list1, list2] : [list2, list1];
     const newList = mainList.map((cexp) => ({ ...cexp }));
     const leftLen = newList.length;
-    for (let right of subList) {
+    for (const right of subList) {
         let found = false;
         for (let i = 0; i < leftLen; i++) {
             const left = newList[i];
@@ -95,7 +93,7 @@ export function normalizeExpNum(exp: ExpNum): NormalExp {
                         list: right.list.map((n) => ({ exp: n.exp, coeff: n.coeff.neg() })),
                         constant: right.constant.neg(),
                     };
-                // fall-through
+                // eslint-disable-next-line no-fallthrough
                 case NumBopType.Add:
                     return {
                         list: mergeCoExpList(left.list, right.list),
@@ -103,7 +101,7 @@ export function normalizeExpNum(exp: ExpNum): NormalExp {
                     };
                 case NumBopType.Mul: {
                     let newList: CoExpNum<ExpNum>[] = [];
-                    for (let lexp of left.list) {
+                    for (const lexp of left.list) {
                         const tempList = right.list.map((rexp) => ({
                             exp: ExpNum.bop(NumBopType.Mul, lexp.exp, rexp.exp, exp.source),
                             coeff: lexp.coeff.mul(rexp.coeff),
@@ -136,7 +134,10 @@ export function normalizeExpNum(exp: ExpNum): NormalExp {
                 }
                 case NumBopType.Mod:
                     if (left.list.length === 0 && right.list.length === 0) {
-                        return { list: [], constant: new Fraction(left.constant.toNum() % right.constant.toNum(), 1) };
+                        return {
+                            list: [],
+                            constant: new Fraction(left.constant.toNum() % right.constant.toNum(), 1),
+                        };
                     }
                     return emptyNormalExp(
                         ExpNum.bop(NumBopType.Mod, denormalizeExpNum(left), denormalizeExpNum(right), exp.source)
@@ -159,7 +160,9 @@ export function normalizeExpNum(exp: ExpNum): NormalExp {
                         ExpNum.bop(NumBopType.TrueDiv, denormalizeExpNum(left), denormalizeExpNum(right), exp.source)
                     );
             }
+            break;
         }
+
         default:
             return emptyNormalExp(exp);
     }
@@ -179,7 +182,7 @@ export function denormalizeExpNum(nexp: NormalExp): ExpNum {
             }
         } else {
             let right: ExpNum;
-            if (coeff.up == 1) {
+            if (coeff.up === 1) {
                 right = ExpNum.bop(NumBopType.TrueDiv, cexp.exp, coeff.down);
             } else {
                 right = ExpNum.bop(NumBopType.TrueDiv, ExpNum.bop(NumBopType.Mul, cexp.exp, coeff.up), coeff.down);
@@ -346,7 +349,7 @@ export function simplifyNum(ctrSet: ConstraintSet, exp: ExpNum): ExpNum {
         case NumOpType.Uop: {
             const baseValue = simplifyNum(ctrSet, exp.baseValue);
             switch (baseValue.opType) {
-                case NumOpType.Const: {
+                case NumOpType.Const:
                     switch (exp.uopType) {
                         case NumUopType.Ceil:
                             return ExpNum.fromConst(-baseValue.value, exp.source);
@@ -357,7 +360,7 @@ export function simplifyNum(ctrSet: ConstraintSet, exp: ExpNum): ExpNum {
                         case NumUopType.Abs:
                             return ExpNum.fromConst(Math.abs(baseValue.value), exp.source);
                     }
-                }
+                    break;
                 case NumOpType.Uop:
                     // double negation
                     switch (exp.uopType) {
@@ -981,6 +984,7 @@ export function isStructuallyEq(left?: SymExp, right?: SymExp): boolean {
                     return left.symbol.id === re.symbol.id;
                 }
             }
+            break;
         case SEType.Num:
             switch (left.opType) {
                 case NumOpType.Uop: {
@@ -1021,6 +1025,7 @@ export function isStructuallyEq(left?: SymExp, right?: SymExp): boolean {
                     return left.symbol.id === re.symbol.id;
                 }
             }
+            break;
         case SEType.Shape:
             switch (left.opType) {
                 case ShapeOpType.Broadcast: {
@@ -1060,6 +1065,7 @@ export function isStructuallyEq(left?: SymExp, right?: SymExp): boolean {
                     return left.symbol.id === re.symbol.id;
                 }
             }
+            break;
         case SEType.String:
             switch (left.opType) {
                 case StringOpType.Concat: {
@@ -1093,7 +1099,7 @@ export function genTensor<T>(ctx: Context<T>, shape: ExpShape, source?: ParseNod
 }
 
 // return either size of tensor in `mayAddr` or return error message
-export function fetchSize<T>(mayAddr: ShValue | undefined, heap: ShHeap): SVSize | string {
+export function fetchSize(mayAddr: ShValue | undefined, heap: ShHeap): SVSize | string {
     const obj = fetchAddr(mayAddr, heap);
     if (obj?.type !== SVType.Object) {
         return 'value is not a Tensor type';

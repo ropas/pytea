@@ -9,9 +9,9 @@
 
 import { List, Map, Record } from 'immutable';
 
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { ThStmt, TSFunDef, TSPass } from '../frontend/torchStatements';
-import { ParseNode } from '../parser/parseNodes';
-import { PytService } from '../pyt/pytService';
 import { fetchAddr } from './backUtils';
 import { Context } from './context';
 import { ShEnv, ShHeap } from './sharpEnvironments';
@@ -169,7 +169,7 @@ const svAddrDefaults: SVAddrProps = {
 };
 
 export class SVAddr extends Record(svAddrDefaults) implements SVAddrProps {
-    readonly type: SVType.Addr;
+    readonly type!: SVType.Addr;
 
     constructor(values?: Partial<SVAddrProps>) {
         values ? super(values) : super();
@@ -205,7 +205,7 @@ const svIntDefaults: SVIntProps = {
 };
 
 export class SVInt extends Record(svIntDefaults) implements SVIntProps {
-    readonly type: SVType.Int;
+    readonly type!: SVType.Int;
 
     constructor(values?: Partial<SVIntProps>) {
         values ? super(values) : super();
@@ -237,7 +237,7 @@ const svFloatDefaults: SVFloatProps = {
 };
 
 export class SVFloat extends Record(svFloatDefaults) implements SVFloatProps {
-    readonly type: SVType.Float;
+    readonly type!: SVType.Float;
 
     constructor(values?: Partial<SVFloatProps>) {
         values ? super(values) : super();
@@ -276,7 +276,7 @@ const svStringDefaults: SVStringProps = {
 };
 
 export class SVString extends Record(svStringDefaults) implements SVStringProps {
-    readonly type: SVType.String;
+    readonly type!: SVType.String;
 
     constructor(values?: Partial<SVStringProps>) {
         values ? super(values) : super();
@@ -308,7 +308,7 @@ const svBoolDefaults: SVBoolProps = {
 };
 
 export class SVBool extends Record(svBoolDefaults) implements SVBoolProps {
-    readonly type: SVType.Bool;
+    readonly type!: SVType.Bool;
 
     constructor(values?: Partial<SVBoolProps>) {
         values ? super(values) : super();
@@ -349,7 +349,7 @@ const svObjectProps: SVObjectProps = {
 };
 
 export class SVObject extends Record(svObjectProps) implements SVObjectProps {
-    readonly type: SVType.Object;
+    readonly type!: SVType.Object;
 
     constructor(values?: Partial<SVObjectProps>) {
         values ? super(values) : super();
@@ -428,7 +428,7 @@ export class SVObject extends Record(svObjectProps) implements SVObjectProps {
 
 // tuple-like torch.Size implementation
 export class SVSize extends SVObject {
-    shape: ExpShape;
+    shape!: ExpShape;
 
     static createSize(ctx: Context<any>, shape: ExpShape, source?: ParseNode): SVSize {
         const sizeMro = fetchAddr(
@@ -447,10 +447,10 @@ export class SVSize extends SVObject {
 
     // maybe used as fromTuple
     static fromObject(ctx: Context<any>, obj: SVObject, shape: ExpShape): SVSize {
-        const sizeMro = fetchAddr(
-            (fetchAddr(ctx.env.getId('tuple'), ctx.heap) as SVObject).getAttr('__mro__'),
-            ctx.heap
-        )!;
+        // const sizeMro = fetchAddr(
+        //     (fetchAddr(ctx.env.getId('tuple'), ctx.heap) as SVObject).getAttr('__mro__'),
+        //     ctx.heap
+        // )!;
         const value: SVSize = new SVSize({
             id: obj.id,
             attrs: obj.attrs,
@@ -513,7 +513,7 @@ const svFuncDefaults: SVFuncProps = {
 };
 
 export class SVFunc extends Record(svFuncDefaults) implements SVFuncProps {
-    readonly type: SVType.Func;
+    readonly type!: SVType.Func;
 
     constructor(values?: Partial<SVFuncProps>) {
         values ? super(values) : super();
@@ -580,7 +580,7 @@ const svNoneDefaults: SVNoneProps = {
 };
 
 export class SVNone extends Record(svNoneDefaults) implements SVNoneProps {
-    readonly type: SVType.None;
+    readonly type!: SVType.None;
     static _none = new SVNone();
 
     private constructor(values?: Partial<SVNoneProps>) {
@@ -613,7 +613,7 @@ const svNotImplDefaults: SVNotImplProps = {
 };
 
 export class SVNotImpl extends Record(svNotImplDefaults) implements SVNotImplProps {
-    readonly type: SVType.NotImpl;
+    readonly type!: SVType.NotImpl;
     static _notImpl = new SVNotImpl();
 
     private constructor(values?: Partial<SVNotImplProps>) {
@@ -647,7 +647,7 @@ const svUndefDefaults: SVUndefProps = {
 };
 
 export class SVUndef extends Record(svUndefDefaults) implements SVUndefProps {
-    readonly type: SVType.Undef;
+    readonly type!: SVType.Undef;
     static _undef = new SVUndef();
 
     private constructor(values?: Partial<SVUndefProps>) {
@@ -682,7 +682,7 @@ const svErrorDefaults: SVErrorProps = {
 };
 
 export class SVError extends Record(svErrorDefaults) implements SVErrorProps {
-    readonly type: SVType.Error;
+    readonly type!: SVType.Error;
 
     private constructor(values?: Partial<SVErrorProps>) {
         values ? super(values) : super();

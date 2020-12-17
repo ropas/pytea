@@ -1,16 +1,17 @@
 import { List, Map as IMMap } from 'immutable';
 
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import * as BackUtils from '../../backend/backUtils';
 import { Context, ContextSet } from '../../backend/context';
 import { ShEnv } from '../../backend/sharpEnvironments';
 import { ShValue, SVAddr, SVFunc, SVInt, SVNone, SVObject, SVString, SVType, SVUndef } from '../../backend/sharpValues';
+import { SymExp } from '../../backend/symExpressions';
 import { TorchBackend } from '../../backend/torchBackend';
 import { LibCallType, TEConst, TELibCall, TEName, TEObject, TSLet, TSReturn } from '../../frontend/torchStatements';
-import { ParseNode } from '../../parser/parseNodes';
 import { PytService } from '../../pyt/pytService';
 import * as PytUtils from '../../pyt/pytUtils';
 import { LCImpl } from '.';
-import { SymExp } from '../../backend/symExpressions';
 
 export namespace LCBase {
     export type BaseParamType =
@@ -35,7 +36,8 @@ export namespace LCBase {
     export function objectClass(ctx: Context<ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const { heap } = ctx;
 
-        let [objectClass, objectAddr, newHeap] = SVObject.create(heap, source);
+        const [tempClass, objectAddr, newHeap] = SVObject.create(heap, source);
+        let objectClass = tempClass;
 
         const objInit = SVFunc.create('__init__', List(['self']), TSReturn.create(TEConst.genNone()), new ShEnv());
         const objNew = SVFunc.create('__new__', List(['cls']), TSReturn.create(TEObject.create()), new ShEnv());
@@ -197,7 +199,7 @@ export namespace LCBase {
                 const imported = ctx.imported;
                 if (imported.addrMap.has(libRelPath)) return ctx.toSet();
 
-                const [stmt, isInit] = service.getImportModuleStmt(libRelPath);
+                const [stmt] = service.getImportModuleStmt(libRelPath);
                 if (!stmt) return ctx.toSet();
 
                 const newPath = `${libRelPath}.__init__`;
@@ -289,8 +291,8 @@ export namespace LCBase {
                 ),
                 baseEnv
             );
-            let [proxyObj, proxyAddr, newHeap] = SVObject.create(heap, source);
-            proxyObj = proxyObj.setAttr('__getattr__', superProxy);
+            const [tempObj, proxyAddr, newHeap] = SVObject.create(heap, source);
+            const proxyObj = tempObj.setAttr('__getattr__', superProxy);
 
             return ctx.setHeap(newHeap.setVal(proxyAddr, proxyObj)).toSetWith(proxyAddr);
         }
@@ -303,7 +305,9 @@ export namespace LCBase {
         const params = ctx.retVal.params;
 
         // TODO: flattening varargs
-        let [obj, objAddr, newHeap] = SVObject.create(heap, source);
+        const [tempObj, objAddr, newHeap] = SVObject.create(heap, source);
+        let obj = tempObj;
+
         params.forEach((v, i) => {
             obj = obj.setIndice(i, v);
         });
@@ -326,11 +330,12 @@ export namespace LCBase {
         // TODO: genDict
         const { heap } = ctx;
         const params = ctx.retVal.params;
-        const [listLoc, heap1] = heap.malloc();
+        // const [listLoc, heap1] = heap.malloc();
 
-        let [obj, objAddr, newHeap] = SVObject.create(heap, source);
+        const [tempObj, objAddr, newHeap] = SVObject.create(heap, source);
+        let obj = tempObj;
 
-        for (let i in params) {
+        for (const i in params) {
             const kvTuple = BackUtils.fetchAddr(params[i], heap);
             if (kvTuple?.type !== SVType.Object) {
                 return ctx.warnWithMsg(`from 'LibCall.genDict: parameter must be key-value tuple`, source).toSet();

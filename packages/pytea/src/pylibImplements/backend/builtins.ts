@@ -1,7 +1,8 @@
-import { LCImpl } from '.';
-import { TorchBackend } from '../../backend/torchBackend';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { fetchAddr, sanitizeAddr, trackMro } from '../../backend/backUtils';
 import { Context, ContextSet } from '../../backend/context';
+import { strLen } from '../../backend/expUtils';
 import {
     PrimitiveType,
     ShValue,
@@ -13,11 +14,10 @@ import {
     SVSize,
     SVType,
 } from '../../backend/sharpValues';
-import { ParseNode } from '../../parser/parseNodes';
-import { PytService } from '../../pyt/pytService';
-import { LCBase } from './libcall';
-import { strLen } from '../../backend/expUtils';
 import { ExpNum, NumBopType } from '../../backend/symExpressions';
+import { TorchBackend } from '../../backend/torchBackend';
+import { LCImpl } from '.';
+import { LCBase } from './libcall';
 
 export namespace BuiltinsLCImpl {
     export function isinstance(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
@@ -57,7 +57,7 @@ export namespace BuiltinsLCImpl {
 
         let classPoint: SVAddr = classAddr;
         while (true) {
-            let next = heap.getVal(classPoint);
+            const next = heap.getVal(classPoint);
             if (next?.type !== SVType.Addr) {
                 break;
             }
@@ -87,12 +87,10 @@ export namespace BuiltinsLCImpl {
         }
 
         switch (type.value) {
-            case PrimitiveType.Tuple:
-
-            case PrimitiveType.List:
-
-            case PrimitiveType.Int:
             // TODO: floor
+            case PrimitiveType.Tuple:
+            case PrimitiveType.List:
+            case PrimitiveType.Int:
             case PrimitiveType.Float:
             case PrimitiveType.Str:
             case PrimitiveType.Bool:

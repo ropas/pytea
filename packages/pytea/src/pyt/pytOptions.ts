@@ -7,8 +7,6 @@
  * options for PyTea analyzer.
  */
 
-import { CommandLineOptions } from '../common/commandLineOptions';
-
 export interface PytOptions {
     // Absolute path to pyrightconfig.json
     configPath: string;

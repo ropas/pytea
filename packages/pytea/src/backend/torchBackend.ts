@@ -7,7 +7,8 @@
  * Symbolic Executor & Constraint Generator for PyTea Internal Representation
  */
 import { List } from 'immutable';
-import * as path from 'path';
+
+import { ExpressionNode, ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import {
     LibCallType,
@@ -40,9 +41,8 @@ import {
     TSSeq,
     TSType,
 } from '../frontend/torchStatements';
-import { ExpressionNode, ParseNode } from '../parser/parseNodes';
+import { BuiltinsLCImpl } from '../pylibImplements/backend/builtins';
 import { evalLibCall } from '../pylibImplements/backend/evaluator';
-import { PytService } from '../pyt/pytService';
 import { sanitizeAddrSet, SymOpUtils } from './backUtils';
 import * as BackUtils from './backUtils';
 import { Context, ContextSet, CtxExpr, CtxStmt } from './context';
@@ -64,8 +64,7 @@ import {
     svTypeToString,
     SVUndef,
 } from './sharpValues';
-import { ExpBool, ExpNum, ExpString, NumBopType, SymExp } from './symExpressions';
-import { BuiltinsLCImpl } from '../pylibImplements/backend/builtins';
+import { ExpNum, ExpString, NumBopType, SymExp } from './symExpressions';
 
 export namespace TorchBackend {
     export function runEmpty(stmt: ThStmt): ContextSet<ShValue | ShContFlag> {
@@ -400,7 +399,7 @@ export namespace TorchBackend {
                 // first, track mro.
                 const mro = BackUtils.trackMro(objVal, ctx.heap, ctx.env);
                 const classes = [];
-                for (let superAddr of mro) {
+                for (const superAddr of mro) {
                     if (superAddr === undefined) continue;
                     const superClass = BackUtils.fetchAddr(SVAddr.create(superAddr), ctx.heap);
                     if (!superClass) continue;
@@ -421,7 +420,7 @@ export namespace TorchBackend {
                 }
 
                 // if not found, track __getattr__
-                for (let superClass of classes) {
+                for (const superClass of classes) {
                     let getAttr = BackUtils.fetchAddr(superClass.attrs.get('__getattr__'), ctx.heap);
                     if (getAttr && getAttr.type === SVType.Func) {
                         if (objVal.type === SVType.Object) {
@@ -770,7 +769,7 @@ export namespace TorchBackend {
         return ctx
             .require(ctx.genLte(0, loopCnt), 'length of iterator is less than 0', stmt.loopVal.source)
             .flatMap((ctx) => {
-                let identCtx = ctx.genIntGte('for$ident', 0, stmt.loopVal.source);
+                const identCtx = ctx.genIntGte('for$ident', 0, stmt.loopVal.source);
                 const ident = identCtx.retVal;
                 let nextSetIter: ContextSet<ShValue | ShContFlag> = identCtx
                     .guarantee(identCtx.genLte(ident, ExpNum.bop(NumBopType.Sub, loopCnt, 1, stmt.loopVal.source)))
@@ -887,8 +886,9 @@ export namespace TorchBackend {
 
     function _evalTuple<T>(ctxSet: ContextSet<T>, expr: TETuple): ContextSet<ShValue> {
         return ctxSet.flatMap((ctx) => {
-            let [tuple, tupleAddr, newHeap] = SVObject.create(ctx.heap, expr.source);
-            tuple = tuple.setAttr('$length', SVInt.create(expr.values.length, expr.source));
+            const newObj = SVObject.create(ctx.heap, expr.source);
+            const [tempTuple, tupleAddr, newHeap] = newObj;
+            const tuple = tempTuple.setAttr('$length', SVInt.create(expr.values.length, expr.source));
 
             let evalSet: ContextSet<ShValue[]> = ctx.setHeap(newHeap).toSetWith([]);
             expr.values.forEach((expVal) => {

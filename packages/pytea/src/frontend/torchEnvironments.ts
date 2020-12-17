@@ -9,7 +9,8 @@
 
 import { Map, Record } from 'immutable';
 
-import { ParseNode } from '../parser/parseNodes';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { TorchInterpreter } from './torchInterpreter';
 import { ThStmt } from './torchStatements';
 import { ThValue, TVAddr, TVType } from './torchValues';

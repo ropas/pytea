@@ -9,10 +9,10 @@
  */
 import { List, Map, Record } from 'immutable';
 
-import { ParseNode } from '../parser/parseNodes';
-import { genTensor } from './expUtils';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { nodePosToString } from '../pyt/pytUtils';
-import { fetchAddr, sanitizeAddrCtx } from './backUtils';
+import { fetchAddr } from './backUtils';
 import { ConstraintSet } from './constraintSet';
 import {
     Constraint,
@@ -29,6 +29,7 @@ import {
     CtrOr,
     ctrToStr,
 } from './constraintType';
+import { genTensor } from './expUtils';
 import { NumRange } from './range';
 import { ShEnv, ShHeap } from './sharpEnvironments';
 import { ShContFlag, ShValue, SVError, SVFunc, SVType } from './sharpValues';
@@ -292,7 +293,6 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     }
 
     setCtrSet(ctrSet: ConstraintSet): Context<T> {
-        const t = this.retVal;
         return this.set('ctrSet', ctrSet);
     }
 

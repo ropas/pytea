@@ -1,25 +1,12 @@
-import { reduceEachTrailingCommentRange } from 'typescript';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { LCImpl } from '..';
 import { fetchAddr } from '../../../backend/backUtils';
 import { Context, ContextSet } from '../../../backend/context';
-import {
-    ShValue,
-    SVAddr,
-    SVBool,
-    SVFloat,
-    SVInt,
-    SVNone,
-    SVNotImpl,
-    SVObject,
-    SVSize,
-    SVType,
-} from '../../../backend/sharpValues';
-import { ExpNum, ExpShape, NumBopType, NumOpType } from '../../../backend/symExpressions';
-import { TorchBackend } from '../../../backend/torchBackend';
-import { ParseNode } from '../../../parser/parseNodes';
-
+import { fetchSize, genTensor } from '../../../backend/expUtils';
+import { ShValue, SVType } from '../../../backend/sharpValues';
+import { ExpNum, ExpShape, NumBopType } from '../../../backend/symExpressions';
 import { LCBase } from '../libcall';
-import { fetchSize, genTensor, isSize } from '../../../backend/expUtils';
 
 export namespace TorchvisionLCImpl {
     export function crop(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {

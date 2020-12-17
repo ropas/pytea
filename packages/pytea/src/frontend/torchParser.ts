@@ -10,8 +10,6 @@
 import { inspect } from 'util';
 
 import {
-    ArgumentCategory,
-    AssignmentExpressionNode,
     AssignmentNode,
     BinaryOperationNode,
     BreakNode,
@@ -37,8 +35,9 @@ import {
     StringNode,
     TupleNode,
     UnaryOperationNode,
-} from '../parser/parseNodes';
-import { KeywordType, OperatorType } from '../parser/tokenizerTypes';
+} from 'pyright-internal/parser/parseNodes';
+import { KeywordType, OperatorType } from 'pyright-internal/parser/tokenizerTypes';
+
 import { extractIds, flattenNodeArray, parseBinOp, parseUnaryOp } from './frontUtils';
 import {
     LibCallType,
@@ -276,7 +275,7 @@ export class TorchIRParser implements ThStmtParser {
         const iter = this.visitExprNode(node.iterableExpression);
         const body = this.visitArray(node.forSuite.statements, node.forSuite);
 
-        return TSForIn.create(idx, iter, body, node);
+        return TSForIn.create(idx[0], iter, body, node);
     }
 
     visitFunction(node: FunctionNode): [string, string[], ThStmt] {

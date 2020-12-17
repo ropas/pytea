@@ -10,18 +10,22 @@
 import { exec } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
+import * as path from 'path';
 import { promisify } from 'util';
 
-import * as AnalyzerNodeInfo from '../analyzer/analyzerNodeInfo';
-import { ConfigOptions } from '../common/configOptions';
-import { assert } from '../common/debug';
-import { combinePaths, normalizePath } from '../common/pathUtils';
+import { ConfigOptions } from 'pyright-internal/common/configOptions';
+import { assert } from 'pyright-internal/common/debug';
+import { combinePaths, normalizePath } from 'pyright-internal/common/pathUtils';
+
 import { TreePrinter } from '../frontend/treePrinter';
 import { runProgram } from '../pyt/pytUtils';
-import { resolveSampleFilePath } from './testUtils';
 
 const torchEnvName = 'torch-venv';
 const execPromise = promisify(exec);
+
+export function resolveSampleFilePath(fileName: string): string {
+    return path.resolve(path.dirname(module.filename), `./samples/${fileName}`);
+}
 
 async function installTorchVenv(venvPath: string, makeVenv: boolean, isPy3: boolean) {
     const pythonCmd = isPy3 ? 'python3' : 'python';
@@ -54,11 +58,11 @@ async function installTorchVenv(venvPath: string, makeVenv: boolean, isPy3: bool
 }
 
 export async function checkOrInstallTorchVenv() {
-    const isWin = os.platform().indexOf('win') > -1;
+    // const isWin = os.platform().indexOf('win') > -1;
 
     let foundPy3 = false;
     try {
-        const { stdout } = await execPromise(`python3 --version`);
+        await execPromise(`python3 --version`);
         foundPy3 = true;
     } catch (err) {
         // console.log('python3 is not installed. trying `python` command instead');

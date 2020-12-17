@@ -6,9 +6,7 @@
  *
  * Expressions and statements for PyTea internal languages.
  */
-import { Expression } from 'typescript';
-
-import { ExpressionNode, ParseNode } from '../parser/parseNodes';
+import { ExpressionNode, ParseNode } from 'pyright-internal/parser/parseNodes';
 
 export type ThLeftExpr = TEName | TEAttr | TESubscr;
 export type ThExpr = TEConst | TEObject | TETuple | TECall | TELibCall | TEBinOp | TEUnaryOp | ThLeftExpr;

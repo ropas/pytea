@@ -7,7 +7,8 @@
  * Utility functions for evaluate function on torchInterpreter.ts.
  */
 
-import { ParseNode } from '../parser/parseNodes';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { ThEnv, ThHeap } from './torchEnvironments';
 import { TorchInterpreter } from './torchInterpreter';
 import { TEBopType, TEUopType } from './torchStatements';

@@ -1,21 +1,19 @@
 {
-	"compilerOptions": {
-		"noUnusedLocals": false,
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "noUnusedLocals": false,
 		"noImplicitAny": true,
 		"noImplicitReturns": true,
-		"strictNullChecks": true,
-        "skipLibCheck": true,
-		"target": "es6",
-		"module": "commonjs",
-		"moduleResolution": "node",
-		"sourceMap": true,
-		"lib" : [ "es2019" ],
-		"outDir": "../client/server",
-		"composite": true,
-		"declaration": true
-	},
-	"exclude": [
-		"node_modules"
-	],
-	"references": []
+        "strictNullChecks": true,
+        "baseUrl": ".",
+        "outDir": "./out",
+        "paths": {
+            "pyright-internal/*": [
+                "../pyright-internal/src/*"
+            ]
+        }
+    },
+    "include": [
+        "src/**/*"
+    ]
 }

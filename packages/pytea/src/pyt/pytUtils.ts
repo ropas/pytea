@@ -10,15 +10,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as util from 'util';
 
-import { ImportResolver } from '../analyzer/importResolver';
-import { Program } from '../analyzer/program';
-import { ConfigOptions } from '../common/configOptions';
-import { ConsoleInterface } from '../common/console';
-import { createFromRealFileSystem } from '../common/fileSystem';
-import { combinePaths, getPathComponents } from '../common/pathUtils';
+import { ImportResolver } from 'pyright-internal/analyzer/importResolver';
+import { Program } from 'pyright-internal/analyzer/program';
+import { ConfigOptions } from 'pyright-internal/common/configOptions';
+import { ConsoleInterface } from 'pyright-internal/common/console';
+import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
+import { combinePaths, getPathComponents } from 'pyright-internal/common/pathUtils';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { TorchIRFrontend } from '../frontend/torchFrontend';
 import { ThStmt } from '../frontend/torchStatements';
-import { ParseNode } from '../parser/parseNodes';
 import { defaultOptions, PytOptions, PytOptionsPart } from './pytOptions';
 
 export class NodeConsole implements ConsoleInterface {
@@ -26,6 +27,14 @@ export class NodeConsole implements ConsoleInterface {
 
     constructor(loggerName: string) {
         this.logger = util.debuglog(loggerName);
+    }
+
+    warn(message: string) {
+        this.logger('\n' + message + '\n');
+    }
+
+    info(message: string) {
+        this.logger('\n' + message + '\n');
     }
 
     log(message: string) {
@@ -43,7 +52,7 @@ export function refineOptions(options: PytOptionsPart): PytOptions {
     const configPath = opt.configPath;
 
     let entryPath = opt.entryPath;
-    let basePath: string = '';
+    let basePath = '';
 
     if (configPath && fs.existsSync(configPath)) {
         basePath = path.dirname(configPath);

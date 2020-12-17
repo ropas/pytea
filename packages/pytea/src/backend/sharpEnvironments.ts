@@ -7,21 +7,11 @@
  * Environment and heaps for static semantics of PyTea Internal Representation
  */
 
-import { List, Map, Record } from 'immutable';
+import { Map, Record } from 'immutable';
 
-import {
-    LibCallType,
-    TEConst,
-    TELibCall,
-    TEName,
-    TEObject,
-    TSExpr,
-    TSFunDef,
-    TSReturn,
-    TSSeq,
-} from '../frontend/torchStatements';
-import { ParseNode } from '../parser/parseNodes';
-import { ShValue, SVAddr, SVFunc, SVNotImpl, SVObject, SVType } from './sharpValues';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
+import { ShValue, SVAddr, SVType } from './sharpValues';
 
 interface ShEnvProps {
     readonly addrMap: Map<string, SVAddr>; // negative address is builtin values

@@ -6,13 +6,14 @@
  *
  * Environment and heaps for dynamic semantics of PyTea internal languages.
  */
-import { List, Map, Record, Set } from 'immutable';
 import * as chalk from 'chalk';
+import { List, Map, Record, Set } from 'immutable';
 
-import { ParseNode } from '../parser/parseNodes';
-import { simplifyConstraint, simplifyExp, isStructuallyEq } from './expUtils';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { PytService } from '../pyt/pytService';
 import { absIndexByLen, sanitizeSource } from './backUtils';
+import { ConstraintSolver, expToCtr } from './constraintSolver';
 import {
     CompareConstraintType,
     Constraint,
@@ -30,6 +31,7 @@ import {
     NumConstraint,
 } from './constraintType';
 import { Context } from './context';
+import { isStructuallyEq, simplifyConstraint, simplifyExp } from './expUtils';
 import { NumRange } from './range';
 import { ShValue, SVType } from './sharpValues';
 import {
@@ -55,7 +57,6 @@ import {
     SymString,
     SymVal,
 } from './symExpressions';
-import { ConstraintSolver, expToCtr } from './constraintSolver';
 
 export interface ConstraintGen {
     genSymInt(name: string, source?: ParseNode): SymInt;
@@ -673,6 +674,8 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
                         if (!shapeCache || idx >= shapeCache.length) return;
                         return this.getCachedRange(shapeCache[idx]);
                     }
+                    default:
+                        return;
                 }
             }
             case NumOpType.Numel: {

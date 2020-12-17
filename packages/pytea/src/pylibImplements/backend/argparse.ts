@@ -1,22 +1,12 @@
-import { LCImpl } from '.';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { fetchAddr, sanitizeAddr } from '../../backend/backUtils';
 import { Context, ContextSet } from '../../backend/context';
-import {
-    ShValue,
-    SVAddr,
-    SVBool,
-    SVFloat,
-    SVFunc,
-    SVInt,
-    SVNone,
-    SVNotImpl,
-    SVString,
-    SVType,
-} from '../../backend/sharpValues';
+import { ShValue, SVAddr, SVBool, SVFloat, SVFunc, SVInt, SVNone, SVString, SVType } from '../../backend/sharpValues';
 import { ExpBool, ExpNum, ExpString } from '../../backend/symExpressions';
 import { TorchBackend } from '../../backend/torchBackend';
-import { ParseNode } from '../../parser/parseNodes';
 import { PytService } from '../../pyt/pytService';
+import { LCImpl, LCParamType } from '.';
 import { LCBase } from './libcall';
 
 export namespace BuiltinsLCImpl {
@@ -92,7 +82,7 @@ export namespace BuiltinsLCImpl {
         const argConst = sanitizeAddr(kwargs.getKeyVal('const'), heap);
         const argValue = options.pythonCmdArgs[argName];
 
-        let action: string = '';
+        let action = '';
         if (argAction?.type === SVType.String) {
             action = argAction.value as string;
             switch (action) {
@@ -122,6 +112,7 @@ export namespace BuiltinsLCImpl {
                             .setRetVal(SVNone.create())
                             .setHeap(heap.setVal(namespace, nsObj.setAttr(argPyName, argConst)))
                             .toSet();
+                // eslint-disable-next-line no-fallthrough
                 default:
                     // TODO: implement other actions like append
                     return ctx.warnWithMsg(`unimplemented action: ${action}`).toSet();

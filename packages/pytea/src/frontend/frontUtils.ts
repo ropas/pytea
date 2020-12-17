@@ -7,18 +7,15 @@
  * Utility functions for frontend
  */
 
-import { ParseTreeWalker } from '../analyzer/parseTreeWalker';
+import { ParseTreeWalker } from 'pyright-internal/analyzer/parseTreeWalker';
 import {
     AssignmentNode,
-    CallNode,
     ClassNode,
     ExpressionNode,
     FunctionNode,
     GlobalNode,
     ImportAsNode,
     ImportFromAsNode,
-    ImportFromNode,
-    ImportNode,
     ModuleNameNode,
     NonlocalNode,
     ParameterNode,
@@ -26,9 +23,9 @@ import {
     ParseNodeArray,
     ParseNodeType,
     WithItemNode,
-    WithNode,
-} from '../parser/parseNodes';
-import { OperatorType } from '../parser/tokenizerTypes';
+} from 'pyright-internal/parser/parseNodes';
+import { OperatorType } from 'pyright-internal/parser/tokenizerTypes';
+
 import { TEAttr, TEBopType, TEType, TEUopType } from './torchStatements';
 
 export function toQualPath(module: ModuleNameNode): string {

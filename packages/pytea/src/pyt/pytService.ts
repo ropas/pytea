@@ -7,23 +7,24 @@
  * Main class of PyTea analyzer.
  * Managing imported or will be imported scripts, parsed statements and lsp services.
  */
+import * as chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as chalk from 'chalk';
 import { performance } from 'perf_hooks';
 
-import { AnalyzerService } from '../analyzer/service';
+import { AnalyzerService } from 'pyright-internal/analyzer/service';
+import { CommandLineOptions } from 'pyright-internal/common/commandLineOptions';
+import { ConfigOptions } from 'pyright-internal/common/configOptions';
+import { ConsoleInterface, NullConsole, StandardConsole } from 'pyright-internal/common/console';
+import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
+import { combinePaths } from 'pyright-internal/common/pathUtils';
+
 import { fetchAddr } from '../backend/backUtils';
 import { ContextSet } from '../backend/context';
 import { ShHeap } from '../backend/sharpEnvironments';
 import { ShContFlag, ShValue, SVSize, SVString, SVType } from '../backend/sharpValues';
 import { SymExp } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
-import { CommandLineOptions } from '../common/commandLineOptions';
-import { ConfigOptions } from '../common/configOptions';
-import { ConsoleInterface, NullConsole, StandardConsole } from '../common/console';
-import { createFromRealFileSystem } from '../common/fileSystem';
-import { combinePaths } from '../common/pathUtils';
 import { ThStmt } from '../frontend/torchStatements';
 import { PytOptions, PytOptionsPart } from './pytOptions';
 import * as PytUtils from './pytUtils';
@@ -43,7 +44,7 @@ export class PytService {
     private _entryName: string;
 
     private _libStmt: Map<string, ThStmt>;
-    private _projectStmt: Map<string, ThStmt>;
+    private _projectStmt?: Map<string, ThStmt>;
 
     private _timeLog: [string, number][];
     private _currTime: number;
@@ -62,6 +63,10 @@ export class PytService {
 
         this._timeLog = [];
         this._currTime = performance.now();
+
+        this._projectPath = '';
+        this._entryPath = '';
+        this._entryName = '';
 
         // ignore pyright logs.
         const nullConsole = new NullConsole();
@@ -117,7 +122,7 @@ export class PytService {
             valid = false;
         }
 
-        if (this._projectStmt.size === 0) {
+        if (!this._projectStmt || this._projectStmt.size === 0) {
             this._console.error('Project directory is empty');
             valid = false;
         }
@@ -187,7 +192,7 @@ export class PytService {
 
         // TODO: consistent pytLibPath
         const builtinSet = TorchBackend.runBuiltin(builtins, 'builtins');
-        const stmt = this._projectStmt.get(this._entryName);
+        const stmt = this._projectStmt?.get(this._entryName);
         if (!stmt) {
             this._console.error(`cannot parse entry file '${this._entryPath}'`);
             return;
@@ -239,7 +244,7 @@ export class PytService {
 
         // TODO: consistent pytLibPath
         const builtinSet = TorchBackend.runBuiltin(builtins, 'builtins');
-        const stmt = this._projectStmt.get(this._entryName);
+        const stmt = this._projectStmt?.get(this._entryName);
         if (!stmt) {
             this._console.error(`cannot parse entry file '${this._entryPath}'`);
             return false;
@@ -271,9 +276,9 @@ export class PytService {
     // boolean value indicates imported from __init__
     getImportModuleStmt(qualPath: string): [ThStmt | undefined, boolean] {
         const initPath = qualPath + '.__init__';
-        if (this._projectStmt.has(qualPath)) {
+        if (this._projectStmt?.has(qualPath)) {
             return [this._projectStmt.get(qualPath), false];
-        } else if (this._projectStmt.has(initPath)) {
+        } else if (this._projectStmt?.has(initPath)) {
             return [this._projectStmt.get(initPath), true];
         } else if (this._libStmt.has(qualPath)) {
             return [this._libStmt.get(qualPath), false];
@@ -318,10 +323,10 @@ export class PytService {
         success.forEach((ctx, i) => {
             jsonList.push(ctx.ctrSet.getConstraintJSON());
 
-            let heapLog: string = '';
+            let heapLog = '';
             // TODO: currently assume that address 1 is main module object
             //       do not hardcode.
-            let module = ctx.heap.getVal(1);
+            const module = ctx.heap.getVal(1);
             if (module?.type === SVType.Object) {
                 heapLog =
                     `REDUCED HEAP: (size: ${ctx.heap.valMap.count()})\n` +
@@ -434,15 +439,15 @@ export class PytService {
 
         const jsonList: string[] = [];
 
-        let hasSVError: boolean = false;
+        let hasSVError = false;
 
         success.forEach((ctx, i) => {
             jsonList.push(ctx.ctrSet.getConstraintJSON());
 
-            let heapLog: string = '';
+            let heapLog = '';
             // TODO: currently assume that address 1 is main module object
             //       do not hardcode.
-            let module = ctx.heap.getVal(1);
+            const module = ctx.heap.getVal(1);
             if (module?.type === SVType.Object) {
                 heapLog =
                     `REDUCED HEAP: (size: ${ctx.heap.valMap.count()})\n` +

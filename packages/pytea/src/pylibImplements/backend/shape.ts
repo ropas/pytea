@@ -6,26 +6,15 @@
  *
  * Direct call of shape operations in context.
  */
-import { LCImpl } from '.';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { fetchAddr } from '../../backend/backUtils';
 import { Context, ContextSet } from '../../backend/context';
-import {
-    ShValue,
-    SVAddr,
-    SVBool,
-    SVFloat,
-    SVInt,
-    SVNone,
-    SVNotImpl,
-    SVObject,
-    SVSize,
-    SVType,
-} from '../../backend/sharpValues';
-import { ExpNum, ExpShape, NumBopType, NumOpType } from '../../backend/symExpressions';
-import { ParseNode } from '../../parser/parseNodes';
-
+import { fetchSize, genTensor, simplifyNum } from '../../backend/expUtils';
+import { ShValue, SVInt, SVSize, SVType } from '../../backend/sharpValues';
+import { ExpNum, ExpShape, NumBopType } from '../../backend/symExpressions';
+import { LCImpl } from '.';
 import { LCBase } from './libcall';
-import { fetchSize, genTensor, isSize, simplifyNum } from '../../backend/expUtils';
 
 export namespace ShapeLCImpl {
     // get (tensor, axis, repeat_count). returns new tensor repeated by repeat_count through axis.

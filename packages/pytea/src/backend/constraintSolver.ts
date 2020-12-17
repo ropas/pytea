@@ -9,8 +9,8 @@
 
 import { PytService } from '../pyt/pytService';
 import { ConstraintSet } from './constraintSet';
-import { Constraint, ConstraintType, ctrToStr } from './constraintType';
-import { CoExpNum, genTensor, NormalExp, normalizeExpNum, simplifyConstraint } from './expUtils';
+import { Constraint, ConstraintType } from './constraintType';
+import { CoExpNum, NormalExp, normalizeExpNum, simplifyConstraint } from './expUtils';
 import { Fraction } from './fraction';
 import { NumRange } from './range';
 import {
@@ -22,13 +22,7 @@ import {
     NumOpType,
     NumUopType,
     SEType,
-    ShapeOpType,
-    StringOpType,
     SymbolType,
-    SymExp,
-    SymFloat,
-    SymInt,
-    SymVal,
 } from './symExpressions';
 
 enum SolveType {
@@ -230,7 +224,6 @@ interface NumSolveState extends SolveState {
 }
 
 export class NumSubSolver extends SubSolver {
-    ctrSet: ConstraintSet;
     state?: NumSolveState;
 
     // constraint should be simplified.
@@ -319,7 +312,7 @@ export class NumSubSolver extends SubSolver {
             case NumOpType.Const:
                 // should never happen
                 state.right = state.right.sub(remain.coeff.mulN(remain.exp.value));
-            // fall-through
+            // eslint-disable-next-line no-fallthrough
             case NumOpType.Symbol:
                 // never happen
                 state.finished = true;
@@ -338,10 +331,10 @@ export class NumSubSolver extends SubSolver {
                 break;
             case NumOpType.Bop:
                 switch (remain.exp.bopType) {
+                    // TODO: implement floordiv, truediv / mod
                     case NumBopType.FloorDiv:
                     case NumBopType.Mod:
                     case NumBopType.TrueDiv:
-                    // TODO: implement floordiv, truediv / mod
                     case NumBopType.Add:
                     case NumBopType.Sub:
                     case NumBopType.Mul:
@@ -444,7 +437,6 @@ export class NumSubSolver extends SubSolver {
 }
 
 export class ShapeSubSolver extends SubSolver {
-    ctrSet: ConstraintSet;
     state?: NumSolveState;
 
     initState(constraint: Constraint): void {
@@ -455,7 +447,9 @@ export class ShapeSubSolver extends SubSolver {
         return false;
     }
 
-    resolveState(): void {}
+    resolveState(): void {
+        // TODO:
+    }
 }
 
 // -- UTILITY FUNCTIONS --

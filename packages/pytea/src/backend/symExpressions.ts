@@ -7,7 +7,8 @@
  * Definitions and types of symbolic variables and expressions
  */
 
-import { ParseNode } from '../parser/parseNodes';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { ConstraintSet } from './constraintSet';
 
 /// Base types. import and use these types.
@@ -432,6 +433,7 @@ export namespace SymExp {
                         return mergeSingleVar([left, right]);
                     }
                 }
+                break;
             }
             case SEType.String:
             case SEType.Shape:

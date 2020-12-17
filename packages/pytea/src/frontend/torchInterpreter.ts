@@ -9,12 +9,12 @@
 
 import { List } from 'immutable';
 
-import { ParseNode } from '../parser/parseNodes';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { evalLibCall } from '../pylibImplements/interpreter/evaluator';
 import { endPoint, functionCall, getItemByIndex, OperatorUtils } from './evalUtils';
 import { defaultEnvHeap as builtinEnvHeap, ThEnv, ThHeap } from './torchEnvironments';
 import {
-    LibCallType,
     TEAttr,
     TEBinOp,
     TEBopType,
@@ -90,7 +90,7 @@ export namespace TorchInterpreter {
     export function runEmpty(stmt: ThStmt): [ThEnv, ThHeap] {
         const logs = _saveLog();
 
-        const [_, finalHeap] = run(new ThEnv(), new ThHeap(), stmt);
+        const [, finalHeap] = run(new ThEnv(), new ThHeap(), stmt);
         const retVal: [ThEnv, ThHeap] = [_envLog, finalHeap._runGC(_envLog)];
 
         _loadLog(logs);
@@ -127,7 +127,7 @@ export namespace TorchInterpreter {
 
         const [value, newHeap] = evaluate(env, heap, expr!);
         const [addr, newHeap2] = newHeap.allocNew(value, stmt.source);
-        const [_, newHeap3] = run(env.setId(id, addr), newHeap2, stmtScope);
+        const [, newHeap3] = run(env.setId(id, addr), newHeap2, stmtScope);
 
         const finalHeap = newHeap3._runGC(_envLog);
 
@@ -138,7 +138,7 @@ export namespace TorchInterpreter {
     export function run(env: ThEnv, heap: ThHeap, stmt: ThStmt): [ThValue | ThContFlag, ThHeap] {
         switch (stmt.stype) {
             case TSType.Pass:
-                return _runPass(env, heap, stmt);
+                return _runPass(heap);
             case TSType.Expr:
                 return _runExpr(env, heap, stmt);
             case TSType.Seq:
@@ -152,9 +152,9 @@ export namespace TorchInterpreter {
             case TSType.Return:
                 return _runReturn(env, heap, stmt);
             case TSType.Continue:
-                return _runContinue(env, heap, stmt);
+                return _runContinue(heap);
             case TSType.Break:
-                return _runBreak(env, heap, stmt);
+                return _runBreak(heap);
             case TSType.Let:
                 return _runLet(env, heap, stmt);
             case TSType.FunDef:
@@ -165,9 +165,9 @@ export namespace TorchInterpreter {
     export function evaluate(env: ThEnv, heap: ThHeap, expr: ThExpr): [ThValue, ThHeap] {
         switch (expr.etype) {
             case TEType.Const:
-                return endPoint(_evalConst(env, heap, expr));
+                return endPoint(_evalConst(heap, expr));
             case TEType.Object:
-                return endPoint(_evalObject(env, heap, expr));
+                return endPoint(_evalObject(heap, expr));
             case TEType.Tuple:
                 return endPoint(_evalTuple(env, heap, expr));
             case TEType.Call:
@@ -187,7 +187,7 @@ export namespace TorchInterpreter {
         }
     }
 
-    function _runPass(env: ThEnv, heap: ThHeap, stmt: TSPass): [ThValue | ThContFlag, ThHeap] {
+    function _runPass(heap: ThHeap): [ThValue | ThContFlag, ThHeap] {
         // written by Sehoon Kim
         return [ThContFlag.Run, heap];
     }
@@ -195,7 +195,7 @@ export namespace TorchInterpreter {
     function _runExpr(env: ThEnv, heap: ThHeap, stmt: TSExpr): [ThValue | ThContFlag, ThHeap] {
         // written by Sehoon Kim
         const exp = stmt.expr;
-        const [value, newHeap] = evaluate(env, heap, exp);
+        const [, newHeap] = evaluate(env, heap, exp);
 
         return [ThContFlag.Run, newHeap];
     }
@@ -269,7 +269,6 @@ export namespace TorchInterpreter {
                 if (func.type !== TVType.Func) {
                     return [TVError.create('PyTea Interpreter: Cannot reach here', stmt.source), heap];
                 }
-                let newValue;
                 [newValue, newHeap] = _functionCallWrap(env, newHeap, func, [value_i, value], exp1.source);
                 return [ThContFlag.Run, newHeap];
             }
@@ -383,12 +382,12 @@ export namespace TorchInterpreter {
         return evaluate(env, heap, exp);
     }
 
-    function _runContinue(env: ThEnv, heap: ThHeap, stmt: TSContinue): [ThValue | ThContFlag, ThHeap] {
+    function _runContinue(heap: ThHeap): [ThValue | ThContFlag, ThHeap] {
         // written by Sehoon Kim
         return [ThContFlag.Cnt, heap];
     }
 
-    function _runBreak(env: ThEnv, heap: ThHeap, stmt: TSBreak): [ThValue | ThContFlag, ThHeap] {
+    function _runBreak(heap: ThHeap): [ThValue | ThContFlag, ThHeap] {
         // written by Sehoon Kim
         return [ThContFlag.Brk, heap];
     }
@@ -449,7 +448,7 @@ export namespace TorchInterpreter {
         return [value, newHeap2];
     }
 
-    function _evalConst(env: ThEnv, heap: ThHeap, expr: TEConst): [ThValue, ThHeap] {
+    function _evalConst(heap: ThHeap, expr: TEConst): [ThValue, ThHeap] {
         // written by Woosung Song
         switch (expr.constType) {
             case TEConstType.Int:
@@ -465,7 +464,7 @@ export namespace TorchInterpreter {
         }
     }
 
-    function _evalObject(env: ThEnv, heap: ThHeap, expr: TEObject): [ThValue, ThHeap] {
+    function _evalObject(heap: ThHeap, expr: TEObject): [ThValue, ThHeap] {
         // written by Woosung Song
         return heap.allocNew(TVObject.create(expr.source), expr.source);
     }

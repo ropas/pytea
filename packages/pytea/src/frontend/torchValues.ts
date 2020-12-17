@@ -9,8 +9,9 @@
 
 import { List, Map, Record } from 'immutable';
 
-import { ParseNode } from '../parser/parseNodes';
-import { ThEnv, ThHeap } from './torchEnvironments';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
+import { ThEnv } from './torchEnvironments';
 import { ThStmt, TSPass } from './torchStatements';
 
 export type ThValue =
@@ -144,7 +145,7 @@ const tvAddrDefaults: TVAddrProps = {
 };
 
 export class TVAddr extends Record(tvAddrDefaults) implements TVAddrProps {
-    readonly type: TVType.Addr;
+    readonly type!: TVType.Addr;
 
     constructor(values?: Partial<TVAddrProps>) {
         values ? super(values) : super();
@@ -180,7 +181,7 @@ const tvIntDefaults: TVIntProps = {
 };
 
 export class TVInt extends Record(tvIntDefaults) implements TVIntProps {
-    readonly type: TVType.Int;
+    readonly type!: TVType.Int;
 
     constructor(values?: Partial<TVIntProps>) {
         values ? super(values) : super();
@@ -212,7 +213,7 @@ const tvFloatDefaults: TVFloatProps = {
 };
 
 export class TVFloat extends Record(tvFloatDefaults) implements TVFloatProps {
-    readonly type: TVType.Float;
+    readonly type!: TVType.Float;
 
     constructor(values?: Partial<TVFloatProps>) {
         values ? super(values) : super();
@@ -247,7 +248,7 @@ const tvStringDefaults: TVStringProps = {
 };
 
 export class TVString extends Record(tvStringDefaults) implements TVStringProps {
-    readonly type: TVType.String;
+    readonly type!: TVType.String;
 
     constructor(values?: Partial<TVStringProps>) {
         values ? super(values) : super();
@@ -278,7 +279,7 @@ const tvBoolDefaults: TVBoolProps = {
 };
 
 export class TVBool extends Record(tvBoolDefaults) implements TVBoolProps {
-    readonly type: TVType.Bool;
+    readonly type!: TVType.Bool;
 
     constructor(values?: Partial<TVBoolProps>) {
         values ? super(values) : super();
@@ -315,7 +316,7 @@ const tvObjectDefaults: TVObjectProps = {
 };
 
 export class TVObject extends Record(tvObjectDefaults) implements TVObjectProps {
-    readonly type: TVType.Object;
+    readonly type!: TVType.Object;
 
     constructor(values?: Partial<TVObjectProps>) {
         values ? super(values) : super();
@@ -388,7 +389,7 @@ const tvFuncDefaults: TVFuncProps = {
 };
 
 export class TVFunc extends Record(tvFuncDefaults) implements TVFuncProps {
-    readonly type: TVType.Func;
+    readonly type!: TVType.Func;
 
     constructor(values?: Partial<TVFuncProps>) {
         values ? super(values) : super();
@@ -450,7 +451,7 @@ const tvNoneDefaults: TVNoneProps = {
 };
 
 export class TVNone extends Record(tvNoneDefaults) implements TVNoneProps {
-    readonly type: TVType.None;
+    readonly type!: TVType.None;
     static _none = new TVNone();
 
     private constructor(values?: Partial<TVNoneProps>) {
@@ -483,7 +484,7 @@ const tvNotImplDefaults: TVNotImplProps = {
 };
 
 export class TVNotImpl extends Record(tvNotImplDefaults) implements TVNotImplProps {
-    readonly type: TVType.NotImpl;
+    readonly type!: TVType.NotImpl;
     static _notImpl = new TVNotImpl();
 
     private constructor(values?: Partial<TVNotImplProps>) {
@@ -517,7 +518,7 @@ const tvUndefDefaults: TVUndefProps = {
 };
 
 export class TVUndef extends Record(tvUndefDefaults) implements TVUndefProps {
-    readonly type: TVType.Undef;
+    readonly type!: TVType.Undef;
     static _undef = new TVUndef();
 
     private constructor(values?: Partial<TVUndefProps>) {
@@ -552,7 +553,7 @@ const tvErrorDefaults: TVErrorProps = {
 };
 
 export class TVError extends Record(tvErrorDefaults) implements TVErrorProps {
-    readonly type: TVType.Error;
+    readonly type!: TVType.Error;
 
     private constructor(values?: Partial<TVErrorProps>) {
         values ? super(values) : super();

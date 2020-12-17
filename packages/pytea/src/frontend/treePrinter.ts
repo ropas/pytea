@@ -7,14 +7,14 @@
  * ParseNode HTML Printer for debugging
  */
 
-import { AnalyzerFileInfo } from '../analyzer/analyzerFileInfo';
-import * as AnalyzerNodeInfo from '../analyzer/analyzerNodeInfo';
-import { FlowNode } from '../analyzer/codeFlow';
-import { FlowFlags } from '../analyzer/codeFlow';
-import { ImportResult } from '../analyzer/importResult';
-import { ParseTreeWalker } from '../analyzer/parseTreeWalker';
-import { Program } from '../analyzer/program';
-import { ModuleNode, ParseNode, ParseNodeType } from '../parser/parseNodes';
+import { AnalyzerFileInfo } from 'pyright-internal/analyzer/analyzerFileInfo';
+import * as AnalyzerNodeInfo from 'pyright-internal/analyzer/analyzerNodeInfo';
+import { FlowNode } from 'pyright-internal/analyzer/codeFlow';
+import { FlowFlags } from 'pyright-internal/analyzer/codeFlow';
+import { ImportResult } from 'pyright-internal/analyzer/importResult';
+import { ParseTreeWalker } from 'pyright-internal/analyzer/parseTreeWalker';
+import { Program } from 'pyright-internal/analyzer/program';
+import { ModuleNode, ParseNode, ParseNodeType } from 'pyright-internal/parser/parseNodes';
 
 // From https://www.w3schools.com/howto/tryit.asp?filename=tryhow_js_treeview
 const HTMLHeader = `
@@ -180,6 +180,7 @@ export class TreePrinter extends ParseTreeWalker {
         this._program = program;
         this._fileInfo = AnalyzerNodeInfo.getFileInfo(node)!;
         this._tempPrinter = [];
+        this._id = 0;
     }
 
     makeHTML(): string {
@@ -499,10 +500,7 @@ export class TreePrinter extends ParseTreeWalker {
 
             case ParseNodeType.Decorator:
                 if (this.visitDecorator(node)) {
-                    return [
-                        ['leftExpression', node.leftExpression],
-                        ...this._makeEntries('arguments', node.arguments || []),
-                    ];
+                    return [['expression', node.expression]];
                 }
                 break;
 

@@ -10,8 +10,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { CommandLineOptions } from '../common/commandLineOptions';
-import { combinePaths, normalizePath } from '../common/pathUtils';
+import { CommandLineOptions } from 'pyright-internal/common/commandLineOptions';
+import { combinePaths, normalizePath } from 'pyright-internal/common/pathUtils';
+
 import { PytOptionsPart } from '../pyt/pytOptions';
 import { PytService } from '../pyt/pytService';
 import { NodeConsole } from '../pyt/pytUtils';
@@ -35,7 +36,7 @@ describe('Interpreter Case Test', () => {
     cmdOptions.configFilePath = path.join(dirPath, 'pyrightconfig.json');
 
     const configPath = path.join(dirPath, 'pyteaconfig.json');
-    let pytOptions: PytOptionsPart = { configPath, entryPath };
+    const pytOptions: PytOptionsPart = { configPath, entryPath };
 
     const service = new PytService(cmdOptions, pytOptions, nodeConsole, true);
 

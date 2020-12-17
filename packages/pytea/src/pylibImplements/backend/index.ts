@@ -6,19 +6,20 @@
  *
  * Base types and collections of every LibCall.
  */
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { Context, ContextSet } from '../../backend/context';
 import { ShValue } from '../../backend/sharpValues';
-import { ParseNode } from '../../parser/parseNodes';
+import { libCallMap as argparseMap } from './argparse';
 import { libCallMap as builtinsMap } from './builtins';
 import { LCBase, libCallMap as baseMap } from './libcall';
+import { libCallMap as shapeMap } from './shape';
 import { libCallMap as torchMap } from './torch';
 import { libCallMap as torchvisionMap } from './torchvision';
-import { libCallMap as shapeMap } from './shape';
-import { libCallMap as argparseMap } from './argparse';
 
 export type LCParamType = LCBase.BaseParamType;
 
-export type LCImpl = (ctx: Context<LCParamType>, source?: ParseNode) => ContextSet<ShValue>;
+export type LCImpl = (ctx: Context<LCBase.BaseParamType>, source?: ParseNode) => ContextSet<ShValue>;
 
 export function registLibCall(impls: Map<string, LCImpl>, relPath: string): Map<string, LCImpl> {
     const map: Map<string, LCImpl> = new Map();

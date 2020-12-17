@@ -17,22 +17,28 @@
         "directory": "packages/pytea"
     },
     "scripts": {
-        "build": "tsc",
+        "build": "webpack --mode production --progress",
         "clean": "shx rm -rf ./dist ./out",
+        "prepack": "npm run clean && shx cp ../../README.md . && npm run build",
+        "webpack": "webpack --mode development --progress",
         "test": "cross-env NODE_DEBUG=torch_debug jest --detectOpenHandles --forceExit torch",
         "test:unit": "cross-env NODE_DEBUG=torch_debug jest --detectOpenHandles --forceExit pytea.unit"
     },
     "dependencies": {
         "assert": "^2.0.0",
         "chalk": "^4.1.0",
-        "chokidar": "^3.4.2",
+        "chokidar": "^3.4.3",
+        "command-line-args": "^5.1.1",
         "immutable": "^4.0.0-rc.12"
     },
     "devDependencies": {
+        "@types/command-line-args": "^5.0.0",
         "@types/chalk": "^2.2.0",
         "@types/chokidar": "^2.1.3",
         "@types/jest": "^26.0.15",
         "@types/node": "^12.19.4",
+        "clean-webpack-plugin": "^3.0.0",
+        "copy-webpack-plugin": "^6.3.1",
         "cross-env": "^7.0.2",
         "jest": "^26.6.3",
         "jest-junit": "^12.0.0",
@@ -40,8 +46,16 @@
         "shx": "^0.3.3",
         "ts-jest": "^26.3.0",
         "ts-loader": "^8.0.11",
-        "typescript": "^4.1.3"
+        "tsconfig-paths-webpack-plugin": "^3.3.0",
+        "typescript": "^4.1.3",
+        "webpack": "^5.4.0",
+        "webpack-cli": "^4.2.0"
     },
-    "types": "out/main.d.ts",
-    "main": "out/main.js"
+    "files": [
+        "/dist"
+    ],
+    "main": "index.js",
+    "bin": {
+        "pytea": "index.js"
+    }
 }

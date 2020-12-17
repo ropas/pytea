@@ -11,7 +11,6 @@ import { inspect } from 'util';
 import {
     ArgumentCategory,
     AssertNode,
-    AssignmentExpressionNode,
     AssignmentNode,
     AugmentedAssignmentNode,
     BinaryOperationNode,
@@ -29,7 +28,6 @@ import {
     GlobalNode,
     IfNode,
     ImportAsNode,
-    ImportFromAsNode,
     ImportFromNode,
     ImportNode,
     IndexNode,
@@ -53,11 +51,11 @@ import {
     TernaryNode,
     TupleNode,
     UnaryOperationNode,
-    UnpackNode,
     WhileNode,
     WithNode,
-} from '../parser/parseNodes';
-import { KeywordType, OperatorType } from '../parser/tokenizerTypes';
+} from 'pyright-internal/parser/parseNodes';
+import { KeywordType, OperatorType } from 'pyright-internal/parser/tokenizerTypes';
+
 import { PytService } from '../pyt/pytService';
 import {
     extractIds,
@@ -781,7 +779,7 @@ export class TorchIRFrontend implements ThStmtParser {
 
     private _assignTuple(left: TupleNode, right: ThExpr, node?: AssignmentNode): ThStmt {
         let stmt: ThStmt | undefined;
-        let tempVar = TEName.create(this._getImm(), node?.leftExpression);
+        const tempVar = TEName.create(this._getImm(), node?.leftExpression);
 
         left.expressions.forEach((e, i) => {
             let next: ThStmt | undefined;
@@ -802,7 +800,7 @@ export class TorchIRFrontend implements ThStmtParser {
 
     private _assignList(left: ListNode, right: ThExpr, node?: AssignmentNode): ThStmt {
         let stmt: ThStmt | undefined;
-        let tempVar = TEName.create(this._getImm(), node?.leftExpression);
+        const tempVar = TEName.create(this._getImm(), node?.leftExpression);
 
         left.entries.forEach((e, i) => {
             let next: ThStmt | undefined;
@@ -1021,7 +1019,7 @@ export class TorchIRFrontend implements ThStmtParser {
         let body = this.visitArray(node.forSuite.statements);
         let idxName: string;
 
-        if (idx.length == 1) {
+        if (idx.length === 1) {
             idxName = idx[0];
         } else {
             idxName = this._getImm();
@@ -1042,7 +1040,7 @@ export class TorchIRFrontend implements ThStmtParser {
 
             let mainFor: ThStmt = TSForIn.create(idxName, iter, body, node);
 
-            for (let name of idx) {
+            for (const name of idx) {
                 mainFor = TSLet.create(name, mainFor);
             }
             return mainFor;
