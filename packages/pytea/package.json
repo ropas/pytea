@@ -19,8 +19,8 @@
     "scripts": {
         "build": "webpack --mode production --progress",
         "clean": "shx rm -rf ./dist ./out",
-        "prepack": "npm run clean && shx cp ../../README.md . && npm run build",
         "webpack": "webpack --mode development --progress",
+        "prepack": "npm run clean && shx cp ../../README.md . && npm run build",
         "test": "cross-env NODE_DEBUG=torch_debug jest --detectOpenHandles --forceExit torch",
         "test:unit": "cross-env NODE_DEBUG=torch_debug jest --detectOpenHandles --forceExit pytea.unit"
     },

@@ -23,13 +23,13 @@ import { ShContFlag, ShValue, SVSize, SVString, SVType } from '../backend/sharpV
 import { SymExp } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
 import { ThStmt } from '../frontend/torchStatements';
-import { PytOptions, PytOptionsPart } from './pytOptions';
+import { PyCmdArgs, PytOptions, PytOptionsPart } from './pytOptions';
 import * as PytUtils from './pytUtils';
 
 let _service: PytService | undefined;
 
 export class PytService {
-    private _options: PytOptions;
+    private _options?: PytOptions;
     private _config: ConfigOptions;
 
     private _service: AnalyzerService;
@@ -53,7 +53,6 @@ export class PytService {
     ) {
         if (setDefault) _service = this;
 
-        this._options = PytUtils.refineOptions(pytOptions);
         this._console = console || new StandardConsole();
 
         this._timeLog = [];
@@ -66,12 +65,20 @@ export class PytService {
         this._service = service;
         this._config = service.getConfigOptions();
 
+        try {
+            this._options = PytUtils.refineOptions(pytOptions);
+        } catch (e) {
+            this._libStmt = new Map();
+            this._console.error(e);
+            return;
+        }
+
         this._libStmt = PytUtils.getTorchStmtsFromDir(service, this._options.pytLibPath!, this._config);
 
         this._pushTimeLog('Parse library scripts');
     }
 
-    get options(): PytOptions {
+    get options(): PytOptions | undefined {
         return this._options;
     }
 
@@ -83,16 +90,23 @@ export class PytService {
         _service = service;
     }
 
+    static ignoreAssert(): boolean {
+        const options = _service?.options;
+        return options ? options.ignoreAssert : true;
+    }
+
     static shouldCheckImmediate(): boolean {
-        return _service!._options.immediateConstraintCheck;
+        const options = _service?.options;
+        return options ? options.immediateConstraintCheck : true;
+    }
+
+    static getCmdArgs(): PyCmdArgs {
+        const options = _service?.options;
+        return options ? options.pythonCmdArgs : {};
     }
 
     static log(...message: any[]): void {
         _service?._console.log(message.map((x) => `${x}`).join(' '));
-    }
-
-    static getOptions(): PytOptions {
-        return _service!._options;
     }
 
     private _pushTimeLog(logName: string): void {
@@ -105,6 +119,10 @@ export class PytService {
     validate(): boolean {
         let valid = true;
 
+        if (!this._options) {
+            this._console.error('PyTea service option is not set. Please check pyteaconfig.json.');
+        }
+
         if (!this._entryPath) {
             this._console.error('Python entry point is not set.');
             valid = false;
@@ -115,7 +133,7 @@ export class PytService {
             valid = false;
         }
 
-        if (!this._options.pytLibPath || this._libStmt.size === 0) {
+        if (!this._options?.pytLibPath || this._libStmt.size === 0) {
             this._console.error('Invalid PyTea library path. Please check library path correctly.');
             valid = false;
         }
@@ -185,7 +203,7 @@ export class PytService {
 
         this._pushTimeLog('Running builtin libraries');
 
-        if (this._options.printIR)
+        if (this._options!.printIR)
             this._console.log(chalk.yellow(`PARSED STATEMENTS:`) + chalk.gray(`\n${ThStmt.toString(stmt)}\n`));
 
         const startSet = builtinSet.map((ctx) => {
@@ -197,7 +215,7 @@ export class PytService {
 
         this._pushTimeLog('Running entry file');
 
-        const logLevel = this._options.logLevel;
+        const logLevel = this._options!.logLevel;
         switch (logLevel) {
             case 'none':
                 this._noneLog(result);

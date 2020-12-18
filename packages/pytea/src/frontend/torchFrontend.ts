@@ -1118,7 +1118,7 @@ export class TorchIRFrontend implements ThStmtParser {
     }
 
     visitAssert(node: AssertNode): ThStmt {
-        if (PytService.getOptions().ignoreAssert) {
+        if (PytService.ignoreAssert()) {
             return TSPass.get();
         }
 

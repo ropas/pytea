@@ -6,7 +6,7 @@ import { ShValue, SVAddr, SVBool, SVFloat, SVFunc, SVInt, SVNone, SVString, SVTy
 import { ExpBool, ExpNum, ExpString } from '../../backend/symExpressions';
 import { TorchBackend } from '../../backend/torchBackend';
 import { PytService } from '../../pyt/pytService';
-import { LCImpl, LCParamType } from '.';
+import { LCImpl } from '.';
 import { LCBase } from './libcall';
 
 export namespace BuiltinsLCImpl {
@@ -53,7 +53,7 @@ export namespace BuiltinsLCImpl {
                 .toSet();
         }
 
-        const options = PytService.getOptions();
+        const cmdArgs = PytService.getCmdArgs();
         const argName = argNameR[1];
         const argPyName = argName.replace(/-/g, '_');
 
@@ -80,7 +80,7 @@ export namespace BuiltinsLCImpl {
         const argDefault = fetchAddr(kwargs.getKeyVal('default'), heap);
         const argAction = fetchAddr(kwargs.getKeyVal('action'), heap);
         const argConst = sanitizeAddr(kwargs.getKeyVal('const'), heap);
-        const argValue = options.pythonCmdArgs[argName];
+        const argValue = cmdArgs[argName];
 
         let action = '';
         if (argAction?.type === SVType.String) {

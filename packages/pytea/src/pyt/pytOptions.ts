@@ -7,8 +7,9 @@
  * options for PyTea analyzer.
  */
 
+export type PyCmdArgs = { [option: string]: boolean | number | string };
 export interface PytOptions {
-    // Absolute path to pyrightconfig.json
+    // Absolute path to pyteaconfig.json
     configPath: string;
 
     // Path of PyTea implementation of Python builtins.
@@ -20,7 +21,7 @@ export interface PytOptions {
 
     // Python command line arguments.
     // arguments is given as key "$defaults"
-    pythonCmdArgs: { [option: string]: boolean | number | string };
+    pythonCmdArgs: PyCmdArgs;
 
     // Debug log level (default: reduced)
     logLevel: 'none' | 'result_only' | 'reduced' | 'full';
@@ -38,6 +39,7 @@ export interface PytOptions {
 export type PytOptionsPart = Partial<PytOptions>;
 
 export const defaultOptions: PytOptionsPart = {
+    pythonCmdArgs: {},
     logLevel: 'reduced',
     immediateConstraintCheck: true,
     ignoreAssert: false,

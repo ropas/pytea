@@ -20,7 +20,7 @@ module.exports = (_, { mode }) => {
     return {
         context: __dirname,
         entry: {
-            pytea: './src/main.ts',
+            pytea: './src/pytea.ts',
         },
         target: 'node',
         output: {

@@ -79,10 +79,10 @@ export function refineOptions(options: PytOptionsPart): PytOptions {
     if (entryPath && !path.isAbsolute(entryPath)) opt.entryPath = path.join(basePath, entryPath);
     if (!path.isAbsolute(opt.pytLibPath)) opt.pytLibPath = path.join(basePath, opt.pytLibPath);
 
-    if (entryPath && !fs.existsSync(entryPath)) {
-        throw `cannot found entryPath ${opt.entryPath}`;
+    if (opt.entryPath && !fs.existsSync(opt.entryPath)) {
+        throw `cannot find entryPath ${opt.entryPath}`;
     } else if (!fs.existsSync(opt.pytLibPath)) {
-        throw `cannot found pytLibPath ${opt.pytLibPath}`;
+        throw `cannot find pytLibPath ${opt.pytLibPath}`;
     }
 
     return opt as PytOptions;
@@ -169,7 +169,10 @@ export function getTorchStmtsFromDir(
         const fn = libFileNames[fpId];
 
         const sourceFile = program.getSourceFile(fp);
-        if (!sourceFile) fail(`Source file not found for ${fp}`);
+        if (!sourceFile) {
+            console.log(`Source file not found for ${fp}`);
+            continue;
+        }
 
         let stmt: ThStmt | undefined;
         try {
