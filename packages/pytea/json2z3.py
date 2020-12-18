@@ -18,7 +18,7 @@ from functools import reduce
 import json
 import sys
 import time
-
+import argparse
 
 # z3 doesn't care of division by zero.
 # TODO: (on constraintGenerator)Add constraint(divisor != 0) for every div/mod op.
@@ -33,12 +33,14 @@ def z3_mod(a, b):
 def z3_max(a, b):
     return If(a < b, b, a)
 
+
 class PathResult(Enum):
     Unavailable = 0
     Valid = 1
     Sat = 2
     Unsat = 3
     DontKnow = 4
+
 
 # Type enums: Must be consistent with enums in "symExpressions.ts", "constraintType.ts".
 class SEType(Enum):
@@ -100,7 +102,8 @@ class ConstraintType(Enum):
     Broadcastable = 9
     Fail = 10
 
-class Z3encoder():
+
+class Z3encoder:
     def __init__(self, jsonFile):
         """
         ctrSetList == [
@@ -111,7 +114,9 @@ class Z3encoder():
         ]
         """
         jsonCtrSetList = json.load(jsonFile)
-        self.ctrSetList = list(map(lambda jsonCtrSet: CtrSet(jsonCtrSet), jsonCtrSetList))
+        self.ctrSetList = list(
+            map(lambda jsonCtrSet: CtrSet(jsonCtrSet), jsonCtrSetList)
+        )
 
     def __call__(self):
         # lists of path indices
@@ -126,7 +131,7 @@ class Z3encoder():
             log += "PATH " + str(pathIdx)
             log += "\n-----------------------------------\n"
             log += ctrSet.toString()
-            pathResult, pathLog = ctrSet.analysis() # side effect: print result
+            pathResult, pathLog = ctrSet.analysis()  # side effect: print result
             log += pathLog
 
             if pathResult == PathResult.Unavailable.value:
@@ -162,8 +167,9 @@ class Z3encoder():
             print("Dontknow paths: {}".format(len(DontknowPaths)))
             print(DontknowPaths)
 
+
 # constraint set of a path.
-class CtrSet():
+class CtrSet:
     def __init__(self, jsonCtrSet):
         """
         ctrPool: list of constraints
@@ -228,12 +234,11 @@ class CtrSet():
             # for ctr in self.ctrPool[unsatCtrIdx:]:
             #     log += ctr.toString() + "\n"
             log += self.ctrPool[unsatCtrIdx].toString() + "\n"
-            
+
             return PathResult.Unsat.value, log
         else:
             log = "Dontknow path.\n\n"
             return PathResult.DontKnow.value, log
-
 
     # check sat with only hardCtr and pathCtr.
     def pathCondCheck(self):
@@ -250,7 +255,9 @@ class CtrSet():
     # return (validity, counter-example).
     def checkValidity(self):
         assumptions = list(map(lambda i: self.ctrPool[i].formula, self.hardCtr))
-        ctrs = self.softCtr + self.pathCtr # currently, do not distinguish softCtr and path Ctr.
+        ctrs = (
+            self.softCtr + self.pathCtr
+        )  # currently, do not distinguish softCtr and path Ctr.
         ctrs.sort()
         constraints = list(map(lambda i: self.ctrPool[i].formula, ctrs))
         formula = Implies(And(assumptions), And(constraints))
@@ -267,7 +274,9 @@ class CtrSet():
     # return (satisfiability, unsatAssumptions).
     def checkSat(self):
         assumptions = list(map(lambda i: self.ctrPool[i].formula, self.hardCtr))
-        ctrs = self.softCtr + self.pathCtr # currently, do not distinguish softCtr and path Ctr.
+        ctrs = (
+            self.softCtr + self.pathCtr
+        )  # currently, do not distinguish softCtr and path Ctr.
         ctrs.sort()
         constraints = list(map(lambda i: self.ctrPool[i].formula, ctrs))
         formula = And(constraints)
@@ -283,7 +292,9 @@ class CtrSet():
     def trackUnsatCtrs(self):
         def checkPartialCtrs(ctrPool, hardCtr, softCtr, pathCtr):
             assumptions = list(map(lambda i: ctrPool[i].formula, hardCtr))
-            ctrs = softCtr + pathCtr # currently, do not distinguish softCtr and path Ctr.
+            ctrs = (
+                softCtr + pathCtr
+            )  # currently, do not distinguish softCtr and path Ctr.
             ctrs.sort()
             constraints = list(map(lambda i: ctrPool[i].formula, ctrs))
             formula = And(constraints)
@@ -292,7 +303,7 @@ class CtrSet():
             s.add(formula)
 
             return str(s.check(assumptions))
-        
+
         hardEnd = len(self.hardCtr)
         softEnd = len(self.softCtr)
         pathEnd = len(self.pathCtr)
@@ -306,13 +317,19 @@ class CtrSet():
             elif i in self.pathCtr:
                 pathEnd -= 1
 
-            partialSat = checkPartialCtrs(self.ctrPool[:i], self.hardCtr[:hardEnd], self.softCtr[:softEnd], self.pathCtr[:pathEnd])
+            partialSat = checkPartialCtrs(
+                self.ctrPool[:i],
+                self.hardCtr[:hardEnd],
+                self.softCtr[:softEnd],
+                self.pathCtr[:pathEnd],
+            )
             if partialSat == "sat":
                 return i
 
         return -1
 
-class Ctr():
+
+class Ctr:
     def __init__(self, jsonCtr):
         self.formula = self.encode(jsonCtr)
         if "source" in jsonCtr:
@@ -358,10 +375,7 @@ class Ctr():
     def _encodeEq(self, ctr):
         left = ctr["left"]
         right = ctr["right"]
-        if (
-            left["expType"] == SEType.Num.value
-            and right["expType"] == SEType.Num.value
-        ):
+        if left["expType"] == SEType.Num.value and right["expType"] == SEType.Num.value:
             return self.encodeExpNum(left) == self.encodeExpNum(right)
         elif (
             left["expType"] == SEType.Shape.value
@@ -374,10 +388,7 @@ class Ctr():
     def _encodeNe(self, ctr):
         left = ctr["left"]
         right = ctr["right"]
-        if (
-            left["expType"] == SEType.Num.value
-            and right["expType"] == SEType.Num.value
-        ):
+        if left["expType"] == SEType.Num.value and right["expType"] == SEType.Num.value:
             return self.encodeExpNum(left) != self.encodeExpNum(right)
         elif (
             left["expType"] == SEType.Shape.value
@@ -417,13 +428,7 @@ class Ctr():
         lb, ub = ctr["range"]
         lb, ub = self.encodeExpNum(lb), self.encodeExpNum(ub)
         _ctr = self.encode(ctr["constraint"])
-        return ForAll(
-            [x],
-            Implies(
-                And(lb <= x, x <= ub),
-                _ctr
-            )
-        )
+        return ForAll([x], Implies(And(lb <= x, x <= ub), _ctr))
 
     def _encodeBc(self, ctr):
         """
@@ -443,28 +448,29 @@ class Ctr():
                     Implies(
                         And(rankLeft - rankRight <= i, i < rankLeft),
                         Or(
-                            Select(left, i) == Select(right, i - (rankLeft - rankRight)),
+                            Select(left, i)
+                            == Select(right, i - (rankLeft - rankRight)),
                             Select(left, i) == 1,
                             Select(right, i - (rankLeft - rankRight)) == 1,
-                        )
-                    )
-                )
+                        ),
+                    ),
+                ),
             ),
             And(
                 rankLeft < rankRight,
-
                 ForAll(
                     [i],
                     Implies(
                         And(rankRight - rankLeft <= i, i < rankRight),
                         Or(
-                            Select(right, i) == Select(left, i - (rankRight - rankLeft)),
+                            Select(right, i)
+                            == Select(left, i - (rankRight - rankLeft)),
                             Select(right, i) == 1,
                             Select(left, i - (rankRight - rankLeft)) == 1,
-                        )
-                    )
-                )
-            )
+                        ),
+                    ),
+                ),
+            ),
         )
 
     def encodeExp(self, exp):
@@ -538,7 +544,9 @@ class Ctr():
         elif expShape["opType"] == ShapeOpType.Set.value:
             return self.getRank(expShape["baseShape"])
         elif expShape["opType"] == ShapeOpType.Slice.value:
-            return self.encodeExpNum(expShape["end"]) - self.encodeExpNum(expShape["start"])
+            return self.encodeExpNum(expShape["end"]) - self.encodeExpNum(
+                expShape["start"]
+            )
         elif expShape["opType"] == ShapeOpType.Concat.value:
             return self.getRank(expShape["left"]) + self.getRank(expShape["right"])
         elif expShape["opType"] == ShapeOpType.Broadcast.value:
@@ -566,7 +574,7 @@ class Ctr():
         elif expNum["opType"] == NumOpType.Numel.value:
             return self._encodeExpNumNumel(expNum)
 
-    def _encodeExpNumBop(self,expNum):
+    def _encodeExpNumBop(self, expNum):
         if expNum["bopType"] == NumBopType.Add.value:
             left = self.encodeExpNum(expNum["left"])
             right = self.encodeExpNum(expNum["right"])
@@ -597,14 +605,16 @@ class Ctr():
         baseShape = expNum["shape"]
         baseShapeEncoded = self.encodeExpShape(baseShape)
 
-        prod = RecFunction('prod', ArraySort(IntSort(), IntSort()), IntSort(), IntSort(), IntSort())
-        shape = Array('shape', IntSort(), IntSort())
-        lb = Int('lb')
-        ub = Int('ub')
-        RecAddDefinition(prod, (shape, lb, ub),
-            If(lb > ub,
-                1,
-                Select(shape, lb) * (prod(shape, (lb + 1), ub)))
+        prod = RecFunction(
+            "prod", ArraySort(IntSort(), IntSort()), IntSort(), IntSort(), IntSort()
+        )
+        shape = Array("shape", IntSort(), IntSort())
+        lb = Int("lb")
+        ub = Int("ub")
+        RecAddDefinition(
+            prod,
+            (shape, lb, ub),
+            If(lb > ub, 1, Select(shape, lb) * (prod(shape, (lb + 1), ub))),
         )
 
         return prod(baseShapeEncoded, 0, self.getRank(baseShape) - 1)
@@ -643,7 +653,7 @@ class Ctr():
     def _encodeExpShapeSlice(self, expShape):
         dims = self.encodeExpShape(expShape["baseShape"])
 
-        #TODO: How to handle cases where "start" and "end" are not given? 
+        # TODO: How to handle cases where "start" and "end" are not given?
         start = self.encodeExpNum(expShape["start"])
         end = self.encodeExpNum(expShape["end"])
         i = Int("i")
@@ -662,7 +672,11 @@ class Ctr():
             If(
                 And(0 <= i, i < rankLeft),
                 Select(left, i),
-                If(And(rankLeft <= i, i < rankLeft + rankRight), Select(right, i - rankLeft), -1),
+                If(
+                    And(rankLeft <= i, i < rankLeft + rankRight),
+                    Select(right, i - rankLeft),
+                    -1,
+                ),
             ),
         )
 
@@ -700,8 +714,6 @@ class Ctr():
                 ),
             ),
         )
-
-
 
 
 if __name__ == "__main__":

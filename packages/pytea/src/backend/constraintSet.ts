@@ -6,7 +6,7 @@
  *
  * Environment and heaps for dynamic semantics of PyTea internal languages.
  */
-import * as chalk from 'chalk';
+import chalk from 'chalk';
 import { List, Map, Record, Set } from 'immutable';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';

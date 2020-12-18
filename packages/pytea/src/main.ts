@@ -296,10 +296,15 @@ function processArgs() {
 
             if (!pytService.validate()) {
                 console.error('pytea service got error');
-                // process.exit(ExitStatus.FatalError);
+                process.exit(ExitStatus.FatalError);
             } else {
                 // de pytea job
-                pytService.checkWithLog();
+                try {
+                    pytService.checkWithLog();
+                } catch (e) {
+                    console.error(e);
+                    process.exit(ExitStatus.FatalError);
+                }
             }
         } else {
             console.error('pytea service is not initialized');

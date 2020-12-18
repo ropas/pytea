@@ -7,14 +7,17 @@
  * Main class of PyTea analyzer.
  * Managing imported or will be imported scripts, parsed statements and lsp services.
  */
-import * as chalk from 'chalk';
+import chalk from 'chalk';
+import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
+import tmp from 'tmp';
 
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { ConfigOptions } from 'pyright-internal/common/configOptions';
 import { ConsoleInterface, StandardConsole } from 'pyright-internal/common/console';
+import { combinePaths } from 'pyright-internal/common/pathUtils';
 
 import { fetchAddr } from '../backend/backUtils';
 import { ContextSet } from '../backend/context';
@@ -370,9 +373,10 @@ export class PytService {
         });
 
         if (jsonList.length > 0) {
-            const jsonPath = path.join(this._projectPath, `${this._entryName}_z3.json`);
-            fs.writeFileSync(jsonPath, '[\n' + jsonList.join(',\n') + '\n]');
-            this._console.log(`write path constraints to ${jsonPath}`);
+            // const jsonPath = path.join(this._projectPath, `${this._entryName}_z3.json`);
+            // fs.writeFileSync(jsonPath, '[\n' + jsonList.join(',\n') + '\n]');
+            // this._console.log(`write path constraints to ${jsonPath}`);
+            this.runZ3('[\n' + jsonList.join(',\n') + '\n]');
         }
 
         this._pushTimeLog('printing results');
@@ -421,9 +425,10 @@ export class PytService {
         });
 
         if (jsonList.length > 0) {
-            const jsonPath = path.join(this._projectPath, `${this._entryName}_z3.json`);
-            fs.writeFileSync(jsonPath, '[\n' + jsonList.join(',\n') + '\n]');
-            this._console.log(`write path constraints to ${jsonPath}`);
+            // const jsonPath = path.join(this._projectPath, `${this._entryName}_z3.json`);
+            // fs.writeFileSync(jsonPath, '[\n' + jsonList.join(',\n') + '\n]');
+            // this._console.log(`write path constraints to ${jsonPath}`);
+            this.runZ3('[\n' + jsonList.join(',\n') + '\n]');
         }
 
         this._pushTimeLog('printing results');
@@ -478,5 +483,23 @@ export class PytService {
         } else {
             return success.count() === 0 && !hasSVError;
         }
+    }
+
+    runZ3(jsonStr: string): void {
+        // TODO:
+        const cwd = process.cwd();
+        const pyteaPath = combinePaths(cwd, 'json2z3.py');
+
+        if (!fs.existsSync(pyteaPath)) {
+            console.log('cannot found json2z3.py. skip z3');
+        }
+
+        tmp.file((err, path, fd) => {
+            if (!err) {
+                this._console.log(`save file to ${path}`);
+                fs.writeFileSync(path, jsonStr);
+                // const pyproc = spawn('python', [pyteaPath, path]);
+            }
+        });
     }
 }
