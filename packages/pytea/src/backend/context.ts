@@ -246,7 +246,7 @@ const contextDefaults: ContextProps<unknown> = {
 };
 
 export class Context<T> extends Record(contextDefaults) implements ContextProps<T>, ContextMethods<T> {
-    retVal: T;
+    retVal!: T;
 
     constructor(values?: Partial<ContextProps<T>>) {
         values ? super(values) : super();

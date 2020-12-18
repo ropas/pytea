@@ -326,6 +326,12 @@ function processArgs() {
             if (!pytService.validate()) {
                 process.exit(ExitStatus.FatalError);
             }
+
+            const entryPath = pytService.options.entryPath;
+            // this triggers parse project folder
+            pytService.setEntryPath(entryPath);
+
+            // do pytea job
             pytService.checkWithLog();
         }
 

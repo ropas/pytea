@@ -32,14 +32,11 @@ import {
     ThExpr,
     ThStmt,
     TSAssign,
-    TSBreak,
-    TSContinue,
     TSExpr,
     TSForIn,
     TSFunDef,
     TSIf,
     TSLet,
-    TSPass,
     TSReturn,
     TSSeq,
     TSType,
@@ -243,14 +240,17 @@ export namespace TorchInterpreter {
             const newObj = obj.setAttr(id, value);
             return [ThContFlag.Run, newHeap.setVal(addr, newObj)];
         } else if (lexpr.etype === TEType.Subscr) {
+            let newHeap: ThHeap;
             const exp1 = lexpr.left;
             const exp2 = lexpr.right;
             const exp3 = rexpr;
-            let [addr, newHeap] = evaluate(env, heap, exp1);
+            const [addr, newHeap1] = evaluate(env, heap, exp1);
+            newHeap = newHeap1;
             if (addr.type !== TVType.Addr) {
                 return [TVError.create('PyTea Interpreter: Cannot reach here', stmt.source), heap];
             }
-            let value_i, value;
+            let value_i: ThValue;
+            let value: ThValue;
             [value_i, newHeap] = evaluate(env, newHeap, exp2);
             [value, newHeap] = evaluate(env, newHeap, exp3);
             const obj = newHeap.getVal(addr);
@@ -269,7 +269,7 @@ export namespace TorchInterpreter {
                 if (func.type !== TVType.Func) {
                     return [TVError.create('PyTea Interpreter: Cannot reach here', stmt.source), heap];
                 }
-                [newValue, newHeap] = _functionCallWrap(env, newHeap, func, [value_i, value], exp1.source);
+                newHeap = _functionCallWrap(env, newHeap, func, [value_i, value], exp1.source)[1];
                 return [ThContFlag.Run, newHeap];
             }
         } else {

@@ -1,10 +1,11 @@
 import { List, Map } from 'immutable';
 
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { fetchAddr, functionCall } from '../../frontend/evalUtils';
 import { ThEnv, ThHeap } from '../../frontend/torchEnvironments';
 import { LibCallType, TEConst, TELibCall, TEName, TEObject, TSReturn } from '../../frontend/torchStatements';
 import { ThValue, TVAddr, TVError, TVFunc, TVNone, TVObject, TVString, TVType } from '../../frontend/torchValues';
-import { ParseNode } from '../../parser/parseNodes';
 import { EvalLCContext, EvalLCImpl, EvalLCResult } from '.';
 
 export namespace EvalLCBase {
@@ -229,7 +230,7 @@ export namespace EvalLCBase {
                     );
                 }
 
-                const selfObj = self as TVObject;
+                // const selfObj = self as TVObject;
                 //newHeap = newHeap.setVal(addr, selfObj.setAttr(name, boundFunc));
 
                 return { heap: newHeap, result: boundFunc };
@@ -270,7 +271,9 @@ export namespace EvalLCBase {
         importQualified,
         super: thSuper,
         genList,
+        genDict: genList,
         DEBUG,
+        raise: DEBUG,
         setDefault,
         callKV,
         getAttr,

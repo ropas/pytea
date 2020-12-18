@@ -3,7 +3,6 @@
     "compilerOptions": {
         "noUnusedLocals": false,
 		"noImplicitAny": true,
-		"noImplicitReturns": true,
         "strictNullChecks": true,
         "baseUrl": ".",
         "outDir": "./out",

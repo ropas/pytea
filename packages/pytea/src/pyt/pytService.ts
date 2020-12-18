@@ -12,11 +12,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
 
-import { Program } from 'pyright-internal/analyzer/program';
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { ConfigOptions } from 'pyright-internal/common/configOptions';
 import { ConsoleInterface, StandardConsole } from 'pyright-internal/common/console';
-import { combinePaths } from 'pyright-internal/common/pathUtils';
 
 import { fetchAddr } from '../backend/backUtils';
 import { ContextSet } from '../backend/context';
@@ -66,14 +64,15 @@ export class PytService {
         this._entryName = '';
 
         this._service = service;
-        this._config = this._service.test_getConfigOptions(this._cmdOptions);
+        this._config = service.getConfigOptions();
 
         this._libStmt = PytUtils.getTorchStmtsFromDir(service, this._options.pytLibPath!, this._config);
-        if (this._options.entryPath) {
-            this.setEntryPath(this._options.entryPath);
-        }
 
-        this._pushTimeLog('Parse Python scripts');
+        this._pushTimeLog('Parse library scripts');
+    }
+
+    get options(): PytOptions {
+        return this._options;
     }
 
     static getGlobalService(): PytService | undefined {
@@ -100,10 +99,6 @@ export class PytService {
         const temp = this._currTime;
         this._currTime = performance.now();
         this._timeLog.push([logName, this._currTime - temp]);
-    }
-
-    getConfig(): ConfigOptions {
-        return this._config;
     }
 
     // check library or entry file is fully loaded.
@@ -134,20 +129,17 @@ export class PytService {
             return 'path is blank';
         }
 
-        const root = this._cmdOptions.executionRoot;
-        const fullPath = combinePaths(root, entryPath);
-
-        if (!fs.existsSync(fullPath)) {
-            return `path ${fullPath} does not exists`;
+        if (!fs.existsSync(entryPath)) {
+            return `path ${entryPath} does not exists`;
         }
 
-        if (path.extname(fullPath) !== '.py') {
-            return `entry point ${fullPath} is not a python script`;
+        if (path.extname(entryPath) !== '.py') {
+            return `entry point ${entryPath} is not a python script`;
         }
 
-        this._entryPath = fullPath;
-        this._entryName = path.basename(fullPath, path.extname(fullPath));
-        this._projectPath = path.join(fullPath, '..');
+        this._entryPath = entryPath;
+        this._entryName = path.basename(entryPath, path.extname(entryPath));
+        this._projectPath = path.join(entryPath, '..');
         this._projectStmt = PytUtils.getTorchStmtsFromDir(this._service, this._projectPath, this._config);
 
         return;
