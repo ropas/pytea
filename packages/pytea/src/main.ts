@@ -10,134 +10,30 @@
 // Add the start timer at the very top of the file, before we import other modules.
 
 /* eslint-disable */
-import chalk from 'chalk';
 import commandLineArgs, { CommandLineOptions, OptionDefinition } from 'command-line-args';
 /* eslint-enable */
-import * as fs from 'fs';
-import * as path from 'path';
 import * as process from 'process';
-import { PackageTypeReport, PackageTypeVerifier } from 'pyright-internal/analyzer/packageTypeVerifier';
+
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { CommandLineOptions as PyrightCommandLineOptions } from 'pyright-internal/common/commandLineOptions';
 import { NullConsole, StandardConsole } from 'pyright-internal/common/console';
-import { Diagnostic, DiagnosticCategory } from 'pyright-internal/common/diagnostic';
-import { FileDiagnostics } from 'pyright-internal/common/diagnosticSink';
-import { createFromRealFileSystem, FileSystem } from 'pyright-internal/common/fileSystem';
+
+import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
 import { combinePaths, normalizePath } from 'pyright-internal/common/pathUtils';
-import { isEmptyRange, Range } from 'pyright-internal/common/textRange';
-import { timingStats } from 'pyright-internal/common/timing';
-import { PytOptionsPart } from './pyt/pytOptions';
+
 import { PytService } from './pyt/pytService';
+import { makeOptionParts } from './pyt/pytUtils';
 
 const toolName = 'pytea';
 
-enum ExitStatus {
+export enum ExitStatus {
     NoErrors = 0,
     ErrorsReported = 1,
     FatalError = 2,
     ConfigFileParseError = 3,
 }
 
-interface PyrightJsonResults {
-    version: string;
-    time: string;
-    diagnostics: PyrightJsonDiagnostic[];
-    summary: PyrightJsonSummary;
-    typeCompleteness?: PyrightTypeCompletenessReport;
-}
-
-interface PyrightTypeCompletenessReport {
-    packageName: string;
-    packageRootDirectory?: string;
-    pyTypedPath?: string;
-    symbolCount: number;
-    unknownTypeCount: number;
-    missingFunctionDocStringCount: number;
-    missingClassDocStringCount: number;
-    missingDefaultParamCount: number;
-    completenessScore: number;
-    modules: PyrightPublicModuleReport[];
-}
-
-interface PyrightPublicModuleReport {
-    name: string;
-    symbols: PyrightPublicSymbolReport[];
-}
-
-interface PyrightPublicSymbolReport {
-    name: string;
-    fullName: string;
-    symbolType: string;
-}
-
-interface PyrightJsonDiagnostic {
-    file: string;
-    severity: 'error' | 'warning' | 'information';
-    message: string;
-    range?: Range;
-    rule?: string;
-}
-
-interface PyrightJsonSummary {
-    filesAnalyzed: number;
-    errorCount: number;
-    warningCount: number;
-    informationCount: number;
-    timeInSec: number;
-}
-
-interface DiagnosticResult {
-    errorCount: number;
-    warningCount: number;
-    informationCount: number;
-    diagnosticCount: number;
-}
-
-function getPytService(args: CommandLineOptions, service: AnalyzerService): PytService | undefined {
-    const cwd = path.normalize(process.cwd());
-    const entryName = args.files[0] as string | undefined;
-
-    if (!entryName) {
-        printUsage();
-        return;
-    }
-
-    // const entryName = './test/scratch.py';
-    const entryPath = normalizePath(combinePaths(cwd, entryName));
-    let isDir = false;
-    if (!fs.existsSync(entryPath)) {
-        console.log(`entry file ${entryPath} does not exists.`);
-        return;
-    } else if (fs.lstatSync(entryPath).isDirectory()) {
-        console.log(`setting project path: ${entryPath}`);
-        isDir = true;
-    } else {
-        console.log(`setting entry path: ${entryPath}`);
-    }
-
-    // const nodeConsole = new NodeConsole('torch_debug');
-    const logger = new StandardConsole();
-
-    const dirPath = isDir ? entryPath : path.dirname(entryPath);
-    const configPath = path.join(dirPath, 'pyteaconfig.json');
-
-    if (!fs.existsSync(configPath)) {
-        console.log(`config json ${configPath} does not exists.`);
-        return;
-    }
-
-    const pytOptions: PytOptionsPart = isDir ? { configPath } : { configPath, entryPath };
-    const pytService = new PytService(service, pytOptions, logger, true);
-
-    // options not set, has error.
-    if (!pytService.options) {
-        return;
-    }
-
-    return pytService;
-}
-
-function processArgs() {
+function processArgs(): CommandLineOptions | undefined {
     const optionDefinitions: OptionDefinition[] = [
         { name: 'createstub', type: String },
         { name: 'dependencies', type: Boolean },
@@ -210,6 +106,41 @@ function processArgs() {
         }
     }
 
+    return args;
+}
+
+export function getPytService(entryPath: string): PytService | undefined {
+    if (!entryPath) {
+        printUsage();
+        return;
+    }
+
+    // const entryName = './test/scratch.py';
+    const pytOptions = makeOptionParts(entryPath);
+    if (typeof pytOptions === 'string') {
+        console.error(pytOptions);
+        return;
+    }
+
+    const logger = new StandardConsole();
+    const pytService = new PytService(pytOptions, logger, true);
+
+    // options not set, has error.
+    if (!pytService.options) {
+        return;
+    }
+
+    return pytService;
+}
+
+export function runPyt(entryPath: string): PytService | undefined {
+    const service = getPytService(entryPath);
+    service?.startAnalyzer([entryPath]);
+
+    return service;
+}
+
+function runMain(args: CommandLineOptions) {
     const options = new PyrightCommandLineOptions(process.cwd(), false);
 
     // Assume any relative paths are relative to the working directory.
@@ -217,7 +148,8 @@ function processArgs() {
         options.fileSpecs = args.files;
         options.fileSpecs = options.fileSpecs.map((f) => combinePaths(process.cwd(), f));
     } else {
-        options.fileSpecs = [];
+        console.error('entry path is not set.');
+        process.exit(ExitStatus.FatalError);
     }
 
     if (args.project) {
@@ -248,11 +180,7 @@ function processArgs() {
     // const output = args.outputjson ? new NullConsole() : undefined;
     const output = new NullConsole();
     const realFileSystem = createFromRealFileSystem(output);
-
-    // The package type verification uses a different path.
-    if (args['verifytypes'] !== undefined) {
-        verifyPackageTypes(realFileSystem, args['verifytypes'] || '', !!args.verbose, !!args.outputjson);
-    }
+    const entryPath = options.fileSpecs[0] as string | undefined;
 
     const watch = args.watch !== undefined;
     options.watchForSourceChanges = watch;
@@ -269,30 +197,16 @@ function processArgs() {
             process.exit(ExitStatus.ConfigFileParseError);
         }
 
-        // let errorCount = 0;
-        // if (results.diagnostics.length > 0 && !args.createstub && !args['verifytypes']) {
-        //     if (args.outputjson) {
-        //         const report = reportDiagnosticsAsJson(
-        //             results.diagnostics,
-        //             results.filesInProgram,
-        //             results.elapsedTime
-        //         );
-        //         errorCount += report.errorCount;
-        //     } else {
-        //         const report = reportDiagnosticsAsText(results.diagnostics);
-        //         errorCount += report.errorCount;
-        //     }
-        // }
-
-        if (!pytService) {
-            pytService = getPytService(args, service);
+        if (!pytService && entryPath) {
+            pytService = getPytService(entryPath);
+            pytService?.setAnalyzerService(service);
         }
 
         if (pytService && pytService.options) {
             const entryPath = pytService.options.entryPath;
 
             // this triggers project folder parsing.
-            pytService.setEntryPath(entryPath);
+            pytService.parseEntry(entryPath);
 
             if (!pytService.validate()) {
                 console.error('pytea service got error');
@@ -321,165 +235,10 @@ function processArgs() {
     // This will trigger the analyzer.
     service.setOptions(options);
 
-    // Sleep indefinitely.
     const brokenPromise = new Promise(() => {
         // Do nothing.
     });
     brokenPromise.then().catch();
-}
-
-function verifyPackageTypes(
-    realFileSystem: FileSystem,
-    packageName: string,
-    verboseOutput: boolean,
-    outputJson: boolean
-): never {
-    try {
-        const verifier = new PackageTypeVerifier(realFileSystem);
-        const report = verifier.verify(packageName);
-        const jsonReport = buildTypeCompletenessReport(packageName, report);
-
-        if (outputJson) {
-            console.log(JSON.stringify(jsonReport, undefined, 4));
-        } else {
-            printTypeCompletenessReportText(jsonReport, verboseOutput);
-        }
-
-        process.exit(
-            jsonReport.typeCompleteness!.completenessScore < 1 ? ExitStatus.ErrorsReported : ExitStatus.NoErrors
-        );
-    } catch (err) {
-        let errMessage = '';
-        if (err instanceof Error) {
-            errMessage = ': ' + err.message;
-        }
-
-        console.error(`Error occurred when verifying types: ` + errMessage);
-        process.exit(ExitStatus.FatalError);
-    }
-}
-
-function buildTypeCompletenessReport(packageName: string, completenessReport: PackageTypeReport): PyrightJsonResults {
-    const report: PyrightJsonResults = {
-        version: getVersionString(),
-        time: Date.now().toString(),
-        diagnostics: [],
-        summary: {
-            filesAnalyzed: completenessReport.modules.length,
-            errorCount: 0,
-            warningCount: 0,
-            informationCount: 0,
-            timeInSec: timingStats.getTotalDuration(),
-        },
-    };
-
-    // Add the general diagnostics.
-    completenessReport.diagnostics.forEach((diag) => {
-        const jsonDiag = convertDiagnosticToJson('', diag);
-        report.diagnostics.push(jsonDiag);
-
-        if (jsonDiag.severity === 'error') {
-            report.summary.errorCount++;
-        } else if (jsonDiag.severity === 'warning') {
-            report.summary.warningCount++;
-        } else if (jsonDiag.severity === 'information') {
-            report.summary.informationCount++;
-        }
-    });
-
-    report.typeCompleteness = {
-        packageName,
-        packageRootDirectory: completenessReport.rootDirectory,
-        pyTypedPath: completenessReport.pyTypedPath,
-        symbolCount: completenessReport.symbolCount,
-        unknownTypeCount: completenessReport.unknownTypeCount,
-        missingFunctionDocStringCount: completenessReport.missingFunctionDocStringCount,
-        missingClassDocStringCount: completenessReport.missingClassDocStringCount,
-        missingDefaultParamCount: completenessReport.missingDefaultParamCount,
-        completenessScore: 0,
-        modules: [],
-    };
-
-    // Add the modules.
-    completenessReport.modules.forEach((module) => {
-        const jsonModule: PyrightPublicModuleReport = {
-            name: module.name,
-            symbols: [],
-        };
-
-        module.symbols.forEach((symbol) => {
-            const jsonSymbol: PyrightPublicSymbolReport = {
-                name: symbol.name,
-                fullName: symbol.fullName,
-                symbolType: PackageTypeVerifier.getSymbolTypeString(symbol.symbolType),
-            };
-
-            jsonModule.symbols.push(jsonSymbol);
-        });
-
-        report.typeCompleteness!.modules.push(jsonModule);
-    });
-
-    if (completenessReport.symbolCount > 0) {
-        report.typeCompleteness!.completenessScore =
-            (completenessReport.symbolCount - completenessReport.unknownTypeCount) / completenessReport.symbolCount;
-    }
-
-    return report;
-}
-
-function printTypeCompletenessReportText(results: PyrightJsonResults, verboseOutput: boolean) {
-    const completenessReport = results.typeCompleteness!;
-
-    console.log(`Package name: "${completenessReport.packageName}"`);
-    if (completenessReport.packageRootDirectory !== undefined) {
-        console.log(`Package directory: "${completenessReport.packageRootDirectory}"`);
-    }
-
-    if (completenessReport.pyTypedPath !== undefined) {
-        console.log(`Path of py.typed file: "${completenessReport.pyTypedPath}"`);
-    }
-
-    // Print all the errors.
-    results.diagnostics.forEach((diag) => {
-        if (diag.severity === 'error') {
-            logDiagnosticToConsole(diag);
-        }
-    });
-
-    // Print all the non-errors.
-    results.diagnostics.forEach((diag) => {
-        if (diag.severity !== 'error') {
-            logDiagnosticToConsole(diag);
-        }
-    });
-
-    // Print other stats.
-    if (completenessReport.modules.length > 0) {
-        console.log('');
-        console.log(`Public modules: ${completenessReport.modules.length}`);
-        completenessReport.modules.forEach((module) => {
-            console.log(
-                `   ${module.name} (${module.symbols.length} ${module.symbols.length === 1 ? 'symbol' : 'symbols'})`
-            );
-
-            if (verboseOutput) {
-                for (const symbol of module.symbols) {
-                    console.log(`      ${symbol.fullName} (${symbol.symbolType})`);
-                }
-            }
-        });
-    }
-
-    console.log('');
-    console.log(`Public symbols: ${completenessReport.symbolCount}`);
-    console.log(`  Symbols with unknown type: ${completenessReport.unknownTypeCount}`);
-    console.log(`  Functions with missing docstring: ${completenessReport.missingFunctionDocStringCount}`);
-    console.log(`  Functions with missing default param: ${completenessReport.missingDefaultParamCount}`);
-    console.log(`  Classes with missing docstring: ${completenessReport.missingClassDocStringCount}`);
-    console.log(`Type completeness score: ${Math.round(completenessReport.completenessScore * 1000) / 10}%`);
-    console.log('');
-    console.info(`Completed in ${results.summary.timeInSec}sec`);
 }
 
 function printUsage() {
@@ -498,7 +257,6 @@ function printUsage() {
             '  -t,--typeshed-path DIRECTORY     Use typeshed type stubs at this location\n' +
             '  -v,--venv-path DIRECTORY         Directory that contains virtual environments\n' +
             '  --verbose                        Emit verbose diagnostics\n' +
-            '  --verifytypes PACKAGE            Verify type completeness of a py.typed package' +
             '  --version                        Print PyTEA version\n' +
             '  -w,--watch                       Continue to run and watch for changes\n'
     );
@@ -514,153 +272,12 @@ function printVersion() {
     console.log(`${toolName} ${getVersionString()}`);
 }
 
-function reportDiagnosticsAsJson(
-    fileDiagnostics: FileDiagnostics[],
-    filesInProgram: number,
-    timeInSec: number
-): DiagnosticResult {
-    const report: PyrightJsonResults = {
-        version: getVersionString(),
-        time: Date.now().toString(),
-        diagnostics: [],
-        summary: {
-            filesAnalyzed: filesInProgram,
-            errorCount: 0,
-            warningCount: 0,
-            informationCount: 0,
-            timeInSec,
-        },
-    };
-
-    let errorCount = 0;
-    let warningCount = 0;
-    let informationCount = 0;
-
-    fileDiagnostics.forEach((fileDiag) => {
-        fileDiag.diagnostics.forEach((diag) => {
-            if (
-                diag.category === DiagnosticCategory.Error ||
-                diag.category === DiagnosticCategory.Warning ||
-                diag.category === DiagnosticCategory.Information
-            ) {
-                report.diagnostics.push(convertDiagnosticToJson(fileDiag.filePath, diag));
-
-                if (diag.category === DiagnosticCategory.Error) {
-                    errorCount++;
-                } else if (diag.category === DiagnosticCategory.Warning) {
-                    warningCount++;
-                } else if (diag.category === DiagnosticCategory.Information) {
-                    informationCount++;
-                }
-            }
-        });
-    });
-
-    report.summary.errorCount = errorCount;
-    report.summary.warningCount = warningCount;
-    report.summary.informationCount = informationCount;
-
-    console.log(JSON.stringify(report, undefined, 4));
-
-    return {
-        errorCount,
-        warningCount,
-        informationCount,
-        diagnosticCount: errorCount + warningCount + informationCount,
-    };
-}
-
-function convertDiagnosticToJson(filePath: string, diag: Diagnostic): PyrightJsonDiagnostic {
-    return {
-        file: filePath,
-        severity:
-            diag.category === DiagnosticCategory.Error
-                ? 'error'
-                : diag.category === DiagnosticCategory.Warning
-                ? 'warning'
-                : 'information',
-        message: diag.message,
-        range: isEmptyRange(diag.range) ? undefined : diag.range,
-        rule: diag.getRule(),
-    };
-}
-
-function reportDiagnosticsAsText(fileDiagnostics: FileDiagnostics[]): DiagnosticResult {
-    let errorCount = 0;
-    let warningCount = 0;
-    let informationCount = 0;
-
-    fileDiagnostics.forEach((fileDiagnostics) => {
-        // Don't report unused code diagnostics.
-        const fileErrorsAndWarnings = fileDiagnostics.diagnostics.filter(
-            (diag) => diag.category !== DiagnosticCategory.UnusedCode
-        );
-
-        if (fileErrorsAndWarnings.length > 0) {
-            console.log(`${fileDiagnostics.filePath}`);
-            fileErrorsAndWarnings.forEach((diag) => {
-                logDiagnosticToConsole(convertDiagnosticToJson(fileDiagnostics.filePath, diag));
-
-                if (diag.category === DiagnosticCategory.Error) {
-                    errorCount++;
-                } else if (diag.category === DiagnosticCategory.Warning) {
-                    warningCount++;
-                } else if (diag.category === DiagnosticCategory.Information) {
-                    informationCount++;
-                }
-            });
-        }
-    });
-
-    console.log(
-        `${errorCount.toString()} ${errorCount === 1 ? 'error' : 'errors'}, ` +
-            `${warningCount.toString()} ${warningCount === 1 ? 'warning' : 'warnings'}, ` +
-            `${informationCount.toString()} ${informationCount === 1 ? 'info' : 'infos'} `
-    );
-
-    return {
-        errorCount,
-        warningCount,
-        informationCount,
-        diagnosticCount: errorCount + warningCount + informationCount,
-    };
-}
-
-function logDiagnosticToConsole(diag: PyrightJsonDiagnostic, prefix = '  ') {
-    let message = prefix;
-    if (diag.range && !isEmptyRange(diag.range)) {
-        message +=
-            chalk.yellow(`${diag.range.start.line + 1}`) +
-            ':' +
-            chalk.yellow(`${diag.range.start.character + 1}`) +
-            ' - ';
-    }
-
-    const [firstLine, ...remainingLines] = diag.message.split('\n');
-
-    message +=
-        diag.severity === 'error'
-            ? chalk.red('error')
-            : diag.severity === 'warning'
-            ? chalk.cyan('warning')
-            : chalk.blue('info');
-    message += `: ${firstLine}`;
-    if (remainingLines.length > 0) {
-        message += '\n' + prefix + remainingLines.join('\n' + prefix);
-    }
-
-    if (diag.rule) {
-        message += chalk.gray(` (${diag.rule})`);
-    }
-
-    console.log(message);
-}
-
 export function main() {
     if (process.env.NODE_ENV === 'production') {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         require('source-map-support').install();
     }
 
-    processArgs();
+    const args = processArgs();
+    if (args) runMain(args);
 }

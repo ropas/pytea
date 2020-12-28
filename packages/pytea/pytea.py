@@ -29,7 +29,7 @@ def parse_arg():
         help="do not run z3py and just produce z3 json file",
     )
     parser.add_argument(
-        "--backend_path", default="./json2z3.py", help="path to json2z3.py"
+        "--backend_path", default="./pylib/json2z3.py", help="path to json2z3.py"
     )
 
     return parser.parse_args()

@@ -13,7 +13,7 @@ import * as util from 'util';
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { ConfigOptions } from 'pyright-internal/common/configOptions';
 import { ConsoleInterface } from 'pyright-internal/common/console';
-import { combinePaths, getPathComponents } from 'pyright-internal/common/pathUtils';
+import { combinePaths, getPathComponents, normalizePath } from 'pyright-internal/common/pathUtils';
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { TorchIRFrontend } from '../frontend/torchFrontend';
@@ -42,6 +42,32 @@ export class NodeConsole implements ConsoleInterface {
     error(message: string) {
         this.logger('\nERROR: ' + message + '\n');
     }
+}
+
+export function makeOptionParts(entryName: string): PytOptionsPart | string {
+    const cwd = path.normalize(process.cwd());
+    const entryPath = normalizePath(combinePaths(cwd, entryName));
+    let isDir = false;
+
+    if (!fs.existsSync(entryPath)) {
+        return `entry file ${entryPath} does not exists.`;
+    } else if (fs.lstatSync(entryPath).isDirectory()) {
+        // console.log(`setting project path: ${entryPath}`);
+        isDir = true;
+    } else {
+        // console.log(`setting entry path: ${entryPath}`);
+    }
+
+    const dirPath = isDir ? entryPath : path.dirname(entryPath);
+    const configPath = path.join(dirPath, 'pyteaconfig.json');
+
+    if (!fs.existsSync(configPath)) {
+        return `config json ${configPath} does not exists.`;
+    }
+
+    const pytOptions: PytOptionsPart = isDir ? { configPath } : { configPath, entryPath };
+
+    return pytOptions;
 }
 
 // make paths in options absolute
@@ -73,7 +99,8 @@ export function refineOptions(options: PytOptionsPart): PytOptions {
     }
 
     if (!opt.pytLibPath) {
-        throw 'pytLibPath is not set';
+        // throw 'pytLibPath is not set';
+        opt.pytLibPath = path.join(__dirname, 'pylib');
     }
 
     if (entryPath && !path.isAbsolute(entryPath)) opt.entryPath = path.join(basePath, entryPath);
@@ -143,13 +170,10 @@ export function filePathToQualId(path: string): string {
 
 // return module qualPath => ThStmt
 // e.g.) "torch.functional" => <some statement>
-export function getTorchStmtsFromDir(
-    service: AnalyzerService,
-    dirPath: string,
-    configOptions = new ConfigOptions('.')
-): Map<string, ThStmt> {
+export function getTorchStmtsFromDir(service: AnalyzerService, dirPath: string): Map<string, ThStmt> {
     // Always enable "test mode".
     const parser = new TorchIRFrontend();
+    const configOptions = service.getConfigOptions();
 
     const libFileNames = getTorchLibFileNames(dirPath, configOptions);
     const libFilePaths = libFileNames.map((fn) => path.resolve(dirPath, fn));

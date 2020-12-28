@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-constraint.ts
-Copyright (c) Seoul National University ROPAS Lab.
+json2z3.py
+Copyright (c) Seoul National University
 Licensed under the MIT license.
 Author: Se Hoon Kim
 
@@ -18,7 +18,7 @@ from functools import reduce
 import json
 import sys
 import time
-import argparse
+
 
 # z3 doesn't care of division by zero.
 # TODO: (on constraintGenerator)Add constraint(divisor != 0) for every div/mod op.
@@ -28,6 +28,10 @@ def z3_div(a, b):
 
 def z3_mod(a, b):
     return If(b != 0, a % b, -1)
+
+
+def z3_min(a, b):
+    return If(b < a, b, a)
 
 
 def z3_max(a, b):
@@ -69,6 +73,8 @@ class NumOpType(Enum):
     Index = 3
     Max = 4
     Numel = 5
+    Uop = 6
+    Min = 7
 
 
 class NumBopType(Enum):
@@ -78,6 +84,13 @@ class NumBopType(Enum):
     TrueDiv = 3
     FloorDiv = 4
     Mod = 5
+
+
+class NumUopType(Enum):
+    Neg = 0
+    Floor = 1
+    Ceil = 2
+    Abs = 3
 
 
 class ShapeOpType(Enum):
@@ -104,21 +117,26 @@ class ConstraintType(Enum):
 
 
 class Z3encoder:
-    def __init__(self, jsonFile):
+    def __init__(self, console):
         """
-        ctrSetList == [
-            ctrSet of path_0,
-            ctrSet of path_1,
-                ...
-            ctrSet of path_n-1,
+        the structure of json file should be like below.
+        ```json
+        [
+            { ... }, # ctrSet of path_0,
+            { ... }, # ctrSet of path_1,
+              ...,
+            { ... }  # ctrSet of path_n-1,
         ]
-        """
-        jsonCtrSetList = json.load(jsonFile)
-        self.ctrSetList = list(
-            map(lambda jsonCtrSet: CtrSet(jsonCtrSet), jsonCtrSetList)
-        )
+        ```
 
-    def __call__(self):
+        Parameters:
+            console: pipe to print logs. it should have `.log` method.
+        """
+        self.console = console
+
+    def analyze(self, jsonObj):
+        ctrSetList = list(map(CtrSet, jsonObj))
+
         # lists of path indices
         UnavailablePaths = []
         ValidPaths = []
@@ -126,7 +144,7 @@ class Z3encoder:
         UnsatPaths = []
         DontknowPaths = []
 
-        for pathIdx, ctrSet in enumerate(self.ctrSetList):
+        for pathIdx, ctrSet in enumerate(ctrSetList):
             log = "-----------------------------------\n"
             log += "PATH " + str(pathIdx)
             log += "\n-----------------------------------\n"
@@ -139,33 +157,33 @@ class Z3encoder:
             elif pathResult == PathResult.Valid.value:
                 ValidPaths.append(pathIdx)
             elif pathResult == PathResult.Sat.value:
-                print(log)
+                self.console.log(log)
                 SatPaths.append(pathIdx)
             elif pathResult == PathResult.Unsat.value:
-                print(log)
+                self.console.log(log)
                 UnsatPaths.append(pathIdx)
             else:
-                print(log)
+                self.console.log(log)
                 DontknowPaths.append(pathIdx)
 
         log = "-----------------------------------\n"
         log += "OVERALL"
         log += "\n-----------------------------------"
-        print(log)
+        self.console.log(log)
 
         if len(UnavailablePaths) != 0:
-            print("Unavailable paths: {}".format(len(UnavailablePaths)))
+            self.console.log("Unavailable paths: {}".format(len(UnavailablePaths)))
         if len(ValidPaths) != 0:
-            print("Valid paths: {}".format(len(ValidPaths)))
+            self.console.log("Valid paths: {}".format(len(ValidPaths)))
         if len(SatPaths) != 0:
-            print("Satisfiable paths: {}".format(len(SatPaths)))
-            print(SatPaths)
+            self.console.log("Satisfiable paths: {}".format(len(SatPaths)))
+            self.console.log(SatPaths)
         if len(UnsatPaths) != 0:
-            print("Unsatisfiable paths: {}".format(len(UnsatPaths)))
-            print(UnsatPaths)
+            self.console.log("Unsatisfiable paths: {}".format(len(UnsatPaths)))
+            self.console.log(UnsatPaths)
         if len(DontknowPaths) != 0:
-            print("Dontknow paths: {}".format(len(DontknowPaths)))
-            print(DontknowPaths)
+            self.console.log("Dontknow paths: {}".format(len(DontknowPaths)))
+            self.console.log(DontknowPaths)
 
 
 # constraint set of a path.
@@ -427,6 +445,8 @@ class Ctr:
         x = Int(ctr["symbol"]["name"])
         lb, ub = ctr["range"]
         lb, ub = self.encodeExpNum(lb), self.encodeExpNum(ub)
+        if not (is_int(lb) and is_int(ub)):
+            raise Exception("_encodeFa: both bounds must be ints")
         _ctr = self.encode(ctr["constraint"])
         return ForAll([x], Implies(And(lb <= x, x <= ub), _ctr))
 
@@ -538,9 +558,15 @@ class Ctr:
             raise Exception("getRank Error: not a ExpShape")
 
         if expShape["opType"] == ShapeOpType.Const.value:
-            return expShape["rank"]
+            rank = expShape["rank"]
+            if not is_int(rank):
+                raise Exception("getRank(Const): a rank must be an int")
+            return rank
         elif expShape["opType"] == ShapeOpType.Symbol.value:
-            return self.encodeExpNum(expShape["symbol"]["rank"])
+            rank = self.encodeExpNum(expShape["symbol"]["rank"])
+            if not is_int(rank):
+                raise Exception("getRank(Symbol): a rank must be an int")
+            return rank
         elif expShape["opType"] == ShapeOpType.Set.value:
             return self.getRank(expShape["baseShape"])
         elif expShape["opType"] == ShapeOpType.Slice.value:
@@ -559,20 +585,37 @@ class Ctr:
             raise Exception("encodeExpNum Error: not a ExpNum")
 
         if expNum["opType"] == NumOpType.Const.value:
-            return expNum["value"]
+            value = expNum["value"]
+            if isinstance(value, int):
+                return IntVal(value)
+            elif isinstance(value, float):
+                return RealVal(value)
+            else:
+                raise Exception(
+                    "encodeExpNum(Const) Error: type of value must be int or float"
+                )
         elif expNum["opType"] == NumOpType.Symbol.value:
             return Int(expNum["symbol"]["name"])
         elif expNum["opType"] == NumOpType.Bop.value:
             return self._encodeExpNumBop(expNum)
         elif expNum["opType"] == NumOpType.Index.value:
-            dims = self.encodeExpShape(expNum["baseShape"])
+            baseShape = self.encodeExpShape(expNum["baseShape"])
             index = self.encodeExpNum(expNum["index"])
-            return Select(dims, index)
+            if not is_int(index):
+                raise Exception("encodeExpNum(Index) Error: index must be an int")
+            return Select(baseShape, index)
         elif expNum["opType"] == NumOpType.Max.value:
             values = expNum["values"]
-            return reduce(lambda a, b: z3_max(a, self.encodeExpNum(b)), values, -1)
+            encodedValues = map(lambda v: self.encodeExpNum(v), values)
+            return reduce(lambda a, b: z3_max(a, b), encodedValues)
         elif expNum["opType"] == NumOpType.Numel.value:
             return self._encodeExpNumNumel(expNum)
+        elif expNum["opType"] == NumOpType.Uop.value:
+            return self._encodeExpNumUop(expNum)
+        elif expNum["opType"] == NumOpType.Min.value:
+            values = expNum["values"]
+            encodedValues = map(lambda v: self.encodeExpNum(v), values)
+            return reduce(lambda a, b: z3_min(a, b), encodedValues)
 
     def _encodeExpNumBop(self, expNum):
         if expNum["bopType"] == NumBopType.Add.value:
@@ -587,18 +630,27 @@ class Ctr:
             left = self.encodeExpNum(expNum["left"])
             right = self.encodeExpNum(expNum["right"])
             return left * right
-        # z3 automatically chooses appropriate div op based on operands.
         elif expNum["bopType"] == NumBopType.TrueDiv.value:
             left = self.encodeExpNum(expNum["left"])
             right = self.encodeExpNum(expNum["right"])
+            if is_int(left):
+                left = ToReal(left)
+            elif is_int(right):
+                right = ToReal(right)
             return z3_div(left, right)
         elif expNum["bopType"] == NumBopType.FloorDiv.value:
             left = self.encodeExpNum(expNum["left"])
             right = self.encodeExpNum(expNum["right"])
+            if is_real(left) or is_real(right):
+                raise Exception(
+                    "_encodeExpBop(FloorDiv) Error: both numbers must be Ints"
+                )
             return z3_div(left, right)
         elif expNum["bopType"] == NumBopType.Mod.value:
             left = self.encodeExpNum(expNum["left"])
             right = self.encodeExpNum(expNum["right"])
+            if is_real(left) or is_real(right):
+                raise Exception("_encodeExpBop(Mod) Error: both numbers must be Ints")
             return z3_mod(left, right)
 
     def _encodeExpNumNumel(self, expNum):
@@ -619,22 +671,45 @@ class Ctr:
 
         return prod(baseShapeEncoded, 0, self.getRank(baseShape) - 1)
 
+    def _encodeExpNumUop(self, expNum):
+        if expNum["uopType"] == NumUopType.Neg.value:
+            baseValue = self.encodeExpNum(expNum["baseValue"])
+            return -baseValue
+        elif expNum["uopType"] == NumUopType.Floor.value:
+            baseValue = self.encodeExpNum(expNum["baseValue"])
+            return baseValue if not is_real(baseValue) else ToInt(baseValue)
+        elif expNum["uopType"] == NumUopType.Ceil.value:
+            baseValue = self.encodeExpNum(expNum["baseValue"])
+            if is_real(baseValue):
+                floor = ToInt(baseValue)
+                return If(floor == baseValue, floor, floor + 1)
+            return baseValue
+        elif expNum["uopType"] == NumUopType.Abs.value:
+            baseValue = self.encodeExpNum(expNum["baseValue"])
+            return If(baseValue < 0, -baseValue, baseValue)
+
     def encodeExpShape(self, expShape):
         if expShape["expType"] != SEType.Shape.value:
             raise Exception("encodeExpShape Error: not a ExpShape")
 
         # returns a z3 array
         if expShape["opType"] == ShapeOpType.Const.value:
-            dims = K(IntSort(), -1)
-            for i in range(len(expShape["dims"])):
-                dims = Store(dims, i, self.encodeExpNum(expShape["dims"][i]))
-            return dims
+            dims = expShape["dims"]
+            shape = K(IntSort(), -1)
+            for i in range(len(dims)):
+                dim = self.encodeExpNum(dims[i])
+                if not is_int(dim):
+                    raise Exception("encodeExpShapa(Const): a dimension must be an int")
+                shape = Store(shape, i, dim)
+            return shape
         elif expShape["opType"] == ShapeOpType.Symbol.value:
             name = expShape["symbol"]["name"]
             rank = self.encodeExpNum(expShape["symbol"]["rank"])
-            dims = Array(name, IntSort(), IntSort())
+            if not is_int(rank):
+                raise Exception("encdoeExpShape(Symbol): a rank must be an int")
+            shape = Array(name, IntSort(), IntSort())
             i = Int("i")
-            return Lambda([i], If(And(0 <= i, i < rank), Select(dims, i), -1))
+            return Lambda([i], If(And(0 <= i, i < rank), Select(shape, i), -1))
         elif expShape["opType"] == ShapeOpType.Set.value:
             return self._encodeExpShapeSet(expShape)
         elif expShape["opType"] == ShapeOpType.Slice.value:
@@ -647,7 +722,11 @@ class Ctr:
     def _encodeExpShapeSet(self, expShape):
         baseShape = self.encodeExpShape(expShape["baseShape"])
         axis = self.encodeExpNum(expShape["axis"])
+        if not is_int(axis):
+            raise Exception("_encodeExpShapeSet: an axis must be an int")
         dim = self.encodeExpNum(expShape["dim"])
+        if not is_int(dim):
+            raise Exception("_encodeExpShapeSet: a dim must be an int")
         return Store(baseShape, axis, dim)
 
     def _encodeExpShapeSlice(self, expShape):
@@ -655,7 +734,11 @@ class Ctr:
 
         # TODO: How to handle cases where "start" and "end" are not given?
         start = self.encodeExpNum(expShape["start"])
+        if not is_int(start):
+            raise Exception("_encodeExpShapeSlice: a start index must be an int")
         end = self.encodeExpNum(expShape["end"])
+        if not is_int(end):
+            raise Exception("_encodeExpShapeSlice: a end index must be an int")
         i = Int("i")
         return Lambda(
             [i], If(And(0 <= i, i < (end - start)), Select(dims, start + i), -1)
@@ -716,6 +799,11 @@ class Ctr:
         )
 
 
+class DefaultConsole:
+    def log(self, message):
+        print(message)
+
+
 if __name__ == "__main__":
     start_time = time.time()
     if len(sys.argv) != 2:
@@ -724,8 +812,9 @@ if __name__ == "__main__":
 
     json_file_path = str(sys.argv[1])
     with open(json_file_path, "r") as json_file:
-        encoder = Z3encoder(json_file)
+        ctr_set = json.load(json_file)
 
-    encoder()
+        encoder = Z3encoder(DefaultConsole())
+        encoder.analyze(ctr_set)
 
-    print(f"runtime: {time.time() - start_time}")
+        print(f"runtime: {time.time() - start_time}")

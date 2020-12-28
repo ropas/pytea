@@ -14,11 +14,13 @@ const { monorepoResourceNameMapper } = require('../../build/lib/webpack');
 
 const outPath = path.resolve(__dirname, 'dist');
 const typeshedFallback = path.resolve(__dirname, '..', 'pyright-internal', 'typeshed-fallback');
+const pylibImplements = path.resolve(__dirname, 'pylib');
 
 /**@type {(env: any, argv: { mode: 'production' | 'development' | 'none' }) => import('webpack').Configuration}*/
 module.exports = (_, { mode }) => {
     return {
         context: __dirname,
+        cache: true,
         entry: {
             pytea: './src/pytea.ts',
         },
@@ -53,15 +55,23 @@ module.exports = (_, { mode }) => {
                     loader: 'ts-loader',
                     options: {
                         configFile: 'tsconfig.json',
+                        experimentalWatchApi: true,
                     },
                 },
             ],
         },
         plugins: [
             new CleanWebpackPlugin(),
-            new CopyPlugin({ patterns: [{ from: typeshedFallback, to: 'typeshed-fallback' }] }),
+            new CopyPlugin({
+                patterns: [
+                    { from: typeshedFallback, to: 'typeshed-fallback' },
+                    { from: pylibImplements, to: 'pylib' },
+                ],
+            }),
         ],
         optimization: {
+            removeAvailableModules: false,
+            removeEmptyChunks: false,
             splitChunks: {
                 cacheGroups: {
                     defaultVendors: {

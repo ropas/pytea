@@ -15,8 +15,8 @@ import { performance } from 'perf_hooks';
 import tmp from 'tmp';
 
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
-import { ConfigOptions } from 'pyright-internal/common/configOptions';
-import { ConsoleInterface, StandardConsole } from 'pyright-internal/common/console';
+import { CommandLineOptions as PyrightCommandLineOptions } from 'pyright-internal/common/commandLineOptions';
+import { ConsoleInterface, NullConsole, StandardConsole } from 'pyright-internal/common/console';
 import { combinePaths } from 'pyright-internal/common/pathUtils';
 
 import { fetchAddr } from '../backend/backUtils';
@@ -28,14 +28,15 @@ import { TorchBackend } from '../backend/torchBackend';
 import { ThStmt } from '../frontend/torchStatements';
 import { PyCmdArgs, PytOptions, PytOptionsPart } from './pytOptions';
 import * as PytUtils from './pytUtils';
+import { ExitStatus } from 'src/main';
+import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
 
-let _service: PytService | undefined;
+let _globalService: PytService | undefined;
 
 export class PytService {
     private _options?: PytOptions;
-    private _config: ConfigOptions;
+    private _service?: AnalyzerService;
 
-    private _service: AnalyzerService;
     private _console: ConsoleInterface;
 
     private _projectPath: string;
@@ -48,13 +49,8 @@ export class PytService {
     private _timeLog: [string, number][];
     private _currTime: number;
 
-    constructor(
-        service: AnalyzerService,
-        pytOptions: PytOptionsPart,
-        console?: ConsoleInterface,
-        setDefault?: boolean
-    ) {
-        if (setDefault) _service = this;
+    constructor(pytOptions: PytOptionsPart, console?: ConsoleInterface, setDefault?: boolean) {
+        if (setDefault) _globalService = this;
 
         this._console = console || new StandardConsole();
 
@@ -65,20 +61,13 @@ export class PytService {
         this._entryPath = '';
         this._entryName = '';
 
-        this._service = service;
-        this._config = service.getConfigOptions();
-
         try {
             this._options = PytUtils.refineOptions(pytOptions);
         } catch (e) {
-            this._libStmt = new Map();
             this._console.error(e);
-            return;
         }
 
-        this._libStmt = PytUtils.getTorchStmtsFromDir(service, this._options.pytLibPath!, this._config);
-
-        this._pushTimeLog('Parse library scripts');
+        this._libStmt = new Map();
     }
 
     get options(): PytOptions | undefined {
@@ -86,30 +75,30 @@ export class PytService {
     }
 
     static getGlobalService(): PytService | undefined {
-        return _service;
+        return _globalService;
     }
 
     static setGlobalService(service: PytService): void {
-        _service = service;
+        _globalService = service;
     }
 
     static ignoreAssert(): boolean {
-        const options = _service?.options;
+        const options = _globalService?.options;
         return options ? options.ignoreAssert : true;
     }
 
     static shouldCheckImmediate(): boolean {
-        const options = _service?.options;
+        const options = _globalService?.options;
         return options ? options.immediateConstraintCheck : true;
     }
 
     static getCmdArgs(): PyCmdArgs {
-        const options = _service?.options;
+        const options = _globalService?.options;
         return options ? options.pythonCmdArgs : {};
     }
 
     static log(...message: any[]): void {
-        _service?._console.log(message.map((x) => `${x}`).join(' '));
+        _globalService?._console.log(message.map((x) => `${x}`).join(' '));
     }
 
     private _pushTimeLog(logName: string): void {
@@ -118,9 +107,84 @@ export class PytService {
         this._timeLog.push([logName, this._currTime - temp]);
     }
 
+    setAnalyzerService(service: AnalyzerService) {
+        if (this._service !== service) {
+            this._service?.dispose();
+        }
+
+        this._service = service;
+    }
+
+    startAnalyzer(fileSpecs: string[]) {
+        if (this._service) {
+            this._service.dispose();
+            this._service = undefined;
+        }
+
+        if (!this._options?.pytLibPath) {
+            console.error(`cannot find pylib path`);
+            return;
+        }
+        const options = new PyrightCommandLineOptions(process.cwd(), false);
+        options.fileSpecs = fileSpecs;
+        options.checkOnlyOpenFiles = false;
+
+        // ignore original pyright output.
+        const output = new NullConsole();
+        const realFileSystem = createFromRealFileSystem(output);
+
+        const watch = options.watchForSourceChanges;
+
+        const service = new AnalyzerService('<default>', realFileSystem, output);
+        this.setAnalyzerService(service);
+
+        service.setCompletionCallback((results) => {
+            if (results.fatalErrorOccurred) {
+                this._console.error('Pyright fatal error occured');
+                this._service = undefined;
+                service.dispose();
+                return;
+            }
+
+            if (results.configParseErrorOccurred) {
+                this._console.error('Pyright config parse error occured');
+                this._service = undefined;
+                service.dispose();
+                return;
+            }
+
+            if (this._options) {
+                const entryPath = this._options.entryPath;
+
+                // this triggers project folder parsing.
+                this.parseEntry(entryPath);
+
+                if (this.validate()) {
+                    // de pytea job
+                    try {
+                        this.checkWithLog();
+                    } catch (e) {
+                        this._console.error(e);
+                    }
+                }
+            } else {
+                this._console.error('pytea option is not initialized');
+            }
+
+            if (!watch) process.exit(ExitStatus.NoErrors);
+        });
+
+        // This will trigger the analyzer.
+        service.setOptions(options);
+    }
+
     // check library or entry file is fully loaded.
     validate(): boolean {
         let valid = true;
+
+        if (!this._service) {
+            this._console.error('Pyright service is not set.');
+        }
 
         if (!this._options) {
             this._console.error('PyTea service option is not set. Please check pyteaconfig.json.');
@@ -145,7 +209,7 @@ export class PytService {
     }
 
     // return error message (string) or undefined
-    setEntryPath(entryPath: string): string | undefined {
+    parseEntry(entryPath: string): string | undefined {
         if (!entryPath) {
             return 'path is blank';
         }
@@ -158,10 +222,20 @@ export class PytService {
             return `entry point ${entryPath} is not a python script`;
         }
 
+        if (!this._service) {
+            return `pyright service is not set.`;
+        }
+
         this._entryPath = entryPath;
         this._entryName = path.basename(entryPath, path.extname(entryPath));
+
+        if (this._libStmt.size === 0 && this._service && this._options?.pytLibPath) {
+            this._libStmt = PytUtils.getTorchStmtsFromDir(this._service, this._options.pytLibPath);
+            this._pushTimeLog('Parse library scripts');
+        }
+
         this._projectPath = path.join(entryPath, '..');
-        this._projectStmt = PytUtils.getTorchStmtsFromDir(this._service, this._projectPath, this._config);
+        this._projectStmt = PytUtils.getTorchStmtsFromDir(this._service, this._projectPath);
 
         return;
     }
