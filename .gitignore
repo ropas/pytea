@@ -117,3 +117,5 @@ dist
 
 *.vsix
 junit.xml
+
+packages/pytea-server/public/js/app.js

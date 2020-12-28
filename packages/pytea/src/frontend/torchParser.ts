@@ -427,6 +427,7 @@ export class TorchIRParser implements ThStmtParser {
     }
 
     fail(node: ParseNode): never {
-        fail('invalid node for TorchIR script: ' + inspect(node));
+        console.error('invalid node for TorchIR script: ' + inspect(node));
+        process.exit(-1);
     }
 }

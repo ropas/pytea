@@ -17,6 +17,7 @@ import tmp from 'tmp';
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { CommandLineOptions as PyrightCommandLineOptions } from 'pyright-internal/common/commandLineOptions';
 import { ConsoleInterface, NullConsole, StandardConsole } from 'pyright-internal/common/console';
+import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
 import { combinePaths } from 'pyright-internal/common/pathUtils';
 
 import { fetchAddr } from '../backend/backUtils';
@@ -28,11 +29,15 @@ import { TorchBackend } from '../backend/torchBackend';
 import { ThStmt } from '../frontend/torchStatements';
 import { PyCmdArgs, PytOptions, PytOptionsPart } from './pytOptions';
 import * as PytUtils from './pytUtils';
-import { ExitStatus } from 'src/main';
-import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
 
 let _globalService: PytService | undefined;
 
+enum ExitStatus {
+    NoErrors = 0,
+    ErrorsReported = 1,
+    FatalError = 2,
+    ConfigFileParseError = 3,
+}
 export class PytService {
     private _options?: PytOptions;
     private _service?: AnalyzerService;

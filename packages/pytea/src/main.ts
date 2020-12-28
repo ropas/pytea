@@ -26,7 +26,7 @@ import { makeOptionParts } from './pyt/pytUtils';
 
 const toolName = 'pytea';
 
-export enum ExitStatus {
+enum ExitStatus {
     NoErrors = 0,
     ErrorsReported = 1,
     FatalError = 2,

@@ -1,0 +1,26 @@
+{
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "jsx": "react",
+        "allowSyntheticDefaultImports": true,
+        "noUnusedLocals": false,
+		"noImplicitAny": true,
+        "strictNullChecks": true,
+        "baseUrl": ".",
+        "outDir": "./out",
+        "paths": {
+            "pyright-internal/*": [
+                "../pyright-internal/src/*"
+            ],
+            "pytea/*": [
+                "../pytea/src/*"
+            ]
+        }
+    },
+    "include": [
+        "src/server/**/*"
+    ],
+    "exclude": [
+        "node_modules"
+    ]
+  }
