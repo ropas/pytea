@@ -4,18 +4,21 @@
 
 ```bash
 # install dependencies
-npm install
+npm run install:all
 
 # install Z3Py solver
 pip install z3-solver
 
-# single line
+# Python to PyTea IR only
 cd packages/pytea
-python pytea.py path/to/entry_file.py
+npm run build
+node ./index.js path/to/entry_file.py
 
-# multi-line (seperate TS frontend & Z3 backend)
-npm run test:torch path/to/entry_file.py
-python pytea.py --z3 path/to/entry_file_z3.json
+# z3 backend server and result viewer by html
+# TODO: currently working on
+cd ../pytea-server
+npm run dev
+# open localhost:3000 in your browser
 ```
 
 테스트 파일들은 `packages/pytea/pytest` 폴더 내에 정리한다.
