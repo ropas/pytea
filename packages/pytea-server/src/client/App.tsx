@@ -1,6 +1,6 @@
 import axios from 'axios';
 import * as React from 'react';
-
+import Form from 'react-bootstrap/Form';
 class App extends React.Component<IAppProps, IAppState> {
 	constructor(props: IAppProps) {
 		super(props);
@@ -23,6 +23,9 @@ class App extends React.Component<IAppProps, IAppState> {
 		return (
 			<main className="container my-5">
 				<h1 className="text-primary text-center">Hello {this.state.name}!</h1>
+				<Form>
+					<Form.File id="entry-path" label="select python entry point" custom/> 
+				</Form>
 			</main>
 		);
 	}
