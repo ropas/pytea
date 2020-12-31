@@ -1,10 +1,10 @@
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { LCImpl } from '..';
-import { fetchAddr } from '../../../backend/backUtils';
-import { Constraint } from '../../../backend/constraintType';
-import { Context, ContextSet } from '../../../backend/context';
-import { ceilDiv, fetchSize, genTensor } from '../../../backend/expUtils';
+import { fetchAddr } from '../../backend/backUtils';
+import { Constraint } from '../../backend/constraintType';
+import { Context, ContextSet } from '../../backend/context';
+import { ceilDiv, fetchSize, genTensor } from '../../backend/expUtils';
 import {
     ShValue,
     SVAddr,
@@ -16,9 +16,9 @@ import {
     SVObject,
     SVSize,
     SVType,
-} from '../../../backend/sharpValues';
-import { ExpNum, ExpShape, ExpString, NumBopType, NumOpType, NumUopType } from '../../../backend/symExpressions';
-import { TorchBackend } from '../../../backend/torchBackend';
+} from '../../backend/sharpValues';
+import { ExpNum, ExpShape, ExpString, NumBopType, NumOpType, NumUopType } from '../../backend/symExpressions';
+import { TorchBackend } from '../../backend/torchBackend';
 import { LCBase } from '../libcall';
 
 export namespace TorchLCImpl {

@@ -11,7 +11,7 @@ import { List, Map, Record } from 'immutable';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import { nodePosToString } from '../pyt/pytUtils';
+import { nodePosToString } from '../service/pyteaUtils';
 import { fetchAddr } from './backUtils';
 import { ConstraintSet } from './constraintSet';
 import {

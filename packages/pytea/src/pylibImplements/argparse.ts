@@ -1,11 +1,11 @@
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import { fetchAddr, sanitizeAddr } from '../../backend/backUtils';
-import { Context, ContextSet } from '../../backend/context';
-import { ShValue, SVAddr, SVBool, SVFloat, SVFunc, SVInt, SVNone, SVString, SVType } from '../../backend/sharpValues';
-import { ExpBool, ExpNum, ExpString } from '../../backend/symExpressions';
-import { TorchBackend } from '../../backend/torchBackend';
-import { PytService } from '../../pyt/pytService';
+import { fetchAddr, sanitizeAddr } from '../backend/backUtils';
+import { Context, ContextSet } from '../backend/context';
+import { ShValue, SVAddr, SVBool, SVFloat, SVFunc, SVInt, SVNone, SVString, SVType } from '../backend/sharpValues';
+import { ExpBool, ExpNum, ExpString } from '../backend/symExpressions';
+import { TorchBackend } from '../backend/torchBackend';
+import { PyteaService } from '../service/pyteaService';
 import { LCImpl } from '.';
 import { LCBase } from './libcall';
 
@@ -53,7 +53,7 @@ export namespace BuiltinsLCImpl {
                 .toSet();
         }
 
-        const cmdArgs = PytService.getCmdArgs();
+        const cmdArgs = PyteaService.getCmdArgs();
         const argName = argNameR[1];
         const argPyName = argName.replace(/-/g, '_');
 

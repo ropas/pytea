@@ -1,17 +1,21 @@
 import axios from 'axios';
 import * as React from 'react';
+import Container from 'react-bootstrap/Container'
 import Form from 'react-bootstrap/Form';
-class App extends React.Component<IAppProps, IAppState> {
-	constructor(props: IAppProps) {
-		super(props);
-		this.state = {
-			name: "default"
-		};
+
+export interface IAppProps {}
+
+export interface IAppState {
+	name: string;
+}
+export default class App extends React.Component<IAppProps, IAppState> {
+	state: IAppState = {
+		name: 'default'
 	}
 
 	async componentDidMount() {
 		try {
-			const r = await axios.get('/api/hello');
+			const r = await axios.get('/api/version');
 			const name: string = await r.data;
 			this.setState({ name });
 		} catch (error) {
@@ -21,20 +25,13 @@ class App extends React.Component<IAppProps, IAppState> {
 
 	render() {
 		return (
-			<main className="container my-5">
-				<h1 className="text-primary text-center">Hello {this.state.name}!</h1>
+			<Container>
+				<h3 className="text-primary text-center">PyTea analyzer</h3>
+
 				<Form>
-					<Form.File id="entry-path" label="select python entry point" custom/> 
+					<Form.File id="entry-path" label="click and select the python file" custom/>
 				</Form>
-			</main>
+			</Container>
 		);
 	}
 }
-
-export interface IAppProps {}
-
-export interface IAppState {
-	name: string;
-}
-
-export default App;

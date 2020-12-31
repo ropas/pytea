@@ -56,7 +56,7 @@ import {
 } from 'pyright-internal/parser/parseNodes';
 import { KeywordType, OperatorType } from 'pyright-internal/parser/tokenizerTypes';
 
-import { PytService } from '../pyt/pytService';
+import { PyteaService } from '../service/pyteaService';
 import {
     extractIds,
     extractLocalDef,
@@ -1118,7 +1118,7 @@ export class TorchIRFrontend implements ThStmtParser {
     }
 
     visitAssert(node: AssertNode): ThStmt {
-        if (PytService.ignoreAssert()) {
+        if (PyteaService.ignoreAssert()) {
             return TSPass.get();
         }
 

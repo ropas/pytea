@@ -1,11 +1,11 @@
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { LCImpl } from '..';
-import { fetchAddr } from '../../../backend/backUtils';
-import { Context, ContextSet } from '../../../backend/context';
-import { fetchSize, genTensor } from '../../../backend/expUtils';
-import { ShValue, SVType } from '../../../backend/sharpValues';
-import { ExpNum, ExpShape, NumBopType } from '../../../backend/symExpressions';
+import { fetchAddr } from '../../backend/backUtils';
+import { Context, ContextSet } from '../../backend/context';
+import { fetchSize, genTensor } from '../../backend/expUtils';
+import { ShValue, SVType } from '../../backend/sharpValues';
+import { ExpNum, ExpShape, NumBopType } from '../../backend/symExpressions';
 import { LCBase } from '../libcall';
 
 export namespace TorchvisionLCImpl {

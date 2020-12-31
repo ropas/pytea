@@ -7,7 +7,7 @@
  * Analyze Symbolic Constraint and add it to ConstraintSet
  */
 
-import { PytService } from '../pyt/pytService';
+import { PyteaService } from '../service/pyteaService';
 import { ConstraintSet } from './constraintSet';
 import { Constraint, ConstraintType } from './constraintType';
 import { CoExpNum, NormalExp, normalizeExpNum, simplifyConstraint } from './expUtils';
@@ -84,7 +84,7 @@ abstract class SubSolver {
         }
 
         if (stepCount >= 100) {
-            PytService.log('solver step count exceeded maximal loop limit');
+            PyteaService.log('solver step count exceeded maximal loop limit');
         }
 
         const state = this.state;

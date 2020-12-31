@@ -8,11 +8,11 @@
  */
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import { fetchAddr } from '../../backend/backUtils';
-import { Context, ContextSet } from '../../backend/context';
-import { fetchSize, genTensor, simplifyNum } from '../../backend/expUtils';
-import { ShValue, SVInt, SVSize, SVType } from '../../backend/sharpValues';
-import { ExpNum, ExpShape, NumBopType } from '../../backend/symExpressions';
+import { fetchAddr } from '../backend/backUtils';
+import { Context, ContextSet } from '../backend/context';
+import { fetchSize, genTensor, simplifyNum } from '../backend/expUtils';
+import { ShValue, SVInt, SVSize, SVType } from '../backend/sharpValues';
+import { ExpNum, ExpShape, NumBopType } from '../backend/symExpressions';
 import { LCImpl } from '.';
 import { LCBase } from './libcall';
 

@@ -6,16 +6,13 @@ Copyright (c) Seoul National University
 Licensed under the MIT license.
 Author: Se Hoon Kim
 
-Encodes json-formatted constraint to z3 formula, and solves.
-
-usage: chmod +x json2z3.py
-       ./json2z3.py <json_file>
+Encode json-formatted constraints to z3 formula, solve it,
+and return constraint conditions.
 """
 
 from z3 import *
 from enum import Enum
 from functools import reduce
-import json
 import sys
 import time
 

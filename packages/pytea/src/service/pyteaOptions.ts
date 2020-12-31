@@ -1,20 +1,20 @@
 /*
- * pytOptions.ts
+ * pyteaOptions.ts
  * Copyright (c) Seoul National University
  * Licensed under the MIT license.
- * Author: Ho Young Jhoo
+ * Author: Ho Young Jhoo (starvessel@naver.com)
  *
  * options for PyTea analyzer.
  */
 
 export type PyCmdArgs = { [option: string]: boolean | number | string };
-export interface PytOptions {
+export interface PyteaOptions {
     // Absolute path to pyteaconfig.json
     configPath: string;
 
     // Path of PyTea implementation of Python builtins.
     // Absolute or relative to configPath
-    pytLibPath: string;
+    pyteaLibPath: string;
 
     // Python entry point. Absolute or relative to configPath
     entryPath: string;
@@ -36,9 +36,9 @@ export interface PytOptions {
     printIR: boolean;
 }
 
-export type PytOptionsPart = Partial<PytOptions>;
+export type PyteaOptionsPart = Partial<PyteaOptions>;
 
-export const defaultOptions: PytOptionsPart = {
+export const defaultOptions: PyteaOptionsPart = {
     pythonCmdArgs: {},
     logLevel: 'reduced',
     immediateConstraintCheck: true,

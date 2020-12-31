@@ -41,8 +41,8 @@ import {
     TSSeq,
     TSType,
 } from '../frontend/torchStatements';
-import { BuiltinsLCImpl } from '../pylibImplements/backend/builtins';
-import { evalLibCall } from '../pylibImplements/backend/evaluator';
+import { BuiltinsLCImpl } from '../pylibImplements/builtins';
+import { evalLibCall } from '../pylibImplements/evaluator';
 import { sanitizeAddrSet, SymOpUtils } from './backUtils';
 import * as BackUtils from './backUtils';
 import { Context, ContextSet, CtxExpr, CtxStmt } from './context';
@@ -879,7 +879,7 @@ export namespace TorchBackend {
     function _evalObject<T>(ctxSet: ContextSet<T>, expr: TEObject): ContextSet<ShValue> {
         return ctxSet.map((ctx) => {
             const heap = ctx.heap;
-            const [_, addr, newHeap] = SVObject.create(heap, expr.source);
+            const [, addr, newHeap] = SVObject.create(heap, expr.source);
             return ctx.setHeap(newHeap).setRetVal(addr);
         });
     }

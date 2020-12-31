@@ -1,8 +1,8 @@
 /*
- * pytService.ts
+ * pyteaService.ts
  * Copyright (c) Seoul National University
  * Licensed under the MIT license.
- * Author: Ho Young Jhoo
+ * Author: Ho Young Jhoo (starvessel@naver.com)
  *
  * Main class of PyTea analyzer.
  * Managing imported or will be imported scripts, parsed statements and lsp services.
@@ -27,10 +27,10 @@ import { ShContFlag, ShValue, SVSize, SVString, SVType } from '../backend/sharpV
 import { SymExp } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
 import { ThStmt } from '../frontend/torchStatements';
-import { PyCmdArgs, PytOptions, PytOptionsPart } from './pytOptions';
-import * as PytUtils from './pytUtils';
+import { PyCmdArgs, PyteaOptions, PyteaOptionsPart } from './pyteaOptions';
+import * as PyteaUtils from './pyteaUtils';
 
-let _globalService: PytService | undefined;
+let _globalService: PyteaService | undefined;
 
 enum ExitStatus {
     NoErrors = 0,
@@ -38,8 +38,8 @@ enum ExitStatus {
     FatalError = 2,
     ConfigFileParseError = 3,
 }
-export class PytService {
-    private _options?: PytOptions;
+export class PyteaService {
+    private _options?: PyteaOptions;
     private _service?: AnalyzerService;
 
     private _console: ConsoleInterface;
@@ -54,7 +54,7 @@ export class PytService {
     private _timeLog: [string, number][];
     private _currTime: number;
 
-    constructor(pytOptions: PytOptionsPart, console?: ConsoleInterface, setDefault?: boolean) {
+    constructor(pyteaOptions: PyteaOptionsPart, console?: ConsoleInterface, setDefault?: boolean) {
         if (setDefault) _globalService = this;
 
         this._console = console || new StandardConsole();
@@ -67,7 +67,7 @@ export class PytService {
         this._entryName = '';
 
         try {
-            this._options = PytUtils.refineOptions(pytOptions);
+            this._options = PyteaUtils.refineOptions(pyteaOptions);
         } catch (e) {
             this._console.error(e);
         }
@@ -75,15 +75,15 @@ export class PytService {
         this._libStmt = new Map();
     }
 
-    get options(): PytOptions | undefined {
+    get options(): PyteaOptions | undefined {
         return this._options;
     }
 
-    static getGlobalService(): PytService | undefined {
+    static getGlobalService(): PyteaService | undefined {
         return _globalService;
     }
 
-    static setGlobalService(service: PytService): void {
+    static setGlobalService(service: PyteaService): void {
         _globalService = service;
     }
 
@@ -126,7 +126,7 @@ export class PytService {
             this._service = undefined;
         }
 
-        if (!this._options?.pytLibPath) {
+        if (!this._options?.pyteaLibPath) {
             console.error(`cannot find pylib path`);
             return;
         }
@@ -205,7 +205,7 @@ export class PytService {
             valid = false;
         }
 
-        if (!this._options?.pytLibPath || this._libStmt.size === 0) {
+        if (!this._options?.pyteaLibPath || this._libStmt.size === 0) {
             this._console.error('Invalid PyTea library path. Please check library path correctly.');
             valid = false;
         }
@@ -234,13 +234,13 @@ export class PytService {
         this._entryPath = entryPath;
         this._entryName = path.basename(entryPath, path.extname(entryPath));
 
-        if (this._libStmt.size === 0 && this._service && this._options?.pytLibPath) {
-            this._libStmt = PytUtils.getTorchStmtsFromDir(this._service, this._options.pytLibPath);
+        if (this._libStmt.size === 0 && this._service && this._options?.pyteaLibPath) {
+            this._libStmt = PyteaUtils.getTorchStmtsFromDir(this._service, this._options.pyteaLibPath);
             this._pushTimeLog('Parse library scripts');
         }
 
         this._projectPath = path.join(entryPath, '..');
-        this._projectStmt = PytUtils.getTorchStmtsFromDir(this._service, this._projectPath);
+        this._projectStmt = PyteaUtils.getTorchStmtsFromDir(this._service, this._projectPath);
 
         return;
     }
@@ -275,7 +275,7 @@ export class PytService {
             return;
         }
 
-        // TODO: consistent pytLibPath
+        // TODO: consistent pyteaLibPath
         const builtinSet = TorchBackend.runBuiltin(builtins, 'builtins');
         const stmt = this._projectStmt?.get(this._entryName);
         if (!stmt) {
@@ -327,7 +327,7 @@ export class PytService {
             return false;
         }
 
-        // TODO: consistent pytLibPath
+        // TODO: consistent pyteaLibPath
         const builtinSet = TorchBackend.runBuiltin(builtins, 'builtins');
         const stmt = this._projectStmt?.get(this._entryName);
         if (!stmt) {
@@ -384,7 +384,7 @@ export class PytService {
 
         failed.forEach((ctx, i) => {
             const source = ctx.retVal.source;
-            const toStr = PytUtils.nodePosToString;
+            const toStr = PyteaUtils.nodePosToString;
 
             this._console.log(`failed path #${i + 1}: ${ctx.retVal.reason} / at ${ctx.relPath} ${toStr(source)}\n\n`);
         });
@@ -430,7 +430,7 @@ export class PytService {
 
         failed.forEach((ctx, i) => {
             const source = ctx.retVal.source;
-            const toStr = PytUtils.nodePosToString;
+            const toStr = PyteaUtils.nodePosToString;
 
             const heapLog = ctx.env.addrMap
                 .filter((v) => v.addr >= 0)
@@ -488,7 +488,7 @@ export class PytService {
 
         failed.forEach((ctx, i) => {
             const source = ctx.retVal.source;
-            const toStr = PytUtils.nodePosToString;
+            const toStr = PyteaUtils.nodePosToString;
 
             this._console.log(
                 chalk.red(`failed path #${i + 1}`) +

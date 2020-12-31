@@ -1,8 +1,8 @@
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import { fetchAddr, sanitizeAddr, trackMro } from '../../backend/backUtils';
-import { Context, ContextSet } from '../../backend/context';
-import { strLen } from '../../backend/expUtils';
+import { fetchAddr, sanitizeAddr, trackMro } from '../backend/backUtils';
+import { Context, ContextSet } from '../backend/context';
+import { strLen } from '../backend/expUtils';
 import {
     PrimitiveType,
     ShValue,
@@ -13,9 +13,9 @@ import {
     SVNotImpl,
     SVSize,
     SVType,
-} from '../../backend/sharpValues';
-import { ExpNum, NumBopType } from '../../backend/symExpressions';
-import { TorchBackend } from '../../backend/torchBackend';
+} from '../backend/sharpValues';
+import { ExpNum, NumBopType } from '../backend/symExpressions';
+import { TorchBackend } from '../backend/torchBackend';
 import { LCImpl } from '.';
 import { LCBase } from './libcall';
 

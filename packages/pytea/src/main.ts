@@ -21,8 +21,8 @@ import { NullConsole, StandardConsole } from 'pyright-internal/common/console';
 import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
 import { combinePaths, normalizePath } from 'pyright-internal/common/pathUtils';
 
-import { PytService } from './pyt/pytService';
-import { makeOptionParts } from './pyt/pytUtils';
+import { PyteaService } from './service/pyteaService';
+import { makeOptionParts } from './service/pyteaUtils';
 
 const toolName = 'pytea';
 
@@ -109,32 +109,32 @@ function processArgs(): CommandLineOptions | undefined {
     return args;
 }
 
-export function getPytService(entryPath: string): PytService | undefined {
+export function getPyteaService(entryPath: string): PyteaService | undefined {
     if (!entryPath) {
         printUsage();
         return;
     }
 
     // const entryName = './test/scratch.py';
-    const pytOptions = makeOptionParts(entryPath);
-    if (typeof pytOptions === 'string') {
-        console.error(pytOptions);
+    const pyteaOptions = makeOptionParts(entryPath);
+    if (typeof pyteaOptions === 'string') {
+        console.error(pyteaOptions);
         return;
     }
 
     const logger = new StandardConsole();
-    const pytService = new PytService(pytOptions, logger, true);
+    const pyteaService = new PyteaService(pyteaOptions, logger, true);
 
     // options not set, has error.
-    if (!pytService.options) {
+    if (!pyteaService.options) {
         return;
     }
 
-    return pytService;
+    return pyteaService;
 }
 
-export function runPyt(entryPath: string): PytService | undefined {
-    const service = getPytService(entryPath);
+export function runPytea(entryPath: string): PyteaService | undefined {
+    const service = getPyteaService(entryPath);
     service?.startAnalyzer([entryPath]);
 
     return service;
@@ -185,10 +185,10 @@ function runMain(args: CommandLineOptions) {
     const watch = args.watch !== undefined;
     options.watchForSourceChanges = watch;
 
-    const service = new AnalyzerService('<default>', realFileSystem, output);
-    let pytService: PytService | undefined;
+    const pyrightService = new AnalyzerService('<default>', realFileSystem, output);
+    let pyteaService: PyteaService | undefined;
 
-    service.setCompletionCallback((results) => {
+    pyrightService.setCompletionCallback((results) => {
         if (results.fatalErrorOccurred) {
             process.exit(ExitStatus.FatalError);
         }
@@ -197,24 +197,24 @@ function runMain(args: CommandLineOptions) {
             process.exit(ExitStatus.ConfigFileParseError);
         }
 
-        if (!pytService && entryPath) {
-            pytService = getPytService(entryPath);
-            pytService?.setAnalyzerService(service);
+        if (!pyteaService && entryPath) {
+            pyteaService = getPyteaService(entryPath);
+            pyteaService?.setAnalyzerService(pyrightService);
         }
 
-        if (pytService && pytService.options) {
-            const entryPath = pytService.options.entryPath;
+        if (pyteaService && pyteaService.options) {
+            const entryPath = pyteaService.options.entryPath;
 
             // this triggers project folder parsing.
-            pytService.parseEntry(entryPath);
+            pyteaService.parseEntry(entryPath);
 
-            if (!pytService.validate()) {
+            if (!pyteaService.validate()) {
                 console.error('pytea service got error');
                 process.exit(ExitStatus.FatalError);
             } else {
                 // de pytea job
                 try {
-                    pytService.checkWithLog();
+                    pyteaService.checkWithLog();
                 } catch (e) {
                     console.error(e);
                     process.exit(ExitStatus.FatalError);
@@ -233,7 +233,7 @@ function runMain(args: CommandLineOptions) {
     });
 
     // This will trigger the analyzer.
-    service.setOptions(options);
+    pyrightService.setOptions(options);
 
     const brokenPromise = new Promise(() => {
         // Do nothing.

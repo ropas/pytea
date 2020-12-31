@@ -1,12 +1,12 @@
 /*
- * pytUtils.ts
+ * pyteaUtils.ts
  * Copyright (c) Seoul National University.
  * Licensed under the MIT license.
  * Author: Ho Young Jhoo
  *
  * Utility functions for PyTea service.
  */
-import * as fs from 'fs';
+import * as PyteaUtils from 'fs';
 import * as path from 'path';
 import * as util from 'util';
 
@@ -18,7 +18,7 @@ import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { TorchIRFrontend } from '../frontend/torchFrontend';
 import { ThStmt } from '../frontend/torchStatements';
-import { defaultOptions, PytOptions, PytOptionsPart } from './pytOptions';
+import { defaultOptions, PyteaOptions, PyteaOptionsPart } from './pyteaOptions';
 
 export class NodeConsole implements ConsoleInterface {
     logger: ReturnType<typeof util.debuglog>;
@@ -44,14 +44,14 @@ export class NodeConsole implements ConsoleInterface {
     }
 }
 
-export function makeOptionParts(entryName: string): PytOptionsPart | string {
+export function makeOptionParts(entryName: string): PyteaOptionsPart | string {
     const cwd = path.normalize(process.cwd());
     const entryPath = normalizePath(combinePaths(cwd, entryName));
     let isDir = false;
 
-    if (!fs.existsSync(entryPath)) {
+    if (!PyteaUtils.existsSync(entryPath)) {
         return `entry file ${entryPath} does not exists.`;
-    } else if (fs.lstatSync(entryPath).isDirectory()) {
+    } else if (PyteaUtils.lstatSync(entryPath).isDirectory()) {
         // console.log(`setting project path: ${entryPath}`);
         isDir = true;
     } else {
@@ -61,32 +61,32 @@ export function makeOptionParts(entryName: string): PytOptionsPart | string {
     const dirPath = isDir ? entryPath : path.dirname(entryPath);
     const configPath = path.join(dirPath, 'pyteaconfig.json');
 
-    if (!fs.existsSync(configPath)) {
+    if (!PyteaUtils.existsSync(configPath)) {
         return `config json ${configPath} does not exists.`;
     }
 
-    const pytOptions: PytOptionsPart = isDir ? { configPath } : { configPath, entryPath };
+    const pyteaOptions: PyteaOptionsPart = isDir ? { configPath } : { configPath, entryPath };
 
-    return pytOptions;
+    return pyteaOptions;
 }
 
 // make paths in options absolute
-export function refineOptions(options: PytOptionsPart): PytOptions {
-    let opt: PytOptionsPart = { ...defaultOptions, ...options };
+export function refineOptions(options: PyteaOptionsPart): PyteaOptions {
+    let opt: PyteaOptionsPart = { ...defaultOptions, ...options };
     const configPath = opt.configPath;
 
     let entryPath = opt.entryPath;
     let basePath = '';
 
-    if (configPath && fs.existsSync(configPath)) {
+    if (configPath && PyteaUtils.existsSync(configPath)) {
         basePath = path.dirname(configPath);
         try {
-            const configJSON: Partial<PytOptions> = JSON.parse(fs.readFileSync(configPath).toString());
+            const configJSON: Partial<PyteaOptions> = JSON.parse(PyteaUtils.readFileSync(configPath).toString());
             opt = { ...opt, ...configJSON };
         } catch (e) {
             throw `${configPath} is not a valid JSON file`;
         }
-    } else if (entryPath && fs.existsSync(entryPath)) {
+    } else if (entryPath && PyteaUtils.existsSync(entryPath)) {
         basePath = path.dirname(entryPath);
     }
 
@@ -98,21 +98,21 @@ export function refineOptions(options: PytOptionsPart): PytOptions {
         } is not found`;
     }
 
-    if (!opt.pytLibPath) {
-        // throw 'pytLibPath is not set';
-        opt.pytLibPath = path.join(__dirname, 'pylib');
+    if (!opt.pyteaLibPath) {
+        // throw 'pyteaLibPath is not set';
+        opt.pyteaLibPath = path.join(__dirname, 'pylib');
     }
 
     if (entryPath && !path.isAbsolute(entryPath)) opt.entryPath = path.join(basePath, entryPath);
-    if (!path.isAbsolute(opt.pytLibPath)) opt.pytLibPath = path.join(basePath, opt.pytLibPath);
+    if (!path.isAbsolute(opt.pyteaLibPath)) opt.pyteaLibPath = path.join(basePath, opt.pyteaLibPath);
 
-    if (opt.entryPath && !fs.existsSync(opt.entryPath)) {
+    if (opt.entryPath && !PyteaUtils.existsSync(opt.entryPath)) {
         throw `cannot find entryPath ${opt.entryPath}`;
-    } else if (!fs.existsSync(opt.pytLibPath)) {
-        throw `cannot find pytLibPath ${opt.pytLibPath}`;
+    } else if (!PyteaUtils.existsSync(opt.pyteaLibPath)) {
+        throw `cannot find pyteaLibPath ${opt.pyteaLibPath}`;
     }
 
-    return opt as PytOptions;
+    return opt as PyteaOptions;
 }
 
 // return every .py filenames
@@ -124,7 +124,7 @@ export function getTorchLibFileNames(baseDirPath: string, configOptions: ConfigO
         : undefined;
 
     function iterDir(dirPath: string, prefix: string): void {
-        fs.readdirSync(dirPath, { withFileTypes: true }).forEach((dirent) => {
+        PyteaUtils.readdirSync(dirPath, { withFileTypes: true }).forEach((dirent) => {
             const fullPath = path.join(dirPath, dirent.name);
             const relPath = path.join(prefix, dirent.name);
 
@@ -134,7 +134,7 @@ export function getTorchLibFileNames(baseDirPath: string, configOptions: ConfigO
             }
             if (dirent.isDirectory()) {
                 // ignore venv
-                if (fs.existsSync(path.join(fullPath, 'pyvenv.cfg'))) {
+                if (PyteaUtils.existsSync(path.join(fullPath, 'pyvenv.cfg'))) {
                     return;
                 }
                 iterDir(fullPath, relPath);

@@ -2,15 +2,15 @@ import { List, Map as IMMap } from 'immutable';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import * as BackUtils from '../../backend/backUtils';
-import { Context, ContextSet } from '../../backend/context';
-import { ShEnv } from '../../backend/sharpEnvironments';
-import { ShValue, SVAddr, SVFunc, SVInt, SVNone, SVObject, SVString, SVType, SVUndef } from '../../backend/sharpValues';
-import { SymExp } from '../../backend/symExpressions';
-import { TorchBackend } from '../../backend/torchBackend';
-import { LibCallType, TEConst, TELibCall, TEName, TEObject, TSLet, TSReturn } from '../../frontend/torchStatements';
-import { PytService } from '../../pyt/pytService';
-import * as PytUtils from '../../pyt/pytUtils';
+import * as BackUtils from '../backend/backUtils';
+import { Context, ContextSet } from '../backend/context';
+import { ShEnv } from '../backend/sharpEnvironments';
+import { ShValue, SVAddr, SVFunc, SVInt, SVNone, SVObject, SVString, SVType, SVUndef } from '../backend/sharpValues';
+import { SymExp } from '../backend/symExpressions';
+import { TorchBackend } from '../backend/torchBackend';
+import { LibCallType, TEConst, TELibCall, TEName, TEObject, TSLet, TSReturn } from '../frontend/torchStatements';
+import { PyteaService } from '../service/pyteaService';
+import * as PyteaUtils from '../service/pyteaUtils';
 import { LCImpl } from '.';
 
 export namespace LCBase {
@@ -54,7 +54,7 @@ export namespace LCBase {
     }
     // import is JS reserved keyword.
     export function thImport(ctx: Context<ImportParams>, source?: ParseNode): ContextSet<ShValue> {
-        const service = PytService.getGlobalService();
+        const service = PyteaService.getGlobalService();
         if (!service) {
             return ctx.failWithMsg('PyTea service uninitialized.', source).toSet();
         }
@@ -62,7 +62,7 @@ export namespace LCBase {
         const qualPath = ctx.retVal.qualPath;
         const currPath = ctx.relPath;
 
-        const paths = PytUtils.scanQualPath(qualPath, currPath);
+        const paths = PyteaUtils.scanQualPath(qualPath, currPath);
 
         let baseEnv = ctx.env;
         const basePath = ctx.relPath;
@@ -170,14 +170,14 @@ export namespace LCBase {
     // return module object and inject it to env.
     export function importQualified(ctx: Context<ImportParams>, source?: ParseNode): ContextSet<ShValue> {
         // TODO: qualified.
-        const service = PytService.getGlobalService();
+        const service = PyteaService.getGlobalService();
         if (!service) {
             return ctx.failWithMsg('PyTea service uninitialized.', source).toSet();
         }
         const qualPath = ctx.retVal.qualPath;
         const currPath = ctx.relPath;
 
-        const paths = PytUtils.scanQualPath(qualPath, currPath);
+        const paths = PyteaUtils.scanQualPath(qualPath, currPath);
 
         let baseEnv = ctx.env;
         const basePath = ctx.relPath;
@@ -395,7 +395,7 @@ export namespace LCBase {
         const value: ShValue | undefined = BackUtils.fetchAddr(params[0], heap);
         let newCtx: Context<ExplicitParams>;
 
-        PytService.log(value?.toString());
+        PyteaService.log(value?.toString());
 
         if (value) {
             newCtx = ctx.addLogValue(value);

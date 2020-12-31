@@ -11,7 +11,7 @@ import { List, Map, Record, Set } from 'immutable';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import { PytService } from '../pyt/pytService';
+import { PyteaService } from '../service/pyteaService';
 import { absIndexByLen, sanitizeSource } from './backUtils';
 import { ConstraintSolver, expToCtr } from './constraintSolver';
 import {
@@ -803,7 +803,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
     // check constraint immediately
     checkImmediate(constraint: ExpBool | Constraint): boolean | undefined {
         // global flag check.
-        if (!PytService.shouldCheckImmediate()) {
+        if (!PyteaService.shouldCheckImmediate()) {
             return;
         }
 
