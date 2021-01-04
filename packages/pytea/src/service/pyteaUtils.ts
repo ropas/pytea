@@ -203,7 +203,7 @@ export function getTorchStmtsFromDir(service: AnalyzerService, dirPath: string):
             const parseResult = service.getParseResult(fp);
 
             if (parseResult?.parseTree) {
-                stmt = parser.parse(parseResult.parseTree);
+                stmt = parser.translate(parseResult.parseTree);
             }
         } catch (e) {
             console.log(`Frontend parse failed: ${fp}\n${e}`);

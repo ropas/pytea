@@ -67,7 +67,6 @@ import {
     parseUnaryOp,
     toQualPath,
 } from './frontUtils';
-import { ThStmtParser } from './torchParser';
 import {
     LibCallType,
     TEAttr,
@@ -100,14 +99,14 @@ import {
     TSSeq,
 } from './torchStatements';
 
-export class TorchIRFrontend implements ThStmtParser {
+export class TorchIRFrontend {
     private _immId: number;
 
     constructor() {
         this._immId = 0;
     }
 
-    parse(node: ParseNode): ThStmt {
+    translate(node: ParseNode): ThStmt {
         this._immId = 0;
 
         const parser = new TorchIRFrontend();
