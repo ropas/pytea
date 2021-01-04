@@ -4,6 +4,7 @@ class A:
 
     def __call__(self, y):
         self.x = self.x + y
+        return 101
 
 
 class B(A):
@@ -13,4 +14,4 @@ class B(A):
 
 
 b = B(3, 2)
-b(12)
+c = b(12)

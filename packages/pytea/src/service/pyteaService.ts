@@ -167,7 +167,7 @@ export class PyteaService {
                 if (this.validate()) {
                     // de pytea job
                     try {
-                        this.checkWithLog();
+                        this.analyze();
                     } catch (e) {
                         this._console.error(e);
                     }
@@ -263,7 +263,7 @@ export class PyteaService {
         }
     }
 
-    checkWithLog(): void {
+    analyze(): ContextSet<ShValue | ShContFlag> | undefined {
         if (!this.validate()) {
             this._console.error('failed to validate PyTea service.');
             return;
@@ -297,22 +297,7 @@ export class PyteaService {
 
         this._pushTimeLog('Running entry file');
 
-        const logLevel = this._options!.logLevel;
-        switch (logLevel) {
-            case 'none':
-                this._noneLog(result);
-                break;
-            case 'result_only':
-                this._resultOnlyLog(result);
-                break;
-            case 'reduced':
-                this._reducedLog(result);
-                break;
-
-            case 'full':
-                this._fullLog(stmt, result);
-                break;
-        }
+        return result;
     }
 
     checkUnittest(passOrFail: boolean): boolean {
@@ -372,6 +357,25 @@ export class PyteaService {
         }
 
         return [undefined, false];
+    }
+
+    printLog(result: ContextSet<ShValue | ShContFlag>): void {
+        const logLevel = this._options!.logLevel;
+        switch (logLevel) {
+            case 'none':
+                this._noneLog(result);
+                break;
+            case 'result_only':
+                this._resultOnlyLog(result);
+                break;
+            case 'reduced':
+                this._reducedLog(result);
+                break;
+
+            case 'full':
+                this._fullLog(stmt, result);
+                break;
+        }
     }
 
     private _noneLog(result: ContextSet<ShValue | ShContFlag>): void {

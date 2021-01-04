@@ -212,9 +212,10 @@ function runMain(args: CommandLineOptions) {
                 console.error('pytea service got error');
                 process.exit(ExitStatus.FatalError);
             } else {
-                // de pytea job
+                // do pytea job
                 try {
-                    pyteaService.checkWithLog();
+                    const result = pyteaService.analyze();
+                    if (result) pyteaService.printLog(result);
                 } catch (e) {
                     console.error(e);
                     process.exit(ExitStatus.FatalError);
