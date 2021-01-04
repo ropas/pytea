@@ -1,11 +1,16 @@
-class A():
+class A:
     def __init__(self, x):
         self.x = x
 
-def test(x):
-    x = A(x)
-    return x
+    def __call__(self, y):
+        self.x = self.x + y
 
-x = A(1)
-y = test(2)
-z = x
+
+class B(A):
+    def __init__(self, x, y):
+        super().__init__(x)
+        self.y = y
+
+
+b = B(3, 2)
+b(12)

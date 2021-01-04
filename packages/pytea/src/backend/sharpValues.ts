@@ -555,11 +555,11 @@ export class SVFunc extends Record(svFuncDefaults) implements SVFuncProps {
         return `${this.name}(${this.params.join(', ')})`;
     }
 
-    bound(selfAddr: SVAddr): SVFunc | undefined {
+    bound(selfAddr: SVAddr): SVFunc {
         // TODO: staticmethod.
         // self value should be given as address.
         if (this.params.count() === 0) {
-            return;
+            return this;
         }
         const selfName = this.params.get(0)!;
         const boundParams = this.params.slice(1);

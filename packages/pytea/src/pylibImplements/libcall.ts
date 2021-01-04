@@ -8,7 +8,7 @@ import { ShEnv } from '../backend/sharpEnvironments';
 import { ShValue, SVAddr, SVFunc, SVInt, SVNone, SVObject, SVString, SVType, SVUndef } from '../backend/sharpValues';
 import { SymExp } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
-import { LibCallType, TEConst, TELibCall, TEName, TEObject, TSLet, TSReturn } from '../frontend/torchStatements';
+import { LibCallType, TEConst, TEObject, TSLet, TSReturn } from '../frontend/torchStatements';
 import { PyteaService } from '../service/pyteaService';
 import * as PyteaUtils from '../service/pyteaUtils';
 import { LCImpl } from '.';
@@ -16,10 +16,8 @@ import { LCImpl } from '.';
 export namespace LCBase {
     export type BaseParamType =
         | ImportParams
-        | SuperParams
         | SetDefaultParams
         | CallKVParams
-        | GetAttrParams
         | ExportGlobalParams
         | RaiseParams
         | ExplicitParams;
@@ -252,54 +250,6 @@ export namespace LCBase {
         });
     }
 
-    export interface SuperParams {
-        self: SVObject | SVNone;
-        baseClass: SVObject;
-        selfAddr?: SVAddr;
-    }
-    export function thSuper(ctx: Context<SuperParams>, source?: ParseNode): ContextSet<ShValue> {
-        const { heap } = ctx;
-        const { baseClass, self, selfAddr } = ctx.retVal;
-
-        const mro = baseClass.getAttr('__mro__');
-
-        if (!mro) {
-            return ctx.toSetWith(SVNone.create());
-        }
-        const superClass = BackUtils.fetchAddr(mro, heap);
-        if (!superClass || superClass.type !== SVType.Object) {
-            return ctx.toSetWith(SVNone.create());
-        }
-
-        const superObj = superClass.getIndice(1);
-        if (!superObj) {
-            return ctx.toSetWith(SVNone.create());
-        }
-
-        if (self.type === SVType.Object && selfAddr && superObj.type === SVType.Addr) {
-            const baseEnv = new ShEnv().setId('self', selfAddr).setId('baseClass', superObj as SVAddr);
-            const superProxy = SVFunc.create(
-                'super$__getattr__',
-                List(['name']),
-                TSReturn.create(
-                    TELibCall.create(LibCallType.getAttr, [
-                        ['name', TEName.create('name')],
-                        ['self', TEName.create('self')],
-                        ['baseClass', TEName.create('baseClass')],
-                        ['bind', TEConst.genBool(true)],
-                    ])
-                ),
-                baseEnv
-            );
-            const [tempObj, proxyAddr, newHeap] = SVObject.create(heap, source);
-            const proxyObj = tempObj.setAttr('__getattr__', superProxy);
-
-            return ctx.setHeap(newHeap.setVal(proxyAddr, proxyObj)).toSetWith(proxyAddr);
-        }
-
-        return ctx.toSetWith(superObj);
-    }
-
     export function genList(ctx: Context<ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const { heap } = ctx;
         const params = ctx.retVal.params;
@@ -355,6 +305,16 @@ export namespace LCBase {
             }
         }
         obj = obj.setAttr('$length', SVInt.create(params.length, source));
+
+        let dictType = BackUtils.fetchAddr(ctx.env.getId('dict'), ctx.heap);
+        if (dictType?.type === SVType.Object) {
+            // class _Primitives defines self.mro = (self, object)
+            dictType = BackUtils.fetchAddr(dictType.getAttr('__mro__'), ctx.heap);
+        }
+
+        if (dictType?.type === SVType.Object) {
+            obj = obj.setAttr('__mro__', dictType);
+        }
 
         return ctx.setHeap(newHeap.setVal(objAddr, obj)).toSetWith(obj);
     }
@@ -491,13 +451,11 @@ export namespace LCBase {
     export const libCallImpls: { [key in keyof typeof LibCallType]: LCImpl } = {
         import: thImport,
         importQualified,
-        super: thSuper,
         genList,
         genDict,
         DEBUG,
         setDefault,
         callKV,
-        getAttr,
         explicit,
         exportGlobal,
         raise,

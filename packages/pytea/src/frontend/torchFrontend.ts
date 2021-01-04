@@ -427,6 +427,11 @@ export class TorchIRFrontend {
         const funcName = TEName.create(`${node.name.value}$__init__`, func?.name);
         const params = func ? func.parameters.map((p) => p.name!.value) : ['self', 'args', 'kwargs'];
         const selfName = TEName.create(params[0]);
+        const hasSuperClass = !(
+            node.arguments.length === 0 ||
+            (node.arguments[0].valueExpression.nodeType === ParseNodeType.Name &&
+                node.arguments[0].valueExpression.value === 'object')
+        );
         const localDef = func
             ? extractLocalDef(
                   func.suite.statements,
@@ -437,33 +442,37 @@ export class TorchIRFrontend {
         let initBody: ThStmt;
 
         if (!func) {
-            initBody = TSLet.create(
-                '__class__',
-                TSLet.create(
-                    '__self__',
-                    TSSeq.create(
-                        TSExpr.create(
-                            TELibCall.create(LibCallType.callKV, [
-                                [
-                                    '$func',
-                                    TEAttr.create(
-                                        TELibCall.create(LibCallType.super, [
-                                            ['baseClass', TEName.create('__class__')],
-                                            ['self', TEName.create('__self__')],
-                                        ]),
-                                        '__init__'
-                                    ),
-                                ],
-                                ['$varargs', TEName.create('args')],
-                                ['$kwargs', TEName.create('kwargs')],
-                            ])
+            if (hasSuperClass) {
+                initBody = TSLet.create(
+                    '__class__',
+                    TSLet.create(
+                        '__self__',
+                        TSSeq.create(
+                            TSExpr.create(
+                                TELibCall.create(LibCallType.callKV, [
+                                    [
+                                        '$func',
+                                        TEAttr.create(
+                                            TECall.create(TEName.create('super'), [
+                                                TEName.create('__class__'),
+                                                TEName.create('__self__'),
+                                            ]),
+                                            '__init__'
+                                        ),
+                                    ],
+                                    ['$varargs', TEName.create('args')],
+                                    ['$kwargs', TEName.create('kwargs')],
+                                ])
+                            ),
+                            TSReturn.create(TEConst.genNone())
                         ),
-                        TSReturn.create(TEConst.genNone())
+                        selfName
                     ),
-                    selfName
-                ),
-                className
-            );
+                    className
+                );
+            } else {
+                initBody = TSReturn.create(TEConst.genNone());
+            }
         } else {
             initBody = TSLet.create(
                 '__class__',
@@ -535,11 +544,16 @@ export class TorchIRFrontend {
         const funcName = TEName.create(`${node.name.value}$__new__`);
         const selfName = TEName.create(`${node.name.value}$$self`);
 
-        // assign self.$addr to get address of object from object itself
-        const defaultAttr: ThStmt[] = [TSAssign.create(TEAttr.create(selfName, '$addr'), selfName)];
+        const hasSuperClass = !(
+            node.arguments.length === 0 ||
+            (node.arguments[0].valueExpression.nodeType === ParseNodeType.Name &&
+                node.arguments[0].valueExpression.value === 'object')
+        );
+
+        const mainBody: ThStmt[] = [];
 
         if (hasCall) {
-            defaultAttr.push(
+            mainBody.push(
                 TSFunDef.create(
                     `${node.name.value}$self$__call__`,
                     ['args', 'kwargs'],
@@ -563,22 +577,19 @@ export class TorchIRFrontend {
             );
         }
 
+        const newObject = hasSuperClass
+            ? TECall.create(
+                  TEAttr.create(
+                      TECall.create(TEName.create('super'), [TEName.create('__class__'), TEConst.genNone()]),
+                      '__new__'
+                  ),
+                  [className]
+              )
+            : TEObject.create(node.name);
+
         const newBody = TSLet.create(
             '__class__',
-            TSLet.create(
-                selfName.ident,
-                this._mergeStmt([...defaultAttr, TSReturn.create(selfName)]),
-                TECall.create(
-                    TEAttr.create(
-                        TELibCall.create(LibCallType.super, [
-                            ['baseClass', TEName.create('__class__')],
-                            ['self', TEConst.genNone()],
-                        ]),
-                        '__new__'
-                    ),
-                    [className]
-                )
-            ),
+            TSLet.create(selfName.ident, this._mergeStmt([...mainBody, TSReturn.create(selfName)]), newObject),
             className
         );
 
@@ -871,18 +882,7 @@ export class TorchIRFrontend {
             const leftPath = getFullAttrPath(left);
             if (leftPath && leftPath[0] === 'LibCall') {
                 if (leftPath.length === 2) {
-                    if (leftPath[1] === 'getAttr' && args.length === 4) {
-                        return TELibCall.create(
-                            LibCallType.getAttr,
-                            [
-                                ['name', args[0]],
-                                ['self', args[1]],
-                                ['baseClass', args[2]],
-                                ['bind', args[3]],
-                            ],
-                            node
-                        );
-                    } else if (leftPath[1] === 'DEBUG') {
+                    if (leftPath[1] === 'DEBUG') {
                         return TELibCall.create(
                             LibCallType.DEBUG,
                             args.map((arg) => ['', arg]),
@@ -890,6 +890,8 @@ export class TorchIRFrontend {
                         );
                     } else if (leftPath[1] === 'objectClass') {
                         return TELibCall.create(LibCallType.objectClass, [], node);
+                    } else if (leftPath[1] === 'rawObject') {
+                        return TEObject.create(node);
                     }
                 }
 
@@ -905,35 +907,14 @@ export class TorchIRFrontend {
         }
 
         if (left.etype === TEType.Name && left.ident === 'super') {
-            if (args.length >= 2) {
-                return TELibCall.create(
-                    LibCallType.super,
-                    [
-                        ['baseClass', args[0]],
-                        ['self', args[1]],
-                    ],
-                    node
-                );
-            } else if (args.length === 1) {
-                return TELibCall.create(
-                    LibCallType.super,
-                    [
-                        ['baseClass', args[0]],
-                        ['self', TEName.create('__self__')],
-                    ],
-                    node
-                );
+            if (args.length === 1) {
+                return TECall.create(left, [args[0], TEName.create('__self__')], node);
             } else {
-                return TELibCall.create(
-                    LibCallType.super,
-                    [
-                        ['baseClass', TEName.create('__class__')],
-                        ['self', TEName.create('__self__')],
-                    ],
-                    node
-                );
+                return TECall.create(left, [TEName.create('__class__'), TEName.create('__self__')], node);
             }
-        } else if (
+        }
+
+        if (
             node.arguments.some(
                 (arg) =>
                     arg.name !== undefined ||

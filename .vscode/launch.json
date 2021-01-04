@@ -33,6 +33,20 @@
             ]
         },
         {
+            "name": "Pytea CLI scratch",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceRoot}/packages/pytea/index.js",
+            "protocol": "inspector",
+            "args": [
+                "${workspaceRoot}/packages/pytea/pytest/basics/scratch.py",
+            ],
+            "internalConsoleOptions": "openOnSessionStart",
+            "outFiles": [
+                "${workspaceRoot}/packages/pytea/dist/**/*.js"
+            ]
+        },
+        {
             "name": "Pyright tests",
             "type": "node",
             "request": "launch",

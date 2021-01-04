@@ -49,6 +49,7 @@ export function absIndexByLen(len: number, index: number): number {
     return -1;
 }
 
+// if value is address of address of ... some value, return that value.
 export function fetchAddr(value: ShValue | undefined, heap: ShHeap): ShValue | undefined {
     if (value?.type === SVType.Addr) {
         return fetchAddr(heap.getVal(value), heap);
@@ -57,7 +58,9 @@ export function fetchAddr(value: ShValue | undefined, heap: ShHeap): ShValue | u
     return value;
 }
 
-// process evaluate(E) => (H[l]) if H[l] not in {object, undefined}, otherwise (l).
+// if retVal is address of address of ... some value, return that value otherwise the value is object
+// if the endpoint is object, return the address of object.
+// if retVal is non-address, just return it.
 export function sanitizeAddr(retVal: ShValue | undefined, heap: ShHeap): ShValue | undefined {
     if (!retVal || retVal.type !== SVType.Addr) {
         return retVal;

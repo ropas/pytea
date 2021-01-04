@@ -12,23 +12,6 @@
 import builtins as built
 
 
-def getAttr(name, self, baseClass, bind):
-    if hasattr(self, name):
-        return getattr(self, name)
-    elif hasattr(baseClass, name):
-        func = getattr(baseClass, name)
-        if bind:
-
-            def boundFunc(*args, **kwargs):
-                return func(self, *args, **kwargs)
-
-            return boundFunc
-        else:
-            return func
-    else:
-        raise AttributeError(f"object has no attribute '${name}'")
-
-
 def DEBUG(value):
     print(value)
 

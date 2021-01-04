@@ -20,6 +20,45 @@ import { LCImpl } from '.';
 import { LCBase } from './libcall';
 
 export namespace BuiltinsLCImpl {
+    export function superGetAttr(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 3) {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.builtins.superGetAttr': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const { env, heap } = ctx;
+        const [selfClass, self, attrAddr] = params;
+
+        const mro = trackMro(selfClass, heap, env);
+        const attr = fetchAddr(attrAddr, heap);
+
+        if (attr?.type !== SVType.String || typeof attr.value !== 'string') {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.superGetAttr': attr is not a string`, source).toSet();
+        }
+
+        if (mro.length <= 1 || mro[1] === undefined) {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.superGetAttr': has no superclass`, source).toSet();
+        }
+
+        const superClass = fetchAddr(SVAddr.create(mro[1]), heap);
+        if (superClass?.type !== SVType.Object) {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.superGetAttr': superclass is not an object`, source).toSet();
+        }
+
+        return TorchBackend.getAttrDeep(ctx, superClass, attr.value).map((ctx) => {
+            const retVal = ctx.retVal;
+            if (retVal.type === SVType.Func && self.type === SVType.Addr) {
+                return ctx.setRetVal(retVal.bound(self));
+            }
+            return ctx;
+        });
+    }
+
     export function isinstance(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
@@ -305,6 +344,7 @@ export namespace BuiltinsLCImpl {
     }
 
     export const libCallImpls: { [key: string]: LCImpl } = {
+        superGetAttr,
         isinstance,
         cast,
         list_append,

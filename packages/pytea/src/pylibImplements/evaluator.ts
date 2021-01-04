@@ -54,65 +54,6 @@ export function evalLibCall<T>(ctxSet: ContextSet<T>, expr: TELibCall): ContextS
                 }
                 return impl(ctx.setRetVal(implParam), expr.source);
             });
-        case LibCallType.super:
-            return paramSet.flatMap((ctx) => {
-                const params = ctx.retVal;
-                const heap = ctx.heap;
-                const mp: Partial<LCBase.SuperParams> = {};
-
-                for (const i in paramKeys) {
-                    const key = paramKeys[i];
-                    const arg = params[i];
-                    switch (key) {
-                        case 'self':
-                            if (arg.type === SVType.Object) {
-                                mp.self = arg;
-                            } else if (arg.type === SVType.Addr) {
-                                let addr: ShValue | undefined = arg;
-                                while (addr?.type === SVType.Addr) {
-                                    mp.selfAddr = addr;
-                                    addr = heap.getVal(addr);
-                                }
-                                if (addr?.type === SVType.Object) {
-                                    mp.self = addr;
-                                } else {
-                                    mp.self = SVNone.create();
-                                }
-                            } else {
-                                mp.self = SVNone.create();
-                            }
-                            break;
-                        case 'baseClass':
-                            {
-                                const baseClass = BackUtils.fetchAddr(arg, heap);
-                                if (baseClass?.type === SVType.Object) {
-                                    mp.baseClass = baseClass;
-                                } else {
-                                    return ctx
-                                        .warnWithMsg(
-                                            `libcall argument type mismatch: super got non-object base class`,
-                                            expr.source
-                                        )
-                                        .toSet();
-                                }
-                            }
-                            break;
-                        default:
-                            break;
-                    }
-                }
-
-                if (!mp.baseClass) {
-                    return ctx
-                        .failWithMsg(`libcall argument type mismatch: super got no baseClass`, expr.source)
-                        .toSet();
-                }
-                if (!mp.self) {
-                    mp.self = SVNone.create();
-                }
-
-                return impl(ctx.setRetVal(mp as LCBase.SuperParams), expr.source);
-            });
         case LibCallType.objectClass:
             return ctxSet.flatMap((ctx) => impl(ctx.setRetVal({ params: [] }), expr.source));
         case LibCallType.genList:
@@ -238,56 +179,6 @@ export function evalLibCall<T>(ctxSet: ContextSet<T>, expr: TELibCall): ContextS
                 return impl(ctx.setRetVal(mp as LCBase.CallKVParams), expr.source);
             });
 
-        case LibCallType.getAttr:
-            return paramSet.flatMap((ctx) => {
-                const heap = ctx.heap;
-                const params = ctx.retVal;
-                const mp: Partial<LCBase.GetAttrParams> = {};
-
-                for (const i in paramKeys) {
-                    const key = paramKeys[i];
-                    const addr = params[i];
-                    const arg = BackUtils.fetchAddr(addr, heap);
-
-                    switch (key) {
-                        case 'name':
-                            if (arg?.type === SVType.String) {
-                                mp.name = arg.value as string;
-                            } else {
-                                ctx.failWithMsg(`libcall getAttr got invalid type of name`, expr.source).toSet();
-                            }
-                            break;
-                        case 'self':
-                            mp.self = arg;
-                            if (arg?.type === SVType.Object) {
-                                if (addr.type === SVType.Addr) mp.selfAddr = addr;
-                            } else {
-                                return ctx.failWithMsg(`libcall getAttr got invalid type of self`, expr.source).toSet();
-                            }
-                            break;
-                        case 'baseClass':
-                            if (arg?.type === SVType.Object) {
-                                mp.baseClass = arg;
-                            } else {
-                                return ctx
-                                    .failWithMsg(`libcall getAttr got invalid type of baseClass`, expr.source)
-                                    .toSet();
-                            }
-                            break;
-                        case 'bind':
-                            if (arg?.type === SVType.Bool) {
-                                mp.bind = arg.value as boolean;
-                            } else {
-                                return ctx.failWithMsg(`libcall getAttr got invalid type of bind`, expr.source).toSet();
-                            }
-                            break;
-                        default:
-                            break;
-                    }
-                }
-
-                return impl(ctx.setRetVal(mp as LCBase.GetAttrParams), expr.source);
-            });
         case LibCallType.exportGlobal:
             return paramSet.flatMap((ctx) => {
                 const params = ctx.retVal;

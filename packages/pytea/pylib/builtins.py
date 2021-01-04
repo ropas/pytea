@@ -1,11 +1,20 @@
 """
 PyTea implementation of python builtin.ts.
 """
-from .. import LibCall
+from . import LibCall
 
 # object class is created in interpreter or backend explicitly.
 object = LibCall.objectClass()
 NotImplemented = NotImplemented
+
+
+def super(__self_class__, __self_object__=None):
+    def super_getattr(attr):
+        return LibCall.builtins.superGetAttr(__self_class__, __self_object__, attr)
+
+    super_proxy = LibCall.rawObject()
+    super_proxy.__getattr__ = super_getattr
+    return super_proxy
 
 
 def len(value):

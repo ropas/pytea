@@ -2,6 +2,5 @@
     "pythonCmdArgs": { "batch-size": 32.5 },
     "logLevel": "reduced",
     "printIR": true,
-    "entryPath": "./torch_mnist.py",
     "immediateConstraintCheck": true
 }

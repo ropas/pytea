@@ -396,19 +396,24 @@ export namespace TorchBackend {
             if (getAttr && getAttr.type === SVType.Func) {
                 return functionCall(ctx, getAttr, [SVString.create(name, source)], source);
             } else {
-                // first, track mro.
+                // first, make a list of superclasses
                 const mro = BackUtils.trackMro(objVal, ctx.heap, ctx.env);
                 const classes = [];
+
+                // iterate superclasses and find matching attr.
                 for (const superAddr of mro) {
                     if (superAddr === undefined) continue;
                     const superClass = BackUtils.fetchAddr(SVAddr.create(superAddr), ctx.heap);
+
                     if (!superClass) continue;
                     classes.push(superClass);
+
                     const attr = superClass.attrs.get(name);
                     if (attr) {
                         const mayMethod = BackUtils.fetchAddr(attr, ctx.heap);
+
+                        // if found function is unbounded method, bind it.
                         if (mayMethod?.type === SVType.Func) {
-                            // IMPORTANT: every object would be set attribute `$addr` while running __new__ to backtrack address.
                             let bounded: SVFunc | undefined;
                             if (objVal.type === SVType.Object) {
                                 bounded = mayMethod.bound(objVal.addr);
@@ -741,31 +746,7 @@ export namespace TorchBackend {
         loopCnt: ExpNum,
         stmt: TSForIn
     ): ContextSet<ShValue | ShContFlag> {
-        // const [canLoop, noLoop] = ctx.ifThenElse(ctx.genLt(0, loopCnt), stmt.loopVal.source);
-
-        // let mainLoop = canLoop.flatMap((ctx) => {
-        //     let identCtx = ctx.genIntGte('for$ident', 0, stmt.loopVal.source);
-        //     const ident = identCtx.retVal;
-        //     let nextSetIter: ContextSet<ShValue | ShContFlag> = identCtx
-        //         .guarantee(identCtx.genLte(ident, ExpNum.bop(NumBopType.Sub, loopCnt, 1, stmt.loopVal.source)))
-        //         .toSetWith(ShContFlag.Run);
-
-        //     nextSetIter = nextSetIter.flatMap((ctx) => {
-        //         return ctx
-        //             .getIndiceDeep(obj, ident, stmt.loopVal.source)
-        //             .map((ctx) => ctx.setHeap(ctx.heap.setVal(identAddr, ctx.retVal)));
-        //     });
-        //     nextSetIter = run(nextSetIter, stmt.loopBody);
-        //     return nextSetIter.map((ctx) =>
-        //         ctx.retVal === ShContFlag.Brk || ctx.retVal === ShContFlag.Cnt || ctx.retVal === ShContFlag.Run
-        //             ? ctx.setRetVal(ShContFlag.Run)
-        //             : ctx
-        //     );
-        // });
-
-        // return mainLoop.join(noLoop.return(ShContFlag.Run));
-
-        // TODO: before implement SMT on symbolic value, we require that loopCnt is bigger than 0
+        // TODO: before implement SMT on a symbolic value, we require that loopCnt is bigger than 0
         return ctx
             .require(ctx.genLte(0, loopCnt), 'length of iterator is less than 0', stmt.loopVal.source)
             .flatMap((ctx) => {
