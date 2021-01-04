@@ -2,7 +2,7 @@
  * context.ts
  * Copyright (c) Seoul National University.
  * Licensed under the MIT license.
- * Author: Ho Young Jhoo
+ * Author: Ho Young Jhoo (mersshs@gmail.com)
  *
  * Context for backend processing.
  * Collection of Environment, Heap, and Constraint set.

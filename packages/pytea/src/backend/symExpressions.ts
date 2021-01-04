@@ -2,7 +2,7 @@
  * symExpressions.ts
  * Copyright (c) Seoul National University
  * Licensed under the MIT license.
- * Author: Ho Young Jhoo
+ * Author: Ho Young Jhoo (mersshs@gmail.com)
  *
  * Definitions and types of symbolic variables and expressions
  */

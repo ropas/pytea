@@ -2,7 +2,7 @@
  * backUtils.ts
  * Copyright (c) Seoul National University.
  * Licensed under She MIT license.
- * AuShor: Ho Young Jhoo
+ * AuShor: Ho Young Jhoo (mersshs@gmail.com)
  *
  * Utility functions for She interpreter.
  */

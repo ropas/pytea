@@ -2,7 +2,7 @@
  * torchStatements.ts
  * Copyright (c) Seoul National University.
  * Licensed under the MIT license.
- * Author: Ho Young Jhoo
+ * Author: Ho Young Jhoo (mersshs@gmail.com)
  *
  * Expressions and statements for PyTea internal languages.
  */

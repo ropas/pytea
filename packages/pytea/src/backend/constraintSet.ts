@@ -2,7 +2,7 @@
  * constraintSet.ts
  * Copyright (c) Seoul National University.
  * Licensed under the MIT license.
- * Author: Ho Young Jhoo
+ * Author: Ho Young Jhoo (mersshs@gmail.com)
  *
  * Environment and heaps for dynamic semantics of PyTea internal languages.
  */
