@@ -93,9 +93,12 @@ PyTea 내부에서 사용하는 IR은 LISP 형태로 변환되어 입출력을 �
 <const-bool> ::= "(" "bool" <source>? ("True" | "False") ")"
 <const-none> ::= "(" "none" <source>? ")"
 
+<binop-type> ::= "+" | "-" | "*" | "**" | "/" | "//" | "%" | "<" | "<=" | "=" | "!=" | "and" | "or" | "is" | "isnot" | "in" | "notin"
+<uop-typ> ::= "not" | "-"
+
 <source> ::= "[" <int> ":" <int> ":" <int> "]" // source
 
 <int> ::= (0-9)+
 <float> ::= (0-9)+ "." (0-9)*
-<string> ::= escaped double-quoted string (e.g. "test \', \", and \\")
+<string> ::= double-quoted string with escaped "\"" (e.g. "only \", not \, \n, \' ...")
 ```
