@@ -22,6 +22,6 @@ Pytea CLI scratch는 자동으로 `pytest/basics/scratch.py`를 실행한다. Py
 
 ## when to compile
 
-`npm run webpack`을 돌려서 컴파일시 `pytea/dist`에 컴파일한 js 파일과 pylib이 통째로 들어가게 된다.
+`npm run webpack`을 돌려서 컴파일시 `pytea/dist`에 컴파일한 js 파일과 pylib, z3wrapper 디렉토리가 통째로 들어가게 된다.
 
-pylib에서 .py 파일을 변경하였다면 반드시 컴파일을 해야 `node ./index.js ...`를 실행할 시 반영이 되므로 반드시 미리 `npm run webpack`을 돌려서 컴파일을 해주자.
+z3wrapper나 pylib에서 .py 파일을 변경하였다면 반드시 컴파일을 해야 `node ./index.js ...`를 실행할 시 반영이 되므로 반드시 미리 `npm run webpack`을 돌려서 컴파일을 해주자.

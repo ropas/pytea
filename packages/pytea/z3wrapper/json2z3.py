@@ -13,6 +13,7 @@ and return constraint conditions.
 from z3 import *
 from enum import Enum
 from functools import reduce
+import json
 import sys
 import time
 
@@ -233,27 +234,23 @@ class CtrSet:
             log = "Valid path. Constraints are always satisfiable."
             return PathResult.Valid.value, log
 
-        sat, unsatAssump = self.checkSat()
-        if sat == "sat":
+        sat, unsatIndice = self.checkSat()
+        if sat == PathResult.Sat.value:
             log = "Satisfiable path.\n\n"
             log += "counter example:\n"
             log += str(counterEx) + "\n"
-            return PathResult.Sat.value, log
-        elif sat == "unsat":
+        elif sat == PathResult.Unavailable.value:
+            log = "Unavailable path. Path condition is unsatisfiable."
+        elif sat == PathResult.Unsat.value:
             log = "Unsatisfiable path.\n\n"
-            log += "unsat assumptions:\n"
-            log += str(unsatAssump) + "\n"
-            # TODO: verbose flag
-            unsatCtrIdx = self.trackUnsatCtrs()
-            log += "\nunsat constraints:\n"
-            # for ctr in self.ctrPool[unsatCtrIdx:]:
-            #     log += ctr.toString() + "\n"
-            log += self.ctrPool[unsatCtrIdx].toString() + "\n"
-
-            return PathResult.Unsat.value, log
+            log += "unsat constraint:\n"
+            log += self.ctrPool[unsatIndice[-1]].toString() + "\n"
+            log += "conflict constraints: \n"
+            for idx in unsatIndice[:-1]:
+                log += self.ctrPool[idx].toString() + "\n"
         else:
             log = "Dontknow path.\n\n"
-            return PathResult.DontKnow.value, log
+        return sat, log
 
     # check sat with only hardCtr and pathCtr.
     def pathCondCheck(self):
@@ -285,63 +282,103 @@ class CtrSet:
         else:
             return "invalid", s.model()
 
-    # check satisfiability. if unsat, find assumptions used to derive unsat.
-    # return (satisfiability, unsatAssumptions).
-    def checkSat(self):
-        assumptions = list(map(lambda i: self.ctrPool[i].formula, self.hardCtr))
-        ctrs = (
-            self.softCtr + self.pathCtr
-        )  # currently, do not distinguish softCtr and path Ctr.
-        ctrs.sort()
-        constraints = list(map(lambda i: self.ctrPool[i].formula, ctrs))
-        formula = And(constraints)
+    def checkSat(self, minimize=False):
+        def findIndiceOfCtrs(ctrPool, ctrs):
+            indices = []
+            for ctr in ctrs:
+                for idx, ctr_ in enumerate(ctrPool):
+                    if ctr == ctr_.formula:
+                        indices.append(idx)
+                        break
+            indices.sort()
+            return indices
 
+        constraints = list(map(lambda ctr: ctr.formula, self.ctrPool))
         s = Solver()
-        s.add(formula)
-        satisfiability = s.check(assumptions)
-        unsatAssumptions = s.unsat_core()
+        if minimize:
+            s.set(":core.minimize", True)
+        result = str(s.check(constraints))
+        if result == "sat":
+            return PathResult.Sat.value, None
+        elif result == "unsat":
+            unsatCore = s.unsat_core()
+            unsatIndice = findIndiceOfCtrs(self.ctrPool, unsatCore)
+            if unsatIndice[-1] in self.pathCtr:
+                return PathResult.Unavailable.value, unsatIndice
+            return PathResult.Unsat.value, unsatIndice
+        else:
+            return PathResult.DontKnow.value, None
 
-        return str(satisfiability), unsatAssumptions
-
-    # track constraints backward, return first index whose constraint derives unsat.
-    def trackUnsatCtrs(self):
-        def checkPartialCtrs(ctrPool, hardCtr, softCtr, pathCtr):
-            assumptions = list(map(lambda i: ctrPool[i].formula, hardCtr))
-            ctrs = (
-                softCtr + pathCtr
-            )  # currently, do not distinguish softCtr and path Ctr.
-            ctrs.sort()
-            constraints = list(map(lambda i: ctrPool[i].formula, ctrs))
-            formula = And(constraints)
-
+    # track constraint which causes unsat.
+    # direction can be "forward" | "backward" | "binary".
+    # TODO: Is there cases that checkSat() can't distinguish unavailable path, but trackUnsatCtrs() can?
+    #       If not, this function is not needed.
+    def trackUnsatCtrs(self, direction="forward"):
+        def checkCtrs(ctrPool):
             s = Solver()
-            s.add(formula)
+            ctrs = list(map(lambda ctr: ctr.formula, ctrPool))
+            s.add(ctrs)
+            return str(s.check())
 
-            return str(s.check(assumptions))
-
-        hardEnd = len(self.hardCtr)
-        softEnd = len(self.softCtr)
-        pathEnd = len(self.pathCtr)
-
-        for i in reversed(range(len(self.ctrPool))):
-            if i in self.hardCtr:
-                hardEnd -= 1
-                continue
-            elif i in self.softCtr:
-                softEnd -= 1
-            elif i in self.pathCtr:
-                pathEnd -= 1
-
-            partialSat = checkPartialCtrs(
-                self.ctrPool[:i],
-                self.hardCtr[:hardEnd],
-                self.softCtr[:softEnd],
-                self.pathCtr[:pathEnd],
+        def checkCtrUnderAssumptions(assumptionPool, ctr):
+            s = Solver()
+            s.add(ctr.formula)
+            assumptions = list(
+                map(lambda assumption: assumption.formula, assumptionPool)
             )
-            if partialSat == "sat":
-                return i
+            result = s.check(assumptions)
+            conflicts = s.unsat_core()
+            return str(result), conflicts
 
-        return -1
+        def findIndicesOfCtrs(ctrPool, ctrs):
+            indices = []
+            for ctr in ctrs:
+                for idx, ctr_ in enumerate(ctrPool):
+                    if ctr == ctr_.formula:
+                        indices.append(idx)
+                        break
+            return indices
+
+        def trackForward(ctrPool, hardIndices):
+            for i in range(len(ctrPool)):
+                if i in hardIndices and i != len(ctrPool) - 1:
+                    continue
+                if checkCtrs(ctrPool[: i + 1]) == "unsat":
+                    break
+            return i
+
+        def trackBackward(ctrPool, hardIndices):
+            for i in reversed(range(len(ctrPool))):
+                if i in hardIndices and i != len(ctrPool) - 1:
+                    continue
+                if checkCtrs(ctrPool[: i + 1]) == "sat":
+                    break
+            return i + 1
+
+        def trackBinary(ctrPool, lb, ub, before):
+            if lb > ub:
+                return lb
+            idx = (lb + ub) // 2
+            check = checkCtrs(ctrPool[: idx + 1])
+            if check == "sat":
+                return trackBinary(ctrPool, idx + 1, ub, check)
+            if check == "unsat":
+                return trackBinary(ctrPool, lb, idx - 1, check)
+
+        if direction == "forward":
+            unsatIdx = trackForward(self.ctrPool, self.hardCtr)
+        elif direction == "backward":
+            unsatIdx = trackBackward(self.ctrPool, self.hardCtr)
+        elif direction == "binary":
+            unsatIdx = trackBinary(self.ctrPool, 0, len(self.ctrPool) - 1, "unsat")
+
+        if unsatIdx in self.pathCtr:
+            return PathResult.Unavailable.value, None
+        result, conflicts = checkCtrUnderAssumptions(
+            self.ctrPool[:unsatIdx], self.ctrPool[unsatIdx]
+        )
+        conflictIndices = findIndicesOfCtrs(self.ctrPool, conflicts)
+        return PathResult.Unsat.value, conflictIndices + [unsatIdx]
 
 
 class Ctr:
@@ -555,10 +592,7 @@ class Ctr:
             raise Exception("getRank Error: not a ExpShape")
 
         if expShape["opType"] == ShapeOpType.Const.value:
-            rank = expShape["rank"]
-            if not is_int(rank):
-                raise Exception("getRank(Const): a rank must be an int")
-            return rank
+            return self.encodeExpNum(expShape["rank"])
         elif expShape["opType"] == ShapeOpType.Symbol.value:
             rank = self.encodeExpNum(expShape["symbol"]["rank"])
             if not is_int(rank):

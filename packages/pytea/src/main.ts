@@ -22,7 +22,7 @@ import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
 import { combinePaths } from 'pyright-internal/common/pathUtils';
 
 import { PyteaService } from './service/pyteaService';
-import { buildPyteaOption } from './service/pyteaUtils';
+import { buildPyteaOption, runZ3Py } from './service/pyteaUtils';
 
 const toolName = 'pytea';
 
@@ -114,7 +114,7 @@ function runMain(args: CommandLineOptions) {
     const output = new NullConsole();
     const realFileSystem = createFromRealFileSystem(output);
 
-    const watch = args.watch !== undefined;
+    const watch = args.watch === true;
     options.watchForSourceChanges = watch;
 
     const pyrightService = new AnalyzerService('<default>', realFileSystem, output);
@@ -131,14 +131,14 @@ function runMain(args: CommandLineOptions) {
 
         if (!pyteaService) {
             pyteaService = getPyteaService(args);
-            pyteaService?.setAnalyzerService(pyrightService);
+            pyteaService?.setPyrightAnalyzerService(pyrightService);
         }
 
         if (pyteaService && pyteaService.options) {
             const entryPath = pyteaService.options.entryPath;
 
-            // this triggers project folder parsing.
-            pyteaService.parseEntry(entryPath);
+            // this triggers translation of project folder .
+            pyteaService.translateMainEntry(entryPath);
 
             if (!pyteaService.validate()) {
                 console.error('pytea service got error');
@@ -147,7 +147,12 @@ function runMain(args: CommandLineOptions) {
                 // do pytea job
                 try {
                     const result = pyteaService.analyze();
-                    if (result) pyteaService.printLog(result);
+                    if (result) {
+                        pyteaService.printLog(result);
+                        if (watch) {
+                            runZ3Py(result);
+                        }
+                    }
                 } catch (e) {
                     console.error(e);
                     process.exit(ExitStatus.FatalError);

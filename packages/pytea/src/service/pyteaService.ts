@@ -8,11 +8,9 @@
  * Managing imported or will be imported scripts, parsed statements and lsp services.
  */
 import chalk from 'chalk';
-import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
-import tmp from 'tmp';
 
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { CommandLineOptions as PyrightCommandLineOptions } from 'pyright-internal/common/commandLineOptions';
@@ -50,6 +48,7 @@ export class PyteaService {
 
     private _libStmt: Map<string, ThStmt>;
     private _projectStmt?: Map<string, ThStmt>;
+    private _mainStmt?: ThStmt;
 
     private _timeLog: [string, number][];
     private _currTime: number;
@@ -102,81 +101,12 @@ export class PyteaService {
         _globalService?._console.log(message.map((x) => `${x}`).join(' '));
     }
 
-    private _pushTimeLog(logName: string): void {
-        const temp = this._currTime;
-        this._currTime = performance.now();
-        this._timeLog.push([logName, this._currTime - temp]);
-    }
-
-    setAnalyzerService(service: AnalyzerService) {
+    setPyrightAnalyzerService(service: AnalyzerService) {
         if (this._service !== service) {
             this._service?.dispose();
         }
 
         this._service = service;
-    }
-
-    startAnalyzer(fileSpecs: string[]) {
-        if (this._service) {
-            this._service.dispose();
-            this._service = undefined;
-        }
-
-        if (!this._options?.pyteaLibPath) {
-            console.error(`cannot find pylib path`);
-            return;
-        }
-        const options = new PyrightCommandLineOptions(process.cwd(), false);
-        options.fileSpecs = fileSpecs;
-        options.checkOnlyOpenFiles = false;
-
-        // ignore original pyright output.
-        const output = new NullConsole();
-        const realFileSystem = createFromRealFileSystem(output);
-
-        const watch = options.watchForSourceChanges;
-
-        const service = new AnalyzerService('<default>', realFileSystem, output);
-        this.setAnalyzerService(service);
-
-        service.setCompletionCallback((results) => {
-            if (results.fatalErrorOccurred) {
-                this._console.error('Pyright fatal error occured');
-                this._service = undefined;
-                service.dispose();
-                return;
-            }
-
-            if (results.configParseErrorOccurred) {
-                this._console.error('Pyright config parse error occured');
-                this._service = undefined;
-                service.dispose();
-                return;
-            }
-
-            if (this._options) {
-                const entryPath = this._options.entryPath;
-
-                // this triggers project folder parsing.
-                this.parseEntry(entryPath);
-
-                if (this.validate()) {
-                    // de pytea job
-                    try {
-                        this.analyze();
-                    } catch (e) {
-                        this._console.error(e);
-                    }
-                }
-            } else {
-                this._console.error('pytea option is not initialized');
-            }
-
-            if (!watch) process.exit(ExitStatus.NoErrors);
-        });
-
-        // This will trigger the analyzer.
-        service.setOptions(options);
     }
 
     // check library or entry file is fully loaded.
@@ -210,7 +140,7 @@ export class PyteaService {
     }
 
     // return error message (string) or undefined
-    parseEntry(entryPath: string): string | undefined {
+    translateMainEntry(entryPath: string): string | undefined {
         if (!entryPath) {
             return 'path is blank';
         }
@@ -227,36 +157,24 @@ export class PyteaService {
             return `pyright service is not set.`;
         }
 
+        this._clearTimeLog();
+
         this._entryPath = entryPath;
         this._entryName = path.basename(entryPath, path.extname(entryPath));
 
+        // translate pytea library implementations
         if (this._libStmt.size === 0 && this._service && this._options?.pyteaLibPath) {
-            this._libStmt = PyteaUtils.getTorchStmtsFromDir(this._service, this._options.pyteaLibPath);
-            this._pushTimeLog('Parse library scripts');
+            this._libStmt = PyteaUtils.getStmtsFromDir(this._service, this._options.pyteaLibPath);
+            this._pushTimeLog('Translate library scripts');
         }
 
+        // translate project scripts
         this._projectPath = path.join(entryPath, '..');
-        this._projectStmt = PyteaUtils.getTorchStmtsFromDir(this._service, this._projectPath);
+        this._projectStmt = PyteaUtils.getStmtsFromDir(this._service, this._projectPath);
+
+        this._pushTimeLog('Translate project scripts');
 
         return;
-    }
-
-    // if value is address, return fetchAddr(value, heap)
-    // if that object has attr 'shape' and that is SVSize, return `Tensor ${value.size}`
-    reducedToString(value: ShValue, heap: ShHeap): string {
-        const obj = fetchAddr(value, heap);
-        if (obj) {
-            if (obj.type === SVType.Object) {
-                const shape = obj.getAttr('shape');
-                if (shape instanceof SVSize) {
-                    return `Tensor ${SymExp.toString(shape.shape)}`;
-                }
-            }
-
-            return obj.toString();
-        } else {
-            return value.toString();
-        }
     }
 
     analyze(): ContextSet<ShValue | ShContFlag> | undefined {
@@ -274,15 +192,16 @@ export class PyteaService {
         // TODO: consistent pyteaLibPath
         const builtinSet = TorchBackend.runBuiltin(builtins, 'builtins');
         const stmt = this._projectStmt?.get(this._entryName);
+
         if (!stmt) {
+            this._mainStmt = undefined;
             this._console.error(`cannot parse entry file '${this._entryPath}'`);
             return;
         }
 
         this._pushTimeLog('Running builtin libraries');
 
-        if (this._options!.extractIR)
-            this._console.log(chalk.yellow(`PARSED STATEMENTS:`) + chalk.gray(`\n${ThStmt.toString(stmt)}\n`));
+        this._mainStmt = stmt;
 
         const startSet = builtinSet.map((ctx) => {
             // set __name__ to '__main__'
@@ -374,6 +293,70 @@ export class PyteaService {
         }
     }
 
+    addFilesToTrack(files: string[]) {
+        if (this._service) {
+            this._service.dispose();
+            this._service = undefined;
+        }
+
+        if (!this._options?.pyteaLibPath) {
+            console.error(`cannot find pylib path`);
+            return;
+        }
+
+        const options = new PyrightCommandLineOptions(process.cwd(), false);
+        options.fileSpecs = files;
+        options.checkOnlyOpenFiles = false;
+
+        // ignore original pyright output.
+        const output = new NullConsole();
+        const realFileSystem = createFromRealFileSystem(output);
+
+        const watch = options.watchForSourceChanges;
+
+        const service = new AnalyzerService('<default>', realFileSystem, output);
+        this.setPyrightAnalyzerService(service);
+
+        service.setCompletionCallback((results) => {
+            if (results.fatalErrorOccurred) {
+                this._console.error('Pyright fatal error occured');
+                this._service = undefined;
+                service.dispose();
+                return;
+            }
+
+            if (results.configParseErrorOccurred) {
+                this._console.error('Pyright config parse error occured');
+                this._service = undefined;
+                service.dispose();
+                return;
+            }
+
+            if (this._options) {
+                const entryPath = this._options.entryPath;
+
+                // this triggers project folder parsing.
+                this.translateMainEntry(entryPath);
+
+                if (this.validate()) {
+                    // do pytea job
+                    try {
+                        this.analyze();
+                    } catch (e) {
+                        this._console.error(e);
+                    }
+                }
+            } else {
+                this._console.error('pytea option is not initialized');
+            }
+
+            if (!watch) process.exit(ExitStatus.NoErrors);
+        });
+
+        // This will trigger the analyzer.
+        service.setOptions(options);
+    }
+
     private _noneLog(result: ContextSet<ShValue | ShContFlag>): void {
         // do nothing.
     }
@@ -405,6 +388,12 @@ export class PyteaService {
 
         const jsonList: string[] = [];
 
+        if (this._mainStmt) {
+            this._console.log(
+                chalk.yellow(`PARSED STATEMENTS:`) + chalk.gray(`\n${ThStmt.toString(this._mainStmt)}\n`)
+            );
+        }
+
         success.forEach((ctx, i) => {
             jsonList.push(ctx.ctrSet.getConstraintJSON());
 
@@ -417,7 +406,7 @@ export class PyteaService {
                     `REDUCED HEAP: (size: ${ctx.heap.valMap.count()})\n` +
                     module.attrs
                         .map((v, k) => {
-                            return `  ${k} => ${this.reducedToString(v, ctx.heap)}`;
+                            return `  ${k} => ${this._reducedToString(v, ctx.heap)}`;
                         })
                         .join('\n');
             }
@@ -435,7 +424,7 @@ export class PyteaService {
             const heapLog = ctx.env.addrMap
                 .filter((v) => v.addr >= 0)
                 .map((addr, key) => {
-                    return `  ${key} => ${this.reducedToString(addr, ctx.heap)}`;
+                    return `  ${key} => ${this._reducedToString(addr, ctx.heap)}`;
                 })
                 .join('\n');
 
@@ -451,13 +440,6 @@ export class PyteaService {
             );
         });
 
-        if (jsonList.length > 0) {
-            // const jsonPath = path.join(this._projectPath, `${this._entryName}_z3.json`);
-            // fs.writeFileSync(jsonPath, '[\n' + jsonList.join(',\n') + '\n]');
-            // this._console.log(`write path constraints to ${jsonPath}`);
-            this.runZ3('[\n' + jsonList.join(',\n') + '\n]');
-        }
-
         this._pushTimeLog('printing results');
 
         this._console.log(
@@ -472,11 +454,13 @@ export class PyteaService {
         const success = result.getList();
         const failed = result.getFailed();
 
-        const jsonList: string[] = [];
+        if (this._mainStmt) {
+            this._console.log(
+                chalk.yellow(`PARSED STATEMENTS:`) + chalk.gray(`\n${ThStmt.toString(this._mainStmt)}\n`)
+            );
+        }
 
         success.forEach((ctx, i) => {
-            jsonList.push(ctx.ctrSet.getConstraintJSON());
-
             this._console.log(
                 chalk.green(`success path #${i + 1}`) +
                     `\nLOGS:\n${ctx.logsToString()}\n` +
@@ -502,13 +486,6 @@ export class PyteaService {
                     `\nHEAP (${ctx.heap.valMap.count()}):\n${ctx.heap.filter((_, key) => key >= 0).toString()}`
             );
         });
-
-        if (jsonList.length > 0) {
-            // const jsonPath = path.join(this._projectPath, `${this._entryName}_z3.json`);
-            // fs.writeFileSync(jsonPath, '[\n' + jsonList.join(',\n') + '\n]');
-            // this._console.log(`write path constraints to ${jsonPath}`);
-            this.runZ3('[\n' + jsonList.join(',\n') + '\n]');
-        }
 
         this._pushTimeLog('printing results');
 
@@ -540,7 +517,7 @@ export class PyteaService {
                     `REDUCED HEAP: (size: ${ctx.heap.valMap.count()})\n` +
                     module.attrs
                         .map((v, k) => {
-                            return `  ${k} => ${this.reducedToString(v, ctx.heap)}`;
+                            return `  ${k} => ${this._reducedToString(v, ctx.heap)}`;
                         })
                         .join('\n');
             }
@@ -564,21 +541,32 @@ export class PyteaService {
         }
     }
 
-    runZ3(jsonStr: string): void {
-        // TODO:
-        const cwd = process.cwd();
-        const pyteaPath = combinePaths(cwd, 'json2z3.py');
-
-        if (!fs.existsSync(pyteaPath)) {
-            console.log('cannot found json2z3.py. skip z3');
-        }
-
-        tmp.file((err, path, fd) => {
-            if (!err) {
-                this._console.log(`save file to ${path}`);
-                fs.writeFileSync(path, jsonStr);
-                // const pyproc = spawn('python', [pyteaPath, path]);
+    // if value is address, return fetchAddr(value, heap)
+    // if that object has attr 'shape' and that is SVSize, return `Tensor ${value.size}`
+    private _reducedToString(value: ShValue, heap: ShHeap): string {
+        const obj = fetchAddr(value, heap);
+        if (obj) {
+            if (obj.type === SVType.Object) {
+                const shape = obj.getAttr('shape');
+                if (shape instanceof SVSize) {
+                    return `Tensor ${SymExp.toString(shape.shape)}`;
+                }
             }
-        });
+
+            return obj.toString();
+        } else {
+            return value.toString();
+        }
+    }
+
+    private _clearTimeLog(): void {
+        this._currTime = performance.now();
+        this._timeLog = [];
+    }
+
+    private _pushTimeLog(logName: string): void {
+        const temp = this._currTime;
+        this._currTime = performance.now();
+        this._timeLog.push([logName, this._currTime - temp]);
     }
 }

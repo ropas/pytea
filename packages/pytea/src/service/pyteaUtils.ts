@@ -6,9 +6,12 @@
  *
  * Utility functions for PyTea service.
  */
+import { spawn } from 'child_process';
 import { CommandLineOptions } from 'command-line-args';
 import * as fs from 'fs';
 import * as path from 'path';
+import { ContextSet } from 'src/backend/context';
+import tmp from 'tmp';
 import * as util from 'util';
 
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
@@ -176,7 +179,7 @@ export function filePathToQualId(path: string): string {
 
 // return module qualPath => ThStmt
 // e.g.) "torch.functional" => <some statement>
-export function getTorchStmtsFromDir(service: AnalyzerService, dirPath: string): Map<string, ThStmt> {
+export function getStmtsFromDir(service: AnalyzerService, dirPath: string): Map<string, ThStmt> {
     // Always enable "test mode".
     const parser = new TorchIRFrontend();
     const configOptions = service.getConfigOptions();
@@ -267,4 +270,32 @@ export function scanQualPath(qualPath: string, currPath?: string): string[] {
     } else {
         return paths;
     }
+}
+
+export function runZ3Py<T>(result: ContextSet<T>): void {
+    const pyteaPath = path.join(__dirname, 'z3wrapper', 'json2z3.py');
+
+    if (!fs.existsSync(pyteaPath)) {
+        console.log(`cannot found json2z3.py at '${pyteaPath}'. skip z3`);
+        return;
+    }
+
+    const jsonList: string[] = [];
+    result.getList().forEach((ctx) => {
+        jsonList.push(ctx.ctrSet.getConstraintJSON());
+    });
+
+    if (jsonList.length === 0) {
+        return;
+    }
+
+    const jsonStr = '[\n' + jsonList.join(',\n') + '\n]';
+
+    tmp.file((err, path, fd) => {
+        if (!err) {
+            console.log(`save constraint json file to ${path}`);
+            fs.writeFileSync(path, jsonStr);
+            spawn('python', [pyteaPath, path]);
+        }
+    });
 }

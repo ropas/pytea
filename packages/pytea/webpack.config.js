@@ -15,6 +15,7 @@ const { monorepoResourceNameMapper } = require('../../build/lib/webpack');
 const outPath = path.resolve(__dirname, 'dist');
 const typeshedFallback = path.resolve(__dirname, '..', 'pyright-internal', 'typeshed-fallback');
 const pylibImplements = path.resolve(__dirname, 'pylib');
+const z3wrapper = path.resolve(__dirname, 'z3wrapper');
 
 /**@type {(env: any, argv: { mode: 'production' | 'development' | 'none' }) => import('webpack').Configuration}*/
 module.exports = (_, { mode }) => {
@@ -66,6 +67,7 @@ module.exports = (_, { mode }) => {
                 patterns: [
                     { from: typeshedFallback, to: 'typeshed-fallback' },
                     { from: pylibImplements, to: 'pylib' },
+                    { from: z3wrapper, to: 'z3wrapper' },
                 ],
             }),
         ],
