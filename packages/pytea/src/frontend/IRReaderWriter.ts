@@ -12,7 +12,18 @@ import { PyteaService } from 'src/service/pyteaService';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import { TEType, ThExpr, ThStmt, TSSeq, TSType } from './torchStatements';
+import {
+    TEBinOp,
+    TEBopType,
+    TEConst,
+    TEType,
+    TEUopType,
+    TEUnaryOp,
+    ThExpr,
+    ThStmt,
+    TSSeq,
+    TSType,
+} from './torchStatements';
 
 export namespace IRWriter {
     export function makeIRString(stmt: ThStmt | ThExpr, service: PyteaService): string {
@@ -20,10 +31,11 @@ export namespace IRWriter {
         const sourceMap: string[] = new Map();
 
         function showStmt(stmt: ThStmt): string {
-            const source = showSourcePos(service, sourceMap, stmt.source);
+            let source = showSourcePos(service, sourceMap, stmt.source);
+            if (!source) source = ' ' + source;
             switch (stmt.stype) {
                 case TSType.Pass:
-                    return source ? `(pass ${source})` : '(pass)';
+                    return `(pass${source})`;
                 case TSType.Expr:
                     return showExpr(stmt.expr);
                 case TSType.Seq: {
@@ -44,32 +56,59 @@ export namespace IRWriter {
                     return `(${flatten.map(showStmt).join(' ')})`;
                 }
                 case TSType.Assign:
+                    return `(assign${source} ${showExpr(stmt.left)} ${stmt.right})`;
                 case TSType.If:
+                    return `(if${source} ${showExpr(stmt.cond)} ${showStmt(stmt.thenStmt)} ${showStmt(stmt.elseStmt)})`;
                 case TSType.ForIn:
+                    return `(for${source} ${showStr(stmt.ident)} ${showExpr(stmt.loopVal)} ${showStmt(stmt.loopBody)})`;
                 case TSType.Return:
+                    return `(return${source})`;
                 case TSType.Continue:
+                    return `(continue${source})`;
                 case TSType.Break:
+                    return `(break${source})`;
                 case TSType.Let:
+                    return `(let${source} (${showStr(stmt.name)} ${stmt.expr ? showExpr(stmt.expr) : ''}) ${showStmt(
+                        stmt.scope
+                    )})`;
                 case TSType.FunDef:
-                    return ``;
+                    return `(fundef${source} ${showStr(stmt.name)} (${stmt.params.map(showStr).join(' ')}) ${showStmt(
+                        stmt.body
+                    )} ${showStmt(stmt.scope)})`;
             }
         }
 
         function showExpr(expr: ThExpr): string {
-            const source = showSourcePos(service, sourceMap, stmt.source);
+            // TODO
+            let source = showSourcePos(service, sourceMap, stmt.source);
+            if (!source) source = ' ' + source;
             switch (expr.etype) {
                 case TEType.Object:
-                    return source ? `(object ${source})` : '(object';
-                case TEType.Const:
+                    return `(object${source})`;
                 case TEType.Tuple:
+                    return `(tuple${source} ${expr.values.map(showExpr).join(' ')})`;
                 case TEType.Call:
+                    return `(call${source} ${showExpr(expr.func)} ${expr.params.map(showExpr).join(' ')})`;
                 case TEType.LibCall:
+                    return `(libcall${source} ${showStr(expr.type)} ${expr.params
+                        .map((p) => `(${showStr(p[0])} ${showExpr(p[1])})`)
+                        .join(' ')})`;
                 case TEType.BinOp:
-                case TEType.UnaryOp:
+                    return `(bop${source} ${TEBinOp.toStringBop(expr.bopType)} ${showExpr(expr.left)} ${showExpr(
+                        expr.right
+                    )})`;
+                case TEType.UnaryOp: {
+                    const uop = expr.uopType === TEUopType.Neg ? '-' : 'not';
+                    return `(uop${source} ${uop} ${showExpr(expr.base)})`;
+                }
                 case TEType.Name:
+                    return `(var${source} ${showStr(expr.ident)})`;
                 case TEType.Attr:
+                    return `(attr${source} ${showExpr(expr.left)} ${showStr(expr.right)})`;
                 case TEType.Subscr:
-                    return '';
+                    return `(subs${source} ${showExpr(expr.left)} ${showExpr(expr.right)})`;
+                case TEType.Const:
+                    return showConst(expr);
             }
         }
 
@@ -84,10 +123,20 @@ export namespace IRWriter {
         return `${code}\n${sourceMapStr}`;
     }
 
+    export function showConst(expr: TEConst): string {
+        //TODO
+        return ``;
+    }
+
     export function showSourcePos(service: PyteaService, sourceMap: string[], node?: ParseNode): string {
         if (!node) return ' ';
         // TODO
         return ' ';
+    }
+
+    export function showStr(str: string): string {
+        // TODO: escape
+        return `"${str}"`;
     }
 }
 
