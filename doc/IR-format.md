@@ -7,10 +7,10 @@ PyTea 내부에서 사용하는 IR은 LISP 형태로 변환되어 입출력을 �
 예를 들어 `x = 1 + 2`는 다음과 같은 IR로 번역된다.
 
 ```lisp
+(source-map "/home/path/to/script/test.py"
 (assign [0:0:9]
   (var [0:0:1] x)
-  (binop [0:4:9] + (const [0:4:5] 1) (const [0:8:9] 2)))
-(source-map ("/home/path/to/script/test.py"))
+  (binop [0:4:9] + (const [0:4:5] 1) (const [0:8:9] 2))))
 ```
 
 이 형태를 기반으로 한 IR 입출력의 구현은 `IRReader.ts`에 있으며, LISP 형태가 아닌 Python 형태로 좀 더 알아보기 쉽게 출력하려면 `ThStmt.toString` 함수를 사용하면 된다.
@@ -18,13 +18,11 @@ PyTea 내부에서 사용하는 IR은 LISP 형태로 변환되어 입출력을 �
 ## Syntax
 
 ```bnf
-<output> ::= <code> <source-map>
+<output> ::= <source-map>* 
 
-<code> ::= <stmt>
+<source-map> ::= (source-map <path> <stmt>)
 
-<source-map> ::= (source-map <path>* )
-
-<path> ::= ( <string> )
+<path> ::= <string>
 
 <stmt> ::=
     | <stmt-pass>
@@ -97,7 +95,7 @@ PyTea 내부에서 사용하는 IR은 LISP 형태로 변환되어 입출력을 �
 <uop-type> ::= not | -
 
 
-<source> ::= [ <int> : <int> : <int> ] // source
+<source> ::= [ <int> : <int> ] // start - end character position (0-start, exclusive)
 
 <int> ::= (0-9)+
 <float> ::= (0-9)+ . (0-9)*

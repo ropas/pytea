@@ -33,19 +33,15 @@ enum ExitStatus {
     ConfigFileParseError = 3,
 }
 
-function processArgs(): CommandLineOptions | undefined {
+function parsePyrightArgs(): CommandLineOptions | undefined {
     const optionDefinitions: OptionDefinition[] = [
-        { name: 'createstub', type: String },
-        { name: 'dependencies', type: Boolean },
-        { name: 'files', type: String, multiple: true, defaultOption: true },
+        { name: 'file', type: String, defaultOption: true },
         { name: 'help', alias: 'h', type: Boolean },
-        { name: 'lib', type: Boolean },
-        { name: 'outputjson', type: Boolean },
-        { name: 'project', alias: 'p', type: String },
-        { name: 'stats' },
-        { name: 'typeshed-path', alias: 't', type: String },
-        { name: 'venv-path', alias: 'v', type: String },
-        { name: 'verifytypes', type: String },
+        { name: 'extract-ir', alias: 'p', type: Boolean },
+        { name: 'lib-path', alias: 'l', type: String },
+        { name: 'config-path', type: String },
+        { name: 'python-args', alias: 'a', type: String },
+        { name: 'log-level', type: String },
         { name: 'verbose', type: Boolean },
         { name: 'version', type: Boolean },
         { name: 'watch', alias: 'w', type: Boolean },
@@ -76,40 +72,12 @@ function processArgs(): CommandLineOptions | undefined {
         return;
     }
 
-    if (args.outputjson) {
-        const incompatibleArgs = ['watch', 'stats', 'verbose', 'createstub', 'dependencies'];
-        for (const arg of incompatibleArgs) {
-            if (args[arg] !== undefined) {
-                console.error(`'outputjson' option cannot be used with '${arg}' option`);
-                return;
-            }
-        }
-    }
-
-    if (args['verifytypes'] !== undefined) {
-        const incompatibleArgs = ['watch', 'stats', 'createstub', 'dependencies'];
-        for (const arg of incompatibleArgs) {
-            if (args[arg] !== undefined) {
-                console.error(`'verifytypes' option cannot be used with '${arg}' option`);
-                return;
-            }
-        }
-    }
-
-    if (args.createstub) {
-        const incompatibleArgs = ['watch', 'stats', 'verifytypes', 'dependencies'];
-        for (const arg of incompatibleArgs) {
-            if (args[arg] !== undefined) {
-                console.error(`'createstub' option cannot be used with '${arg}' option`);
-                return;
-            }
-        }
-    }
-
     return args;
 }
 
-export function getPyteaService(entryPath: string): PyteaService | undefined {
+export function getPyteaService(args: CommandLineOptions): PyteaService | undefined {
+    const entryPath = args.file;
+
     if (!entryPath) {
         printUsage();
         return;
@@ -133,22 +101,22 @@ export function getPyteaService(entryPath: string): PyteaService | undefined {
     return pyteaService;
 }
 
-export function runPytea(entryPath: string): PyteaService | undefined {
-    const service = getPyteaService(entryPath);
-    service?.startAnalyzer([entryPath]);
+// export function runPytea(entryPath: string): PyteaService | undefined {
+//     const service = getPyteaService(entryPath);
+//     service?.startAnalyzer([entryPath]);
 
-    return service;
-}
+//     return service;
+// }
 
 function runMain(args: CommandLineOptions) {
     const options = new PyrightCommandLineOptions(process.cwd(), false);
 
     // Assume any relative paths are relative to the working directory.
-    if (args.files && Array.isArray(args.files)) {
-        options.fileSpecs = args.files;
-        options.fileSpecs = options.fileSpecs.map((f) => combinePaths(process.cwd(), f));
+    if (args.file) {
+        args.file = combinePaths(process.cwd(), args.file);
+        options.fileSpecs = [args.file];
     } else {
-        console.error('entry path is not set.');
+        console.error('Python script path is not set.');
         process.exit(ExitStatus.FatalError);
     }
 
@@ -156,24 +124,6 @@ function runMain(args: CommandLineOptions) {
         options.configFilePath = combinePaths(process.cwd(), normalizePath(args.project));
     }
 
-    if (args['venv-path']) {
-        options.venvPath = combinePaths(process.cwd(), normalizePath(args['venv-path']));
-    }
-
-    if (args['typeshed-path']) {
-        options.typeshedPath = combinePaths(process.cwd(), normalizePath(args['typeshed-path']));
-    }
-
-    if (args.createstub) {
-        options.typeStubTargetImportName = args.createstub;
-    }
-
-    if (args.verbose) {
-        options.verboseOutput = true;
-    }
-    if (args.lib) {
-        options.useLibraryCodeForTypes = true;
-    }
     options.checkOnlyOpenFiles = false;
 
     // ignore original pyright output.
@@ -198,7 +148,7 @@ function runMain(args: CommandLineOptions) {
         }
 
         if (!pyteaService && entryPath) {
-            pyteaService = getPyteaService(entryPath);
+            pyteaService = getPyteaService(args);
             pyteaService?.setAnalyzerService(pyrightService);
         }
 
@@ -246,19 +196,17 @@ function printUsage() {
     console.log(
         'Usage: ' +
             toolName +
-            ' [options] files...\n' +
+            ' [options] file\n' +
             '  Options:\n' +
-            '  --createstub IMPORT              Create type stub file(s) for import\n' +
-            '  --dependencies                   Emit import dependency information\n' +
             '  -h,--help                        Show this help message\n' +
-            '  --lib                            Use library code to infer types when stubs are missing\n' +
-            '  --outputjson                     Output results in JSON format\n' +
-            '  -p,--project FILE OR DIRECTORY   Use the configuration file at this location\n' +
-            '  --stats                          Print detailed performance stats\n' +
-            '  -t,--typeshed-path DIRECTORY     Use typeshed type stubs at this location\n' +
-            '  -v,--venv-path DIRECTORY         Directory that contains virtual environments\n' +
-            '  --verbose                        Emit verbose diagnostics\n' +
-            '  --version                        Print PyTEA version\n' +
+            '  -e,--extract-ir                  Run only Frontend and Extract\n' +
+            '                                       internal representations of Python scripts\n' +
+            '  -a,--python-args                 command line arguments for main Python script\n' +
+            '  -l,--lib-path                    Path to PyTea Python library implementations\n' +
+            '  --config-path                    Path to pyteaconfig.json\n' +
+            '  --log-level                      Verbosity of log (none, result-only, reduced, full)\n' +
+            '  --verbose                        Emit Pyright verbose diagnostics\n' +
+            '  --version                        Print PyTea version\n' +
             '  -w,--watch                       Continue to run and watch for changes\n'
     );
 }
@@ -279,6 +227,6 @@ export function main() {
         require('source-map-support').install();
     }
 
-    const args = processArgs();
+    const args = parsePyrightArgs();
     if (args) runMain(args);
 }

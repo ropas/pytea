@@ -24,7 +24,7 @@ export interface PyteaOptions {
     pythonCmdArgs: PyCmdArgs;
 
     // Debug log level (default: reduced)
-    logLevel: 'none' | 'result_only' | 'reduced' | 'full';
+    logLevel: 'none' | 'result-only' | 'reduced' | 'full';
 
     // Check and discard trivial constraints (default: true)
     immediateConstraintCheck: boolean;

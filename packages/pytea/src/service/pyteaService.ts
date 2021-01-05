@@ -365,7 +365,7 @@ export class PyteaService {
             case 'none':
                 this._noneLog(result);
                 break;
-            case 'result_only':
+            case 'result-only':
                 this._resultOnlyLog(result);
                 break;
             case 'reduced':
