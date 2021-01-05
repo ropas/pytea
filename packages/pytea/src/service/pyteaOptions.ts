@@ -32,8 +32,8 @@ export interface PyteaOptions {
     // Ignore assert statements of Python. (default: false)
     ignoreAssert: boolean;
 
-    // Print internal representation (TorchIR)
-    printIR: boolean;
+    // Extract internal representation to file (TorchIR)
+    extractIR: boolean;
 }
 
 export type PyteaOptionsPart = Partial<PyteaOptions>;
@@ -43,5 +43,5 @@ export const defaultOptions: PyteaOptionsPart = {
     logLevel: 'reduced',
     immediateConstraintCheck: true,
     ignoreAssert: false,
-    printIR: false,
+    extractIR: false,
 };

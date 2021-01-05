@@ -27,7 +27,7 @@ import { ShContFlag, ShValue, SVSize, SVString, SVType } from '../backend/sharpV
 import { SymExp } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
 import { ThStmt } from '../frontend/torchStatements';
-import { PyCmdArgs, PyteaOptions, PyteaOptionsPart } from './pyteaOptions';
+import { PyCmdArgs, PyteaOptions } from './pyteaOptions';
 import * as PyteaUtils from './pyteaUtils';
 
 let _globalService: PyteaService | undefined;
@@ -54,7 +54,7 @@ export class PyteaService {
     private _timeLog: [string, number][];
     private _currTime: number;
 
-    constructor(pyteaOptions: PyteaOptionsPart, console?: ConsoleInterface, setDefault?: boolean) {
+    constructor(pyteaOptions: PyteaOptions, console?: ConsoleInterface, setDefault?: boolean) {
         if (setDefault) _globalService = this;
 
         this._console = console || new StandardConsole();
@@ -66,11 +66,7 @@ export class PyteaService {
         this._entryPath = '';
         this._entryName = '';
 
-        try {
-            this._options = PyteaUtils.refineOptions(pyteaOptions);
-        } catch (e) {
-            this._console.error(e);
-        }
+        this._options = pyteaOptions;
 
         this._libStmt = new Map();
     }
@@ -285,7 +281,7 @@ export class PyteaService {
 
         this._pushTimeLog('Running builtin libraries');
 
-        if (this._options!.printIR)
+        if (this._options!.extractIR)
             this._console.log(chalk.yellow(`PARSED STATEMENTS:`) + chalk.gray(`\n${ThStmt.toString(stmt)}\n`));
 
         const startSet = builtinSet.map((ctx) => {

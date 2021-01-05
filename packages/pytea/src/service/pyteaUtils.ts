@@ -6,7 +6,8 @@
  *
  * Utility functions for PyTea service.
  */
-import * as PyteaUtils from 'fs';
+import { CommandLineOptions } from 'command-line-args';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as util from 'util';
 
@@ -44,75 +45,80 @@ export class NodeConsole implements ConsoleInterface {
     }
 }
 
-export function makeOptionParts(entryName: string): PyteaOptionsPart | string {
+export function buildPyteaOption(args: CommandLineOptions): PyteaOptions | string {
     const cwd = path.normalize(process.cwd());
-    const entryPath = normalizePath(combinePaths(cwd, entryName));
-    let isDir = false;
 
-    if (!PyteaUtils.existsSync(entryPath)) {
-        return `entry file ${entryPath} does not exists.`;
-    } else if (PyteaUtils.lstatSync(entryPath).isDirectory()) {
-        // console.log(`setting project path: ${entryPath}`);
-        isDir = true;
-    } else {
-        // console.log(`setting entry path: ${entryPath}`);
+    const rawEntryPath: string = args['file'];
+    const rawConfigPath: string = args['configPath'];
+    const rawLibPath: string = args.libPath ? normalizePath(combinePaths(cwd, args.libPath)) : '';
+
+    const entryPath: string = rawEntryPath ? normalizePath(combinePaths(cwd, rawEntryPath)) : '';
+    let configPath: string = rawConfigPath ? normalizePath(combinePaths(cwd, rawConfigPath)) : '';
+
+    if (!configPath && !entryPath) {
+        return `neither configPath nor file path is found: ${entryPath}`;
+    }
+    if (entryPath && !fs.existsSync(entryPath)) {
+        return `file path '${entryPath}' does not exist`;
     }
 
-    const dirPath = isDir ? entryPath : path.dirname(entryPath);
-    const configPath = path.join(dirPath, 'pyteaconfig.json');
+    let options: PyteaOptionsPart = {};
+    options.configPath = configPath;
 
-    if (!PyteaUtils.existsSync(configPath)) {
-        return `config json ${configPath} does not exists.`;
-    }
-
-    const pyteaOptions: PyteaOptionsPart = isDir ? { configPath } : { configPath, entryPath };
-
-    return pyteaOptions;
-}
-
-// make paths in options absolute
-export function refineOptions(options: PyteaOptionsPart): PyteaOptions {
-    let opt: PyteaOptionsPart = { ...defaultOptions, ...options };
-    const configPath = opt.configPath;
-
-    let entryPath = opt.entryPath;
-    let basePath = '';
-
-    if (configPath && PyteaUtils.existsSync(configPath)) {
-        basePath = path.dirname(configPath);
-        try {
-            const configJSON: Partial<PyteaOptions> = JSON.parse(PyteaUtils.readFileSync(configPath).toString());
-            opt = { ...opt, ...configJSON };
-        } catch (e) {
-            throw `${configPath} is not a valid JSON file`;
+    // find config by entryPath if configPath is not set
+    if (!configPath && entryPath) {
+        let isDir = false;
+        if (fs.lstatSync(entryPath).isDirectory()) {
+            isDir = true;
         }
-    } else if (entryPath && PyteaUtils.existsSync(entryPath)) {
-        basePath = path.dirname(entryPath);
+        const dirPath = isDir ? entryPath : path.dirname(entryPath);
+        configPath = combinePaths(dirPath, 'pyteaconfig.json');
     }
 
-    entryPath = opt.entryPath;
-
-    if (!basePath) {
-        throw `either configPath${configPath ? `(${configPath})` : ''} or entryPath${
-            entryPath ? `(${entryPath})` : ''
-        } is not found`;
+    if (configPath && !fs.existsSync(configPath)) {
+        return `config json '${configPath}' does not exist`;
     }
 
-    if (!opt.pyteaLibPath) {
-        // throw 'pyteaLibPath is not set';
-        opt.pyteaLibPath = path.join(__dirname, 'pylib');
+    const dirPath: string = path.dirname(configPath);
+
+    try {
+        options = JSON.parse(fs.readFileSync(configPath).toString());
+    } catch (e) {
+        throw `'${configPath}' is not a valid JSON file`;
     }
 
-    if (entryPath && !path.isAbsolute(entryPath)) opt.entryPath = path.join(basePath, entryPath);
-    if (!path.isAbsolute(opt.pyteaLibPath)) opt.pyteaLibPath = path.join(basePath, opt.pyteaLibPath);
-
-    if (opt.entryPath && !PyteaUtils.existsSync(opt.entryPath)) {
-        throw `cannot find entryPath ${opt.entryPath}`;
-    } else if (!PyteaUtils.existsSync(opt.pyteaLibPath)) {
-        throw `cannot find pyteaLibPath ${opt.pyteaLibPath}`;
+    if (entryPath) {
+        // entry path is explicitly given
+        options.entryPath = entryPath;
+    } else if (options.entryPath) {
+        options.entryPath = normalizePath(combinePaths(dirPath, options.entryPath));
     }
 
-    return opt as PyteaOptions;
+    if (entryPath) options.entryPath = entryPath;
+    if (!options.entryPath || !fs.existsSync(options.entryPath)) {
+        return `file path '${options.entryPath}' does not exist`;
+    }
+
+    if (rawLibPath) {
+        options.pyteaLibPath = rawLibPath;
+    } else if (!options.pyteaLibPath) {
+        // default libpath should be bundled with pytea.js
+        options.pyteaLibPath = path.join(__dirname, 'pylib');
+    } else {
+        options.pyteaLibPath = normalizePath(combinePaths(dirPath, options.pyteaLibPath));
+    }
+
+    if (!fs.existsSync(options.pyteaLibPath)) {
+        return `pytea library path '${options.pyteaLibPath}' does not exist`;
+    }
+
+    options = { ...defaultOptions, ...options };
+
+    // override by runtime node args
+    if (args.logLevel !== undefined) options.logLevel = args.logLevel;
+    if (args.extractIR !== undefined) options.extractIR = args.extractIR;
+
+    return options as PyteaOptions;
 }
 
 // return every .py filenames
@@ -124,7 +130,7 @@ export function getTorchLibFileNames(baseDirPath: string, configOptions: ConfigO
         : undefined;
 
     function iterDir(dirPath: string, prefix: string): void {
-        PyteaUtils.readdirSync(dirPath, { withFileTypes: true }).forEach((dirent) => {
+        fs.readdirSync(dirPath, { withFileTypes: true }).forEach((dirent) => {
             const fullPath = path.join(dirPath, dirent.name);
             const relPath = path.join(prefix, dirent.name);
 
@@ -134,7 +140,7 @@ export function getTorchLibFileNames(baseDirPath: string, configOptions: ConfigO
             }
             if (dirent.isDirectory()) {
                 // ignore venv
-                if (PyteaUtils.existsSync(path.join(fullPath, 'pyvenv.cfg'))) {
+                if (fs.existsSync(path.join(fullPath, 'pyvenv.cfg'))) {
                     return;
                 }
                 iterDir(fullPath, relPath);

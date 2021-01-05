@@ -19,10 +19,10 @@ import { CommandLineOptions as PyrightCommandLineOptions } from 'pyright-interna
 import { NullConsole, StandardConsole } from 'pyright-internal/common/console';
 
 import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
-import { combinePaths, normalizePath } from 'pyright-internal/common/pathUtils';
+import { combinePaths } from 'pyright-internal/common/pathUtils';
 
 import { PyteaService } from './service/pyteaService';
-import { makeOptionParts } from './service/pyteaUtils';
+import { buildPyteaOption } from './service/pyteaUtils';
 
 const toolName = 'pytea';
 
@@ -35,16 +35,16 @@ enum ExitStatus {
 
 function parsePyrightArgs(): CommandLineOptions | undefined {
     const optionDefinitions: OptionDefinition[] = [
-        { name: 'file', type: String, defaultOption: true },
+        { name: 'file', type: String, defaultOption: true, defaultValue: '' },
         { name: 'help', alias: 'h', type: Boolean },
-        { name: 'extract-ir', alias: 'p', type: Boolean },
-        { name: 'lib-path', alias: 'l', type: String },
-        { name: 'config-path', type: String },
-        { name: 'python-args', alias: 'a', type: String },
-        { name: 'log-level', type: String },
-        { name: 'verbose', type: Boolean },
+        { name: 'extractIR', alias: 'e', type: Boolean },
+        { name: 'libPath', alias: 'l', type: String },
+        { name: 'configPath', type: String, defaultValue: '' },
+        { name: 'pythonArgs', alias: 'a', type: String },
+        { name: 'logLevel', type: String },
+        { name: 'verbose', type: Boolean, defaultValue: false },
         { name: 'version', type: Boolean },
-        { name: 'watch', alias: 'w', type: Boolean },
+        { name: 'watch', alias: 'w', type: Boolean, defaultValue: false },
     ];
 
     let args: CommandLineOptions;
@@ -83,30 +83,18 @@ export function getPyteaService(args: CommandLineOptions): PyteaService | undefi
         return;
     }
 
-    // const entryName = './test/scratch.py';
-    const pyteaOptions = makeOptionParts(entryPath);
+    const pyteaOptions = buildPyteaOption(args);
+
     if (typeof pyteaOptions === 'string') {
         console.error(pyteaOptions);
-        return;
+        process.exit(-1);
     }
 
     const logger = new StandardConsole();
     const pyteaService = new PyteaService(pyteaOptions, logger, true);
 
-    // options not set, has error.
-    if (!pyteaService.options) {
-        return;
-    }
-
     return pyteaService;
 }
-
-// export function runPytea(entryPath: string): PyteaService | undefined {
-//     const service = getPyteaService(entryPath);
-//     service?.startAnalyzer([entryPath]);
-
-//     return service;
-// }
 
 function runMain(args: CommandLineOptions) {
     const options = new PyrightCommandLineOptions(process.cwd(), false);
@@ -120,17 +108,11 @@ function runMain(args: CommandLineOptions) {
         process.exit(ExitStatus.FatalError);
     }
 
-    if (args.project) {
-        options.configFilePath = combinePaths(process.cwd(), normalizePath(args.project));
-    }
-
     options.checkOnlyOpenFiles = false;
 
     // ignore original pyright output.
-    // const output = args.outputjson ? new NullConsole() : undefined;
     const output = new NullConsole();
     const realFileSystem = createFromRealFileSystem(output);
-    const entryPath = options.fileSpecs[0] as string | undefined;
 
     const watch = args.watch !== undefined;
     options.watchForSourceChanges = watch;
@@ -147,7 +129,7 @@ function runMain(args: CommandLineOptions) {
             process.exit(ExitStatus.ConfigFileParseError);
         }
 
-        if (!pyteaService && entryPath) {
+        if (!pyteaService) {
             pyteaService = getPyteaService(args);
             pyteaService?.setAnalyzerService(pyrightService);
         }
@@ -183,7 +165,7 @@ function runMain(args: CommandLineOptions) {
         }
     });
 
-    // This will trigger the analyzer.
+    // This will trigger the pyright analyzer.
     pyrightService.setOptions(options);
 
     const brokenPromise = new Promise(() => {
@@ -199,12 +181,12 @@ function printUsage() {
             ' [options] file\n' +
             '  Options:\n' +
             '  -h,--help                        Show this help message\n' +
-            '  -e,--extract-ir                  Run only Frontend and Extract\n' +
+            '  -e,--extractIR                  Run only Frontend and Extract\n' +
             '                                       internal representations of Python scripts\n' +
-            '  -a,--python-args                 command line arguments for main Python script\n' +
-            '  -l,--lib-path                    Path to PyTea Python library implementations\n' +
-            '  --config-path                    Path to pyteaconfig.json\n' +
-            '  --log-level                      Verbosity of log (none, result-only, reduced, full)\n' +
+            '  -a,--pythonArgs                 command line arguments for main Python script\n' +
+            '  -l,--libPath                    Path to PyTea Python library implementations\n' +
+            '  --configPath                    Path to pyteaconfig.json\n' +
+            '  --logLevel                      Verbosity of log (none, result-only, reduced, full)\n' +
             '  --verbose                        Emit Pyright verbose diagnostics\n' +
             '  --version                        Print PyTea version\n' +
             '  -w,--watch                       Continue to run and watch for changes\n'
