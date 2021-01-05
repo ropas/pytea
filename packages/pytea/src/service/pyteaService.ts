@@ -373,7 +373,7 @@ export class PyteaService {
                 break;
 
             case 'full':
-                this._fullLog(stmt, result);
+                this._fullLog(result);
                 break;
         }
     }
@@ -472,7 +472,7 @@ export class PyteaService {
         );
     }
 
-    private _fullLog(stmt: ThStmt, result: ContextSet<ShValue | ShContFlag>): void {
+    private _fullLog(result: ContextSet<ShValue | ShContFlag>): void {
         const success = result.getList();
         const failed = result.getFailed();
 

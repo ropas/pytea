@@ -12,23 +12,12 @@ import { PyteaService } from 'src/service/pyteaService';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import {
-    TEBinOp,
-    TEBopType,
-    TEConst,
-    TEType,
-    TEUopType,
-    TEUnaryOp,
-    ThExpr,
-    ThStmt,
-    TSSeq,
-    TSType,
-} from './torchStatements';
+import { TEBinOp, TEConst, TEType, TEUopType, ThExpr, ThStmt, TSSeq, TSType } from './torchStatements';
 
 export namespace IRWriter {
     export function makeIRString(stmt: ThStmt | ThExpr, service: PyteaService): string {
         let code: string;
-        const sourceMap: string[] = new Map();
+        const sourceMap: string[] = [];
 
         function showStmt(stmt: ThStmt): string {
             let source = showSourcePos(service, sourceMap, stmt.source);
