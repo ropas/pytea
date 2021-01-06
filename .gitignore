@@ -119,3 +119,7 @@ dist
 junit.xml
 
 packages/pytea-server/public/js/app.js
+
+# pythons
+*.pyc
+packages/pytea/constraint.json

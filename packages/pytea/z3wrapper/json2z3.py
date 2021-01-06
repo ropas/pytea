@@ -13,6 +13,7 @@ and return constraint conditions.
 from z3 import *
 from enum import Enum
 from functools import reduce
+from pathlib import Path
 import json
 import sys
 import time
@@ -114,7 +115,7 @@ class ConstraintType(Enum):
     Fail = 10
 
 
-class Z3encoder:
+class Z3Encoder:
     def __init__(self, console):
         """
         the structure of json file should be like below.
@@ -835,17 +836,27 @@ class DefaultConsole:
         print(message)
 
 
-if __name__ == "__main__":
+def run_default(json_path):
     start_time = time.time()
+    json_path = Path(json_path)
+
+    if not json_path.exists():
+        print(f"result json '{json_path}' does not exist")
+        return
+
+    with json_path.open("r") as f:
+        ctr_set = json.load(f)
+        encoder = Z3Encoder(DefaultConsole())
+        encoder.analyze(ctr_set)
+
+        print(f"z3 runtime: {time.time() - start_time:.4f}")
+
+
+if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: ./json2z3.py <json_file>")
         sys.exit()
 
-    json_file_path = str(sys.argv[1])
-    with open(json_file_path, "r") as json_file:
-        ctr_set = json.load(json_file)
+    json_path = str(sys.argv[1])
+    run_default(json_path)
 
-        encoder = Z3encoder(DefaultConsole())
-        encoder.analyze(ctr_set)
-
-        print(f"runtime: {time.time() - start_time}")

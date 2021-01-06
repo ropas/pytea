@@ -79,28 +79,32 @@ export function buildPyteaOption(args: CommandLineOptions): PyteaOptions | strin
     }
 
     if (configPath && !fs.existsSync(configPath)) {
-        return `config json '${configPath}' does not exist`;
+        console.log(`config json '${configPath}' does not exist. use default options`);
+        configPath = '';
     }
 
-    const dirPath: string = path.dirname(configPath);
+    let dirPath: string;
 
     try {
-        options = JSON.parse(fs.readFileSync(configPath).toString());
+        if (configPath) {
+            dirPath = path.dirname(configPath);
+            options = JSON.parse(fs.readFileSync(configPath).toString());
+            if (options.entryPath) options.entryPath = normalizePath(combinePaths(dirPath, options.entryPath));
+        } else {
+            options = { ...defaultOptions };
+        }
     } catch (e) {
         throw `'${configPath}' is not a valid JSON file`;
     }
 
-    if (entryPath) {
-        // entry path is explicitly given
-        options.entryPath = entryPath;
-    } else if (options.entryPath) {
-        options.entryPath = normalizePath(combinePaths(dirPath, options.entryPath));
-    }
-
+    // entry path is explicitly given
     if (entryPath) options.entryPath = entryPath;
+
     if (!options.entryPath || !fs.existsSync(options.entryPath)) {
         return `file path '${options.entryPath}' does not exist`;
     }
+
+    dirPath = path.dirname(options.entryPath);
 
     if (rawLibPath) {
         options.pyteaLibPath = rawLibPath;
@@ -289,13 +293,23 @@ export function runZ3Py<T>(result: ContextSet<T>): void {
         return;
     }
 
-    const jsonStr = '[\n' + jsonList.join(',\n') + '\n]';
+    const jsonStr = `[\n${jsonList.join(',\n')}\n]`;
 
-    tmp.file((err, path, fd) => {
+    tmp.file((err, path) => {
         if (!err) {
             console.log(`save constraint json file to ${path}`);
             fs.writeFileSync(path, jsonStr);
             spawn('python', [pyteaPath, path]);
         }
     });
+}
+
+export function exportConstraintSet<T>(result: ContextSet<T>, path: string): void {
+    const jsonList: string[] = [];
+    result.getList().forEach((ctx) => {
+        jsonList.push(ctx.ctrSet.getConstraintJSON());
+    });
+
+    const jsonStr = `[\n${jsonList.join(',\n')}\n]`;
+    fs.writeFileSync(path, jsonStr);
 }

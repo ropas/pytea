@@ -9,7 +9,14 @@ cd packages/pytea
 npm run webpack # compile development build
 # npm run build # compile production build
 
+# run constraint generator only
 node ./index.js path/to/entry_python_script.py
+
+# run with z3
+# CAUTION! should run `npm run webpack` before it to make typescript files!
+# it first run node ./index.js path/to/entry_python_script.py and make
+python pytea.py path/to/entry_python_script.py
+
 ```
 
 ## debug

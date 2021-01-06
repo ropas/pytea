@@ -16,7 +16,6 @@ import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { CommandLineOptions as PyrightCommandLineOptions } from 'pyright-internal/common/commandLineOptions';
 import { ConsoleInterface, NullConsole, StandardConsole } from 'pyright-internal/common/console';
 import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
-import { combinePaths } from 'pyright-internal/common/pathUtils';
 
 import { fetchAddr } from '../backend/backUtils';
 import { ContextSet } from '../backend/context';

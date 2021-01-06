@@ -1,13 +1,18 @@
 #!/usr/bin/env python
 
 """
-usage: chmod +x pytea.py
-       ./pytea.py <pytorch_pgm_path>
+json2z3.py
+Copyright (c) Seoul National University
+Licensed under the MIT license.
+Author: Ho Young Jhoo
+
+Main starting point of Pytea analyzer
 """
 import os
 import subprocess
 import argparse
 from pathlib import Path
+from z3wrapper.json2z3 import run_default
 
 
 def parse_arg():
@@ -18,7 +23,9 @@ def parse_arg():
     parser = argparse.ArgumentParser("PyTeA: PyTorch Tensor shape Analyzer")
     parser.add_argument("path", help="PyTorch entry file path")
     parser.add_argument(
-        "--out", default="", help="z3 json output path. (default: <path>_z3.json)"
+        "--out",
+        default="./constraint.json",
+        help="z3 json output path. (default: ./constraint.json)",
     )
     parser.add_argument(
         "--z3_only", action="store_true", help="run z3py on z3 json file <path>"
@@ -29,7 +36,12 @@ def parse_arg():
         help="do not run z3py and just produce z3 json file",
     )
     parser.add_argument(
-        "--backend_path", default="./pylib/json2z3.py", help="path to json2z3.py"
+        "--front_path",
+        default="./index.js",
+        help="path to constraint generator (index.js)",
+    )
+    parser.add_argument(
+        "--node-arguments", default="", help="arguments for constraint generator"
     )
 
     return parser.parse_args()
@@ -38,21 +50,13 @@ def parse_arg():
 def main():
     args = parse_arg()
 
-    backend_path = Path(args.backend_path)
     entry_path = Path(args.path)
-
     if not entry_path.exists():
         raise Exception(f"entry path {entry_path} does not exist")
-    if not backend_path.exists():
-        raise Exception(f"json2z3.py path {backend_path} does not exist")
 
     base_dir = entry_path.parent
 
-    if args.out == "":
-        json_path = base_dir / f"{entry_path.stem}_z3.json"
-    else:
-        json_path = Path(args.out)
-
+    json_path = Path(args.out)
     if args.z3_only:
         json_path = entry_path
 
@@ -61,14 +65,14 @@ def main():
         if json_path.exists():
             os.remove(json_path)
 
-        frontend_command = f"npm run test:torch {entry_path}"
+        frontend_command = f"node {args.front_path} {entry_path} {args.node_arguments}"
+        print(frontend_command)
         subprocess.call(frontend_command, shell=True)
 
     # run backend with json formatted constraints.
     if not args.no_z3:
-        if json_path.exists():
-            backend_command = f"python {backend_path} {json_path}"
-            subprocess.call(backend_command, shell=True)
+        print("\n------------- z3 result -------------")
+        run_default(json_path)
 
 
 if __name__ == "__main__":

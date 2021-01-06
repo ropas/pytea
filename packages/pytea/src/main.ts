@@ -22,7 +22,7 @@ import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
 import { combinePaths } from 'pyright-internal/common/pathUtils';
 
 import { PyteaService } from './service/pyteaService';
-import { buildPyteaOption, runZ3Py } from './service/pyteaUtils';
+import { buildPyteaOption, exportConstraintSet, runZ3Py } from './service/pyteaUtils';
 
 const toolName = 'pytea';
 
@@ -40,6 +40,7 @@ function parsePyrightArgs(): CommandLineOptions | undefined {
         { name: 'extractIR', alias: 'e', type: Boolean },
         { name: 'libPath', alias: 'l', type: String },
         { name: 'configPath', type: String, defaultValue: '' },
+        { name: 'resultPath', type: String, defaultValue: './constraint.json' },
         { name: 'pythonArgs', alias: 'a', type: String },
         { name: 'logLevel', type: String },
         { name: 'verbose', type: Boolean, defaultValue: false },
@@ -58,7 +59,7 @@ function parsePyrightArgs(): CommandLineOptions | undefined {
             return;
         }
 
-        console.error(`Unexpected error\n${toolName} --help for usage`);
+        console.error(`Unexpected error while parsing command line options.\n${toolName} --help for usage`);
         return;
     }
 
@@ -120,6 +121,8 @@ function runMain(args: CommandLineOptions) {
     const pyrightService = new AnalyzerService('<default>', realFileSystem, output);
     let pyteaService: PyteaService | undefined;
 
+    const resultPath = combinePaths(process.cwd(), args.resultPath);
+
     pyrightService.setCompletionCallback((results) => {
         if (results.fatalErrorOccurred) {
             process.exit(ExitStatus.FatalError);
@@ -151,6 +154,8 @@ function runMain(args: CommandLineOptions) {
                         pyteaService.printLog(result);
                         if (watch) {
                             runZ3Py(result);
+                        } else {
+                            exportConstraintSet(result, resultPath);
                         }
                     }
                 } catch (e) {
@@ -191,10 +196,11 @@ function printUsage() {
             '  -a,--pythonArgs                 command line arguments for main Python script\n' +
             '  -l,--libPath                    Path to PyTea Python library implementations\n' +
             '  --configPath                    Path to pyteaconfig.json\n' +
+            '  --resultPath                    Path to save result constraint json\n' +
             '  --logLevel                      Verbosity of log (none, result-only, reduced, full)\n' +
-            '  --verbose                        Emit Pyright verbose diagnostics\n' +
-            '  --version                        Print PyTea version\n' +
-            '  -w,--watch                       Continue to run and watch for changes\n'
+            '  --verbose                       Emit Pyright verbose diagnostics\n' +
+            '  --version                       Print PyTea version\n' +
+            '  -w,--watch                      Continue to run and watch for changes\n'
     );
 }
 
