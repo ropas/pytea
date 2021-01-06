@@ -14,11 +14,13 @@ import { ContextSet } from 'src/backend/context';
 import tmp from 'tmp';
 import * as util from 'util';
 
+import { getFileInfo } from 'pyright-internal/analyzer/analyzerNodeInfo';
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { ConfigOptions } from 'pyright-internal/common/configOptions';
 import { ConsoleInterface } from 'pyright-internal/common/console';
 import { combinePaths, getPathComponents, normalizePath } from 'pyright-internal/common/pathUtils';
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
+import { convertOffsetToPosition } from 'pyright-internal/common/positionUtils';
+import { ParseNode, ParseNodeType } from 'pyright-internal/parser/parseNodes';
 
 import { TorchIRFrontend } from '../frontend/torchFrontend';
 import { ThStmt } from '../frontend/torchStatements';
@@ -233,14 +235,6 @@ export function getStmtsFromDir(service: AnalyzerService, dirPath: string): Map<
     return libMap;
 }
 
-export function nodePosToString(node?: ParseNode): string {
-    if (!node) {
-        return 'internal';
-    }
-
-    return `char index [${node.start}:${node.start + node.length}]`;
-}
-
 // 'src.module.A' -> ['src', 'src.module', 'src.module.A']
 // '..A.B' (from ..A import B) -> ['..', '..A', '..A.B']
 // '.A.B', 'C.D' -> ['C', 'C.A', 'C.A.B']
@@ -312,4 +306,25 @@ export function exportConstraintSet<T>(result: ContextSet<T>, path: string): voi
 
     const jsonStr = `[\n${jsonList.join(',\n')}\n]`;
     fs.writeFileSync(path, jsonStr);
+}
+
+export function formatParseNode(node?: ParseNode): string {
+    if (!node) {
+        return 'internal';
+    }
+    let moduleNode = node;
+    while (moduleNode.nodeType !== ParseNodeType.Module) {
+        moduleNode = moduleNode.parent!;
+    }
+
+    const fileInfo = getFileInfo(moduleNode)!;
+
+    const filePath = fileInfo.filePath;
+    const lines = fileInfo.lines;
+    const start = convertOffsetToPosition(node.start, lines);
+    const end = convertOffsetToPosition(node.start + node.length, lines);
+
+    const relPath = path.relative(process.cwd(), filePath);
+
+    return `[${start.line + 1}:${start.character} - ${end.line + 1}:${end.character}] @ ${relPath}`;
 }

@@ -7,9 +7,10 @@
  * Definitions and types of constraints.
  */
 
+import { formatParseNode } from 'src/service/pyteaUtils';
+
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import { sourceToString } from './backUtils';
 import { ExpBool, ExpNum, ExpShape, SymExp, SymInt } from './symExpressions';
 
 export const enum ConstraintType {
@@ -170,7 +171,7 @@ export function ctrToStr(ctr: Constraint, noSource?: boolean): string {
     if (noSource) {
         return str;
     } else {
-        const src = sourceToString(ctr.source);
+        const src = formatParseNode(ctr.source);
         return `${str} - ${src}`;
     }
 }

@@ -366,9 +366,10 @@ export class PyteaService {
 
         failed.forEach((ctx, i) => {
             const source = ctx.retVal.source;
-            const toStr = PyteaUtils.nodePosToString;
 
-            this._console.log(`failed path #${i + 1}: ${ctx.retVal.reason} / at ${ctx.relPath} ${toStr(source)}\n\n`);
+            this._console.log(
+                `failed path #${i + 1}: ${ctx.retVal.reason} - ${PyteaUtils.formatParseNode(source)}\n\n`
+            );
         });
 
         this._pushTimeLog('printing results');
@@ -418,7 +419,6 @@ export class PyteaService {
 
         failed.forEach((ctx, i) => {
             const source = ctx.retVal.source;
-            const toStr = PyteaUtils.nodePosToString;
 
             const heapLog = ctx.env.addrMap
                 .filter((v) => v.addr >= 0)
@@ -429,7 +429,7 @@ export class PyteaService {
 
             this._console.log(
                 chalk.red(`failed path #${i + 1}`) +
-                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${toStr(source)}\n\n` +
+                    `: ${ctx.retVal.reason} - ${PyteaUtils.formatParseNode(source)}\n\n` +
                     `LOGS:\n${ctx.logsToString()}\n\n` +
                     'CONSTRAINTS:\n' +
                     ctx.ctrSet.toString() +
@@ -471,11 +471,10 @@ export class PyteaService {
 
         failed.forEach((ctx, i) => {
             const source = ctx.retVal.source;
-            const toStr = PyteaUtils.nodePosToString;
 
             this._console.log(
                 chalk.red(`failed path #${i + 1}`) +
-                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${toStr(source)}\n` +
+                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${PyteaUtils.formatParseNode(source)}\n` +
                     `LOGS:\n${ctx.logsToString()}\n` +
                     'CONSTRAINTS:\n' +
                     ctx.ctrSet.toString() +
