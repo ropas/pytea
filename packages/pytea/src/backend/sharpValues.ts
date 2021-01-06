@@ -8,6 +8,7 @@
  */
 
 import { List, Map, Record } from 'immutable';
+import { formatParseNode } from 'src/service/pyteaUtils';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
@@ -697,8 +698,8 @@ export class SVError extends Record(svErrorDefaults) implements SVErrorProps {
     }
 
     toString(): string {
-        const pos = this.source ? ` at [${this.source.start} - ${this.source.start + this.source.length}]` : '';
-        return `SVError< ${this.reason} >${pos}`;
+        const pos = formatParseNode(this.source);
+        return `SVError< ${this.reason} > ${pos}`;
     }
 }
 

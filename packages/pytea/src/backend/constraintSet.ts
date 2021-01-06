@@ -162,7 +162,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
             .map((ctr, idx) => {
                 const str = ctrToStr(ctr);
                 if (this.hardCtr.contains(idx)) {
-                    return chalk.green(str);
+                    return chalk.magenta(str);
                 } else if (this.pathCtr.contains(idx)) {
                     return chalk.yellow(str);
                 } else {

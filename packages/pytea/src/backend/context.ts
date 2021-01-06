@@ -8,10 +8,10 @@
  * Collection of Environment, Heap, and Constraint set.
  */
 import { List, Map, Record } from 'immutable';
+import { formatParseNode } from 'src/service/pyteaUtils';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import { nodePosToString } from '../service/pyteaUtils';
 import { fetchAddr } from './backUtils';
 import { ConstraintSet } from './constraintSet';
 import {
@@ -255,15 +255,12 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     logsToString(): string {
         return this.logs
             .map((log) => {
-                const start = log.source?.start;
-                let end = undefined;
-                if (log.source) end = log.source.start + log.source.length;
-                const posStr = log.source ? ` - [${start}:${end}]` : '';
+                const posStr = formatParseNode(log.source);
 
                 if (log.type === SVType.Error) {
-                    return log.reason + posStr;
+                    return `${log.reason} - ${posStr}`;
                 } else {
-                    return log.toString() + posStr;
+                    return `${log.toString()} - ${posStr}`;
                 }
             })
             .join('\n');
@@ -279,7 +276,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
                     return f.name !== 'callKV';
                 }
             })
-            .map(([f, n]) => `  ${typeof f === 'string' ? f : f.name} / at ${this.relPath} ${nodePosToString(n)}`)
+            .map(([func, node]) => `${typeof func === 'string' ? func : func.name} - ${formatParseNode(node)}`)
             .reverse()
             .join('\n');
     }

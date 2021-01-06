@@ -92,14 +92,6 @@ export function sanitizeAddrSet(ctxSet: ContextSet<ShValue>): ContextSet<ShValue
     return ctxSet.map(sanitizeAddrCtx);
 }
 
-export function sourceToString(source?: ParseNode) {
-    if (source) {
-        return `[${source.start}:${source.start + source.length}]`;
-    } else {
-        return 'undef';
-    }
-}
-
 export function sanitizeSource(obj: Object): typeof obj {
     // TODO: map Map
     if (typeof obj !== 'object') {
