@@ -312,12 +312,13 @@ export function formatParseNode(node?: ParseNode): string {
     if (!node) {
         return 'internal';
     }
-
-    while (node.nodeType !== ParseNodeType.Module) {
-        node = node.parent!;
+    let moduleNode = node;
+    while (moduleNode.nodeType !== ParseNodeType.Module) {
+        moduleNode = moduleNode.parent!;
     }
 
-    const fileInfo = getFileInfo(node)!;
+    const fileInfo = getFileInfo(moduleNode)!;
+
     const filePath = fileInfo.filePath;
     const lines = fileInfo.lines;
     const start = convertOffsetToPosition(node.start, lines);
