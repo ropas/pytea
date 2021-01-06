@@ -860,21 +860,65 @@ export namespace TorchLCImpl {
 
         const inputSize = fetchSize(inputAddr, heap);
 
-        const kernel_size_tuple = fetchAddr(kernel_sizeAddr, heap) as SVObject;
-        const kernel_size_0 = kernel_size_tuple.getIndice(0) as SVInt;
-        const kernel_size_1 = kernel_size_tuple.getIndice(1) as SVInt;
+        const kernel_size = fetchAddr(kernel_sizeAddr, heap);
+        let kernel_size_0: SVInt;
+        let kernel_size_1: SVInt;
+        if (kernel_size === undefined) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: kernel_size is undefined`, source);
+        } else if (kernel_size.type !== SVType.Object && kernel_size.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: kernel_size is not an int or int pair`, source);
+        } else if (kernel_size.type === SVType.Object) {
+            kernel_size_0 = kernel_size.getIndice(0) as SVInt;
+            kernel_size_1 = kernel_size.getIndice(1) as SVInt;
+        } else {
+            kernel_size_0 = kernel_size;
+            kernel_size_1 = kernel_size;
+        }
 
-        const stride_tuple = fetchAddr(strideAddr, heap) as SVObject;
-        const stride_0 = stride_tuple.getIndice(0) as SVInt;
-        const stride_1 = stride_tuple.getIndice(1) as SVInt;
+        const stride = fetchAddr(strideAddr, heap);
+        let stride_0: SVInt;
+        let stride_1: SVInt;
+        if (stride === undefined) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: stride is undefined`, source);
+        } else if (stride.type !== SVType.Object && stride.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: stride is not an int or int pair`, source);
+        } else if (stride.type === SVType.Object) {
+            stride_0 = stride.getIndice(0) as SVInt;
+            stride_1 = stride.getIndice(1) as SVInt;
+        } else {
+            stride_0 = stride;
+            stride_1 = stride;
+        }
 
-        const padding_tuple = fetchAddr(paddingAddr, heap) as SVObject;
-        const padding_0 = padding_tuple.getIndice(0) as SVInt;
-        const padding_1 = padding_tuple.getIndice(1) as SVInt;
+        const padding = fetchAddr(paddingAddr, heap);
+        let padding_0: SVInt;
+        let padding_1: SVInt;
+        if (padding === undefined) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: padding is undefined`, source);
+        } else if (padding.type !== SVType.Object && padding.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: padding is not an int or int pair`, source);
+        } else if (padding.type === SVType.Object) {
+            padding_0 = padding.getIndice(0) as SVInt;
+            padding_1 = padding.getIndice(1) as SVInt;
+        } else {
+            padding_0 = padding;
+            padding_1 = padding;
+        }
 
-        const dilation_tuple = fetchAddr(dilationAddr, heap) as SVObject;
-        const dilation_0 = dilation_tuple.getIndice(0) as SVInt;
-        const dilation_1 = dilation_tuple.getIndice(1) as SVInt;
+        const dilation = fetchAddr(dilationAddr, heap);
+        let dilation_0: SVInt;
+        let dilation_1: SVInt;
+        if (dilation === undefined) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: dilation is undefined`, source);
+        } else if (dilation.type !== SVType.Object && dilation.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: dilation is not an int or int pair`, source);
+        } else if (dilation.type === SVType.Object) {
+            dilation_0 = dilation.getIndice(0) as SVInt;
+            dilation_1 = dilation.getIndice(1) as SVInt;
+        } else {
+            dilation_0 = dilation;
+            dilation_1 = dilation;
+        }
 
         const ceil_mode = fetchAddr(ceil_modeAddr, heap) as SVBool;
 

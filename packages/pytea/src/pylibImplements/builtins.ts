@@ -11,6 +11,8 @@ import {
     SVFloat,
     SVInt,
     SVNotImpl,
+    SVObject,
+    SVString,
     SVSize,
     SVType,
 } from '../backend/sharpValues';
@@ -205,6 +207,40 @@ export namespace BuiltinsLCImpl {
         });
     }
 
+    export function dict_items(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 1) {
+            return ctx
+                .failWithMsg(
+                    `from 'LibCall.builtins.dict_items': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const { heap } = ctx;
+        const dict = fetchAddr(params[0], heap);
+
+        if (dict?.type !== SVType.Object) {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.dict_items': invalid value type`, source).toSet();
+        }
+
+        let [pairList, pairListAddr, newHeap] = SVObject.create(heap, source);
+        let pairListLen = 0;
+        let pair, pairAddr;
+        for (let [key, value] of dict.keyValues) {
+            [pair, pairAddr, newHeap] = SVObject.create(newHeap, source);
+            pair = pair.setAttr('$length', SVInt.create(2, source));
+            pair = pair.setIndice(0, SVString.create(key, source));
+            pair = pair.setIndice(1, value);
+            pairList = pairList.setIndice(pairListLen, pair);
+            pairListLen++;
+        }
+        pairList = pairList.setAttr('$length', SVInt.create(pairListLen, source));
+        ctx = ctx.setHeap(newHeap.setVal(pairListAddr, pairList));
+        return ctx.setRetVal(pairListAddr).toSet();
+    }
+
     export function len(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
@@ -348,6 +384,7 @@ export namespace BuiltinsLCImpl {
         isinstance,
         cast,
         list_append,
+        dict_items,
         len,
         randInt,
         randFloat,

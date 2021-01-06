@@ -94,6 +94,13 @@ def _list_append(self, item):
 list.append = _list_append
 
 
+def _dict_items(self):
+    LibCall.builtins.dict_items(self)
+
+
+dict.items = _dict_items
+
+
 def _str_format(self, *args, **kwargs):
     # TODO: format it.
     return self

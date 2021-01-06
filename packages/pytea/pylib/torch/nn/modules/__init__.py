@@ -8,3 +8,4 @@ from .batchnorm import BatchNorm2d as BatchNorm2d
 from .loss import CrossEntropyLoss as CrossEntropyLoss
 from .distance import CosineSimilarity as CosineSimilarity
 from .container import Sequential as Sequential
+from .pooling import AvgPool2d as AvgPool2d
