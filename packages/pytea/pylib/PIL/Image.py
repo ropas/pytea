@@ -32,6 +32,11 @@ class Image:
             im._setSize(3, self.width, self.height)
             return im
 
+    def copy(self):
+        im = Image()
+        im._setSize(self._channel, self.width, self.height)
+        return im
+
 
 def open(fp, mode="r"):
     im = Image()

@@ -28,3 +28,6 @@ class Module:
 
     def zero_grad(self, set_to_none=False):
         return None
+
+    def modules(self):
+        return []
