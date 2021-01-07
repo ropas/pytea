@@ -314,8 +314,6 @@ export namespace TorchBackend {
         // run the function body
         return run(newCtx.pushCallStack([f, source]).toSet(), f.funcBody).map((ctx) => {
             const value = ctx.retVal;
-            // debugging log
-            //ctx = ctx.addLog(`__functionCallRun :: funcName: ${f.name}, retVal: ${ctx.retVal}`, source);
 
             // free temp addresses for argument if body has no closure
             let newCtx = ctx.popCallStack().setEnv(env);
@@ -549,17 +547,8 @@ export namespace TorchBackend {
                     }
                     return newCtx.setRetVal(ShContFlag.Run).toSet();
                 }
-                // debugging log
-                //let tempSet = nextSet.map((ctx) =>
-                //    ctx.addLog(`####__runAssign :: rexprType: ${rexpr.etype}`, stmt.source)
-                //);
-                //const nextSet2 = evaluate(tempSet, rexpr);
-                //
                 const nextSet2 = evaluate(nextSet, rexpr);
                 const nextSet3 = nextSet2.map((ctx) => {
-                    // debugging log
-                    //ctx = ctx.addLog(`__runAssign :: leftName: ${id}, rightVal: ${ctx.retVal} `, stmt.source);
-                    //
                     return ctx.setHeap(ctx.heap.setVal(addr, ctx.retVal));
                 });
                 return nextSet3.return(ShContFlag.Run);
@@ -680,10 +669,6 @@ export namespace TorchBackend {
 
             return nextSet.flatMap((ctx) => {
                 const objAddr = ctx.retVal;
-                // debugging log
-                //ctx = ctx.addLog(`__runForIn :: stmt: ${exp.toString()}`, exp.source);
-                //ctx = ctx.addLog(`__runForIn :: loopValAddr: ${objAddr}`, exp.source);
-                //
                 const obj = BackUtils.fetchAddr(objAddr, ctx.heap);
 
                 // TODO: for string
@@ -945,12 +930,6 @@ export namespace TorchBackend {
                     return evaluate(ctx.toSet(), param).map((ctx) => ctx.setRetVal([...argList, ctx.retVal]));
                 });
             });
-            // debugging log
-            //argCtx = argCtx.addLog(
-            //    `__evalCall :: funcType: ${func.type}, funcName: ${(func as SVFunc).name}, params: ${ctx.retVal} `,
-            //    expr.source
-            //);
-            //
 
             return argCtx.flatMap((ctx) => {
                 // propagate error
@@ -997,16 +976,6 @@ export namespace TorchBackend {
             ctxSet.map((ctx) => ctx.pushCallStack([libCallName, expr.source])),
             expr
         ).map((ctx) => ctx.popCallStack());
-        // debugging
-        /*let newSet = evalLibCall(
-            ctxSet.map((ctx) => ctx.pushCallStack([libCallName, expr.source])),
-            expr
-        ).map((ctx) => ctx.popCallStack());
-        newSet = newSet.map((ctx) =>
-            ctx.addLog(`__evalLibCall :: libFuncName: ${libCallName}, retVal: ${ctx.retVal} `, expr.source)
-        );
-        return newSet;*/
-        //
     }
 
     function _evalBinOp<T>(ctxSet: ContextSet<T>, expr: TEBinOp): ContextSet<ShValue> {
@@ -1234,17 +1203,7 @@ export namespace TorchBackend {
     }
 
     function _evalAttr<T>(ctxSet: ContextSet<T>, expr: TEAttr): ContextSet<ShValue> {
-        // debugging original
         return evaluate(ctxSet, expr.left).flatMap((ctx) => getAttrDeep(ctx, ctx.retVal, expr.right, expr.source));
-        //let newCtxSet = evaluate(ctxSet, expr.left).flatMap((ctx) =>
-        //    getAttrDeep(ctx, ctx.retVal, expr.right, expr.source)
-        //);
-        // debugging log
-        //newCtxSet = newCtxSet.map((ctx) =>
-        //    ctx.addLog(`__evalAttr :: expr: ${expr}, evaled attr: ${ctx.retVal}`, expr.source)
-        //);
-        //
-        //return newCtxSet;
     }
 
     function _evalSubscr<T>(ctxSet: ContextSet<T>, expr: TESubscr): ContextSet<ShValue> {

@@ -17,12 +17,14 @@ class Image:
         LibCall.builtins.setSize(self, (channel, width, height))
 
     def copy(self):
-        copied = Image()
-        copied._channel = self._channel
-        copied.size = self.size
-        copied.height = self.height
-        copied.width = self.width
-        copied.mode = self.mode
+        #copied = Image()
+        #copied._channel = self._channel
+        #copied.size = self.size
+        #copied.height = self.height
+        #copied.width = self.width
+        #copied.mode = self.mode
+        #return copied
+        return self
 
     def convert(self, mode=None, *args, **kwargs):
         if mode is None:

@@ -82,12 +82,7 @@ export function sanitizeAddrCtx(ctx: Context<ShValue>): Context<ShValue> {
 
     const fetch = sanitizeAddr(retVal, heap);
     if (fetch === undefined) {
-        //debugging orig
-        //return ctx.warnWithMsg('Try to access non-existing variable.', retVal.source);
-        //
-        //debugging
-        return ctx.warnWithMsg(`Try to access non-existing variable. retVal: ${retVal}`, retVal.source);
-        //
+        return ctx.warnWithMsg('Try to access non-existing variable.', retVal.source);
     }
 
     return ctx.setRetVal(fetch);
