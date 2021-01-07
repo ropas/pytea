@@ -29,6 +29,10 @@ def isinstance(value, type):
     return LibCall.builtins.isinstance(value, type)
 
 
+def exit(code=0):
+    return LibCall.builtins.exit(code)
+
+
 class slice:
     def __init__(self, start=None, stop=None, step=None):
         self.start = start

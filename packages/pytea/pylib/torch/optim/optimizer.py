@@ -1,5 +1,5 @@
 class Optimizer:
-    def __init__(self, params, defaults):
+    def __init__(self, params, *args, **kwargs):
         pass
 
     def state_dict(self):

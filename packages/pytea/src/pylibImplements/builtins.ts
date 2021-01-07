@@ -343,6 +343,10 @@ export namespace BuiltinsLCImpl {
         });
     }
 
+    export function exit(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        return ctx.failWithMsg('explicit exit function call', source).toSet();
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         superGetAttr,
         isinstance,
@@ -352,6 +356,7 @@ export namespace BuiltinsLCImpl {
         randInt,
         randFloat,
         setSize,
+        exit,
     };
 }
 
