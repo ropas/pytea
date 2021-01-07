@@ -73,22 +73,31 @@ class __Primitives:
 
 int = __Primitives(0)
 int.__mro__ = (int, object)
+int.__name__ = "int"
 float = __Primitives(1)
 float.__mro__ = (float, object)
+float.__name__ = "float"
 str = __Primitives(2)
 str.__mro__ = (str, object)
+str.__name__ = "str"
 bool = __Primitives(3)
 bool.__mro__ = (bool, object)
-tuple = __Primitives(4)  # TODO: make class
+bool.__name__ = "bool"
+tuple = __Primitives(4)
 tuple.__mro__ = (tuple, object)
+tuple.__name__ = "tuple"
 list = __Primitives(5)
 list.__mro__ = (list, object)
+list.__name__ = "list"
 dict = __Primitives(6)
 dict.__mro__ = (dict, object)
+dict.__name__ = "dict"
 set = __Primitives(7)
 set.__mro__ = (set, object)
+set.__name__ = "set"
 Ellipsis = __Primitives(8)
 Ellipsis.__mro__ = (Ellipsis, object)
+Ellipsis.__name__ = "Ellipsis"
 
 
 def _list_append(self, item):
