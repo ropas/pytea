@@ -835,7 +835,7 @@ export class TorchIRFrontend {
         let rightNode = node.rightExpression;
 
         // flip gt(e) to lt(e)
-        if (op === OperatorType.GreaterThan || op === OperatorType.LessThanOrEqual) {
+        if (op === OperatorType.GreaterThan || op === OperatorType.GreaterThanOrEqual) {
             leftNode = node.rightExpression;
             rightNode = node.leftExpression;
             if (op === OperatorType.GreaterThan) {
