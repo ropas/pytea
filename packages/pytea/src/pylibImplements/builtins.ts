@@ -92,7 +92,7 @@ export namespace BuiltinsLCImpl {
                 .toSet();
         }
 
-        const { heap } = ctx;
+        const { env, heap } = ctx;
         const value = fetchAddr(params[0], heap);
         const type = fetchAddr(params[1], heap);
         // const kwargs = fetchAddr(params[2], heap)
@@ -131,8 +131,35 @@ export namespace BuiltinsLCImpl {
                     .addLog('int parsing of unknown value', source)
                     .toSetWith(SVInt.create(ExpNum.fromSymbol(ctx.genSymInt('parseInt', source)), source));
             }
-            case PrimitiveType.Tuple:
-            case PrimitiveType.List:
+            case PrimitiveType.Tuple: {
+                const tuple = env.getId('tuple')!;
+                const list = env.getId('list')!;
+
+                if (value.type === SVType.Object && isInstanceOf(value, list, env, heap)) {
+                    const mro = value.getAttr('__mro__');
+                    if (mro?.type === SVType.Object) {
+                        // force casting
+                        return ctx.toSetWith(value.setAttr('__mro__', mro.setIndice(0, tuple)));
+                    }
+                } else if (isInstanceOf(value, tuple, env, heap)) {
+                    return ctx.toSetWith(value);
+                }
+                break;
+            }
+            case PrimitiveType.List: {
+                const tuple = env.getId('tuple')!;
+                const list = env.getId('list')!;
+                if (value.type === SVType.Object && isInstanceOf(value, tuple, env, heap)) {
+                    const mro = value.getAttr('__mro__');
+                    if (mro?.type === SVType.Object) {
+                        // force casting
+                        return ctx.toSetWith(value.setAttr('__mro__', mro.setIndice(0, list)));
+                    }
+                } else if (isInstanceOf(value, list, env, heap)) {
+                    return ctx.toSetWith(value);
+                }
+                break;
+            }
             case PrimitiveType.Float:
             case PrimitiveType.Str:
             case PrimitiveType.Bool:

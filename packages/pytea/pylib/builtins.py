@@ -130,6 +130,29 @@ class enumerate:
         return len(self.iterable)
 
 
+class zip:
+    def __init__(self, *args):
+        self.args = args
+        self.len = 0
+
+        found = True
+        for l in args:
+            len_l = len(l)
+            if found or len_l < self.len:
+                self.len = len_l
+                found = False
+
+    def __getitem__(self, index):
+        value = []
+        for l in self.args:
+            value.append(l[index])
+
+        return tuple(value)
+
+    def __len__(self):
+        return self.len
+
+
 class BaseException:
     def __init__(self, *args):
         self.args = args
