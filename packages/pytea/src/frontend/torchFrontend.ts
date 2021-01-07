@@ -31,6 +31,7 @@ import {
     ImportFromNode,
     ImportNode,
     IndexNode,
+    ListComprehensionNode,
     ListNode,
     MemberAccessNode,
     ModuleNode,
@@ -102,9 +103,11 @@ import {
 
 export class TorchIRFrontend {
     private _immId: number;
+    private _listCompStack: [string, ThStmt][];
 
     constructor() {
         this._immId = 0;
+        this._listCompStack = [];
     }
 
     translate(node: ParseNode): ThStmt {
@@ -698,6 +701,10 @@ export class TorchIRFrontend {
     }
 
     visitList(node: ListNode): ThExpr {
+        if (node.entries.length === 1 && node.entries[0].nodeType === ParseNodeType.ListComprehension) {
+            return this.visitListComprehension(node.entries[0]);
+        }
+
         const entries = node.entries.map((expr) => this.visitExprNode(expr));
         return TELibCall.create(
             LibCallType.genList,
@@ -743,11 +750,7 @@ export class TorchIRFrontend {
             return this._assignList(node.leftExpression, right, node);
         }
 
-        return TSAssign.create(
-            this.visitExprNode(node.leftExpression) as ThLeftExpr,
-            this.visitExprNode(node.rightExpression),
-            node
-        );
+        return TSAssign.create(this.visitExprNode(node.leftExpression) as ThLeftExpr, right, node);
     }
 
     visitAugmentedAssignment(node: AugmentedAssignmentNode): ThStmt {
@@ -925,15 +928,15 @@ export class TorchIRFrontend {
         ) {
             const kwargs: [string, ThExpr][] = [];
             const posArgs: [string, ThExpr][] = [];
-            node.arguments.forEach((arg) => {
+            node.arguments.forEach((arg, i) => {
                 if (arg.name) {
-                    kwargs.push([arg.name.value, this.visitExprNode(arg.valueExpression)]);
+                    kwargs.push([arg.name.value, args[i]]);
                 } else if (arg.argumentCategory === ArgumentCategory.UnpackedDictionary) {
-                    kwargs.push(['$kwargs', this.visitExprNode(arg.valueExpression)]);
+                    kwargs.push(['$kwargs', args[i]]);
                 } else if (arg.argumentCategory === ArgumentCategory.UnpackedList) {
-                    posArgs.push(['$varargs', this.visitExprNode(arg.valueExpression)]);
+                    posArgs.push(['$varargs', args[i]]);
                 } else {
-                    posArgs.push(['', this.visitExprNode(arg.valueExpression)]);
+                    posArgs.push(['', args[i]]);
                 }
             });
 
@@ -1153,6 +1156,73 @@ export class TorchIRFrontend {
         return TEName.create('Ellipsis', node);
     }
 
+    // move list comprehension body before the last translated statement, and alter it to function call
+    // that makes temp list
+    visitListComprehension(node: ListComprehensionNode): ThExpr {
+        const tempFun = this._getImm() + '_LCFun';
+        const tempList = this._getImm() + '_LCList';
+        const tempListName = TEName.create(tempList, node);
+
+        // TODO: what if not an expression?
+        const expr = node.expression as ExpressionNode;
+        let mainBody: ThStmt = TSExpr.create(
+            TECall.create(TEAttr.create(tempListName, 'append', node), [this.visitExprNode(expr)], expr)
+        );
+
+        [...node.comprehensions].reverse().forEach((comp) => {
+            if (comp.nodeType === ParseNodeType.ListComprehensionFor) {
+                const idx = extractIds(comp.targetExpression);
+                if (!idx) {
+                    this.fail(node);
+                }
+
+                const iter = this.visitExprNode(comp.iterableExpression);
+                let idxName: string;
+
+                if (idx.length === 1) {
+                    idxName = idx[0];
+                } else {
+                    idxName = this._getImm();
+                }
+
+                if (idx.length > 1) {
+                    if (comp.targetExpression.nodeType === ParseNodeType.Tuple) {
+                        mainBody = TSSeq.create(
+                            this._assignTuple(comp.targetExpression, TEName.create(idxName, comp.targetExpression)),
+                            mainBody
+                        );
+                    } else if (comp.targetExpression.nodeType === ParseNodeType.List) {
+                        mainBody = TSSeq.create(
+                            this._assignList(comp.targetExpression, TEName.create(idxName, comp.targetExpression)),
+                            mainBody
+                        );
+                    }
+
+                    mainBody = TSForIn.create(idxName, iter, mainBody, comp);
+
+                    for (const name of idx) {
+                        mainBody = TSLet.create(name, mainBody);
+                    }
+                } else {
+                    mainBody = TSForIn.create(idxName, iter, mainBody, comp);
+                }
+            } else {
+                mainBody = TSIf.create(this.visitExprNode(comp.testExpression), mainBody, TSPass.get(), comp);
+            }
+        });
+
+        const funBody = TSLet.create(
+            tempList,
+            TSSeq.create(mainBody, TSReturn.create(tempListName, node)),
+            TELibCall.create(LibCallType.genList, [], node),
+            node
+        );
+
+        this._listCompStack.push([tempFun, funBody]);
+
+        return TECall.create(TEName.create(tempFun, node), [], node);
+    }
+
     visitNode(node: ParseNode): ThStmt | ThExpr {
         switch (node.nodeType) {
             case ParseNodeType.Assert:
@@ -1200,54 +1270,86 @@ export class TorchIRFrontend {
     }
 
     visitStmtNode(node: ParseNode): ThStmt {
+        let stmt: ThStmt;
         switch (node.nodeType) {
             case ParseNodeType.Assert:
-                return this.visitAssert(node);
+                stmt = this.visitAssert(node);
+                break;
             case ParseNodeType.Assignment:
-                return this.visitAssignment(node);
+                stmt = this.visitAssignment(node);
+                break;
             case ParseNodeType.AugmentedAssignment:
-                return this.visitAugmentedAssignment(node);
+                stmt = this.visitAugmentedAssignment(node);
+                break;
             case ParseNodeType.Break:
-                return this.visitBreak(node);
+                stmt = this.visitBreak(node);
+                break;
             case ParseNodeType.Continue:
-                return this.visitContinue(node);
+                stmt = this.visitContinue(node);
+                break;
             case ParseNodeType.If:
-                return this.visitIf(node);
+                stmt = this.visitIf(node);
+                break;
             case ParseNodeType.For:
-                return this.visitFor(node);
+                stmt = this.visitFor(node);
+                break;
             case ParseNodeType.Module:
-                return this.visitModule(node);
+                stmt = this.visitModule(node);
+                break;
             case ParseNodeType.Pass:
-                return this.visitPass(node);
+                stmt = this.visitPass(node);
+                break;
             case ParseNodeType.Raise:
-                return this.visitRaise(node);
+                stmt = this.visitRaise(node);
+                break;
             case ParseNodeType.Return:
-                return this.visitReturn(node);
+                stmt = this.visitReturn(node);
+                break;
             case ParseNodeType.StatementList:
-                return this.visitStatementList(node);
+                stmt = this.visitStatementList(node);
+                break;
             case ParseNodeType.Nonlocal:
-                return this.visitNonlocal(node);
+                stmt = this.visitNonlocal(node);
+                break;
             case ParseNodeType.Global:
-                return this.visitGlobal(node);
+                stmt = this.visitGlobal(node);
+                break;
             case ParseNodeType.Import:
-                return this.visitImport(node);
+                stmt = this.visitImport(node);
+                break;
             case ParseNodeType.ImportAs:
-                return this.visitImportAs(node);
+                stmt = this.visitImportAs(node);
+                break;
             case ParseNodeType.ImportFrom:
-                return this.visitImportFrom(node);
+                stmt = this.visitImportFrom(node);
+                break;
             case ParseNodeType.Class:
-                return this.visitClass(node);
+                stmt = this.visitClass(node);
+                break;
             case ParseNodeType.With:
-                return this.visitWith(node);
+                stmt = this.visitWith(node);
+                break;
             case ParseNodeType.While:
-                return this.visitWhile(node);
+                stmt = this.visitWhile(node);
+                break;
             case ParseNodeType.Del:
-                return this.visitDel(node);
+                stmt = this.visitDel(node);
+                break;
             case ParseNodeType.Try:
-                return this.visitTry(node);
+                stmt = this.visitTry(node);
+                break;
             default:
-                return TSPass.get(node);
+                stmt = TSPass.get(node);
+                break;
         }
+
+        if (this._listCompStack.length > 0) {
+            this._listCompStack.reverse().forEach(([tempFunName, tempFunBody]) => {
+                stmt = TSFunDef.create(tempFunName, [], tempFunBody, stmt);
+            });
+            this._listCompStack = [];
+        }
+        return stmt;
     }
 
     visitExprNode(node: ExpressionNode): ThExpr {
@@ -1284,6 +1386,8 @@ export class TorchIRFrontend {
                 return this.visitSlice(node);
             case ParseNodeType.Ellipsis:
                 return this.visitEllipsis(node);
+            case ParseNodeType.ListComprehension:
+                return this.visitListComprehension(node);
             default:
                 return this.fail(node);
         }
