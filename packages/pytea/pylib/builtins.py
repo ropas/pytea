@@ -106,6 +106,13 @@ def _str_format(self, *args, **kwargs):
 str.format = _str_format
 
 
+def sum(values):
+    a = 0
+    for i in values:
+        a += i
+    return a
+
+
 class map:
     def __init__(self, f, iterable):
         self.f = f
