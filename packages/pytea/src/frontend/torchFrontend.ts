@@ -49,6 +49,7 @@ import {
     StringListNode,
     StringNode,
     TernaryNode,
+    TryNode,
     TupleNode,
     UnaryOperationNode,
     WhileNode,
@@ -1029,6 +1030,15 @@ export class TorchIRFrontend {
         return TSForIn.create(idxName, iter, body, node);
     }
 
+    visitTry(node: TryNode): ThStmt {
+        // TODO: implement except clause
+        if (node.elseSuite) {
+            return TSSeq.create(this.visitStmtNode(node.trySuite), this.visitStmtNode(node.elseSuite), node);
+        }
+
+        return this.visitStmtNode(node.trySuite);
+    }
+
     visitFunction(node: FunctionNode): [string, string[], ThStmt] {
         const name = node.name.value;
         const params = extractIds(node.parameters);
@@ -1166,6 +1176,7 @@ export class TorchIRFrontend {
             case ParseNodeType.With:
             case ParseNodeType.While:
             case ParseNodeType.Del:
+            case ParseNodeType.Try:
                 return this.visitStmtNode(node);
             case ParseNodeType.BinaryOperation:
             case ParseNodeType.UnaryOperation:
@@ -1232,6 +1243,8 @@ export class TorchIRFrontend {
                 return this.visitWhile(node);
             case ParseNodeType.Del:
                 return this.visitDel(node);
+            case ParseNodeType.Try:
+                return this.visitTry(node);
             default:
                 return TSPass.get(node);
         }
