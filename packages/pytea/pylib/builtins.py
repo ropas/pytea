@@ -149,3 +149,7 @@ class RuntimeError(Exception):
 
 class TypeError(Exception):
     pass
+
+
+class ValueError(Exception):
+    pass
