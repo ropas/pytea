@@ -7,8 +7,7 @@ class Module:
 
     def modules(self):
         def modules_(this, moduleList):
-            if this not in moduleList:
-                moduleList.append(this)
+            moduleList.append(this)
             for key, value in this.__dict__.items():
                 if isinstance(value, Module):
                     moduleList = modules_(value, moduleList)

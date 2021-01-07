@@ -5,6 +5,7 @@ import torch
 class Tensor:
     def __init__(self, *args, **kwargs):
         LibCall.torch.tensorInit(self, args, kwargs)
+        self.data = self
 
     # # TODO: make @staticmethod
     # def __getattr__(self, attr):

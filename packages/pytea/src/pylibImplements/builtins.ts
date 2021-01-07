@@ -237,8 +237,20 @@ export namespace BuiltinsLCImpl {
             pairListLen++;
         }
         pairList = pairList.setAttr('$length', SVInt.create(pairListLen, source));
-        ctx = ctx.setHeap(newHeap.setVal(pairListAddr, pairList));
-        return ctx.setRetVal(pairListAddr).toSet();
+        //ctx = ctx.setHeap(newHeap.setVal(pairListAddr, pairList));
+        //return ctx.warnWithMsg(`from 'LibCall.builtins.dict_items': ${pairList} `, source).toSet();
+        // debugging log
+        //ctx = ctx.addLog(`__dict_items :: pairListAddr: ${pairListAddr},pairList: ${pairList} `, source);
+        //
+        let newSet = ctx.setHeap(newHeap.setVal(pairListAddr, pairList)).toSetWith(pairListAddr);
+        //newSet = newSet.map((ctx) =>
+        //    ctx.addLog(
+        //        `__dict_items :: pairListAddr: ${pairListAddr}, pairList: ${pairList}, retVal: ${ctx.retVal} `,
+        //        source
+        //    )
+        //);
+        return newSet;
+        //return ctx.setRetVal(pairList).toSet();
     }
 
     export function len(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
