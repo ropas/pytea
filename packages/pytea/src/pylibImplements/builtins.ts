@@ -2,7 +2,7 @@ import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { fetchAddr, sanitizeAddr, trackMro } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
-import { isInstanceOf, strLen } from '../backend/expUtils';
+import { isInstanceOf, simplifyString, strLen } from '../backend/expUtils';
 import {
     PrimitiveType,
     ShValue,
@@ -14,7 +14,7 @@ import {
     SVSize,
     SVType,
 } from '../backend/sharpValues';
-import { ExpNum, NumBopType } from '../backend/symExpressions';
+import { ExpNum, NumBopType, NumUopType } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
 import { LCImpl } from '.';
 import { LCBase } from './libcall';
@@ -103,14 +103,42 @@ export namespace BuiltinsLCImpl {
 
         switch (type.value) {
             // TODO: floor
+            case PrimitiveType.Int: {
+                switch (value.type) {
+                    case SVType.Int:
+                        return ctx.toSetWith(value);
+                    case SVType.Float:
+                        if (typeof value.value === 'number') {
+                            return ctx.toSetWith(SVInt.create(Math.floor(value.value), source));
+                        } else {
+                            return ctx.toSetWith(
+                                SVInt.create(ExpNum.uop(NumUopType.Floor, value.value, source), source)
+                            );
+                        }
+                    case SVType.String:
+                        {
+                            if (typeof value.value === 'string') {
+                                const intVal = Number.parseInt(value.value);
+                                if (intVal.toString() === value.value)
+                                    return ctx.toSetWith(SVInt.create(intVal, source));
+                            }
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                return ctx
+                    .addLog('int parsing of unknown value', source)
+                    .toSetWith(SVInt.create(ExpNum.fromSymbol(ctx.genSymInt('parseInt', source)), source));
+            }
             case PrimitiveType.Tuple:
             case PrimitiveType.List:
-            case PrimitiveType.Int:
             case PrimitiveType.Float:
             case PrimitiveType.Str:
             case PrimitiveType.Bool:
             case PrimitiveType.Dict:
             case PrimitiveType.Set:
+                break;
         }
 
         return ctx.setRetVal(SVNotImpl.create('not implemented', source)).toSet();
