@@ -62,10 +62,6 @@ def matmul(input, other, out=None):
     return tensor
 
 
-def no_grad():
-    pass
-
-
 def transpose(input, dim0, dim1):
     return LibCall.torch.transpose(input, dim0, dim1)
 
@@ -75,11 +71,15 @@ def argmax(input, dim=None, keepdim=False):
 
 
 def mean(input, dim=None, keepdim=False, out=None):
-    return LibCall.torch.reduce(self, dim, keepdim)
+    return LibCall.torch.reduce(input, dim, keepdim)
 
 
 def sum(input, dim=None, keepdim=False, dtype=None):
-    return LibCall.torch.reduce(self, dim, keepdim)
+    return LibCall.torch.reduce(input, dim, keepdim)
+
+
+def softmax(input, dim=None, dtype=None):
+    return LibCall.torch.identtyShape(input)
 
 
 def mul(input, other, out=None):
