@@ -19,3 +19,11 @@ class Optimizer:
 
     def add_param_group(self):
         pass
+
+
+class _RequiredParameter:
+    def __repr__(self):
+        return "<required parameter>"
+
+
+required = _RequiredParameter
