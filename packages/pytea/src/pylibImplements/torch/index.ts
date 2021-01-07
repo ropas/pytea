@@ -32,7 +32,7 @@ export namespace TorchLCImpl {
         }
 
         const heap = ctx.heap;
-        const [selfAddr, argsAddr, kwargs] = params;
+        const [selfAddr, argsAddr] = params;
 
         // TODO: use kwargs info.
 
@@ -254,48 +254,6 @@ export namespace TorchLCImpl {
                 source
             ) // TODO: match return value type with tensor dtype.
             .return(SVFloat.create(ExpNum.fromSymbol(ctx.genSymFloat('torchItemElem', source)), source));
-    }
-
-    // implementation of torch.Tensor.__getitem__
-    export function getItem(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
-        const params = ctx.retVal.params;
-        if (params.length !== 2) {
-            return ctx.warnTensorWithMsg(
-                `from 'LibCall.torch.getItem': got insufficient number of argument: ${params.length}`,
-                source
-            );
-        }
-
-        const heap = ctx.heap;
-        const [selfAddr, item] = params;
-
-        const selfSize = fetchSize(selfAddr, heap);
-        const indices = fetchAddr(item, heap);
-
-        if (typeof selfSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.getItem': ${selfSize}`, source);
-        } else if (indices?.type !== SVType.Int) {
-            // TODO: index by tuple
-            return ctx.warnTensorWithMsg(
-                `from 'LibCall.torch.getItem: index by non-integer value is not supported currently.`,
-                source
-            );
-        }
-
-        const selfShape = selfSize.shape;
-        const rank = selfSize.rank();
-        const firstDim = ExpNum.index(selfShape, 0, source);
-        const index = indices.value;
-
-        return ctx
-            .require([
-                ctx.genLte(1, rank, source),
-                ctx.genLte(ExpNum.bop(NumBopType.Sub, 0, firstDim, source), index, source),
-                ctx.genLte(index, ExpNum.bop(NumBopType.Sub, firstDim, 1, source), source),
-            ])
-            .flatMap((ctx) => {
-                return genTensor(ctx, ExpShape.slice(selfShape, 1, undefined, source));
-            });
     }
 
     // implementation of torch.Tensor.repeat
@@ -1394,7 +1352,6 @@ export namespace TorchLCImpl {
         identityShape,
         matmul,
         item,
-        getItem,
         copyOut,
         repeat,
         callTensor,

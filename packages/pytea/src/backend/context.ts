@@ -324,7 +324,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         return this.setRetVal(warning).addLogValue(warning);
     }
     warnWithMsg(message: string, source?: ParseNode): Context<SVError> {
-        const warning = SVError.create(`WARNING: ${message} [${this.relPath}]`, source);
+        const warning = SVError.create(`WARNING: ${message}`, source);
         return this.setRetVal(warning).addLogValue(warning);
     }
 
@@ -338,7 +338,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     }
     // return fully symbolic shaped tensor with warning log.
     warnTensorWithMsg(message: string, source?: ParseNode): ContextSet<ShValue> {
-        const warning = SVError.create(`WARNING: ${message} [${this.relPath}]`, source);
+        const warning = SVError.create(`WARNING: ${message}`, source);
         return this.warnTensor(warning);
     }
 
@@ -347,11 +347,11 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         return this.set('failed', error).set('failId', getFailedId()).addLogValue(error).setRetVal(error);
     }
     failWithMsg(message: string, source?: ParseNode): Context<SVError> {
-        return this.fail(SVError.create(`ERROR: ${message}, [${this.relPath}]`, source));
+        return this.fail(SVError.create(`ERROR: ${message},`, source));
     }
 
     addLog(message: string, source?: ParseNode): Context<T> {
-        return this.set('logs', this.logs.push(SVError.create(`LOG: ${message} [${this.relPath}]`, source)));
+        return this.set('logs', this.logs.push(SVError.create(`LOG: ${message}`, source)));
     }
 
     addLogValue(log: ShValue): Context<T> {

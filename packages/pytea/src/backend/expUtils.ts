@@ -1,12 +1,12 @@
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import { fetchAddr } from './backUtils';
+import { absIndexByLen, fetchAddr, trackMro } from './backUtils';
 import { ConstraintSet } from './constraintSet';
 import { Constraint, ConstraintType } from './constraintType';
 import { Context, ContextSet } from './context';
 import { Fraction } from './fraction';
-import { ShHeap } from './sharpEnvironments';
-import { ShValue, SVSize, SVType } from './sharpValues';
+import { ShEnv, ShHeap } from './sharpEnvironments';
+import { ShValue, SVAddr, SVSize, SVType } from './sharpValues';
 import {
     BoolOpType,
     ExpBool,
@@ -351,11 +351,11 @@ export function simplifyNum(ctrSet: ConstraintSet, exp: ExpNum): ExpNum {
             switch (baseValue.opType) {
                 case NumOpType.Const:
                     switch (exp.uopType) {
-                        case NumUopType.Ceil:
+                        case NumUopType.Neg:
                             return ExpNum.fromConst(-baseValue.value, exp.source);
                         case NumUopType.Floor:
                             return ExpNum.fromConst(Math.floor(baseValue.value), exp.source);
-                        case NumUopType.Neg:
+                        case NumUopType.Ceil:
                             return ExpNum.fromConst(Math.ceil(baseValue.value), exp.source);
                         case NumUopType.Abs:
                             return ExpNum.fromConst(Math.abs(baseValue.value), exp.source);
@@ -1156,4 +1156,109 @@ export function strLen(
             // TODO: cache length of symbolic string
             return ctx.genIntGte(`${str.symbol.name}_${str.symbol.id}_len`, 0, source);
     }
+}
+
+// return closed expression of normalized index of list. (e.g. a[-1] with length 5 => 4)
+// if it cannot determine that index is neg or pos, return i + r * (1 - (r - |i|) // (r - i)) for safety
+// this function requires -r <= i <= r - 1
+export function absExpIndexByLen(
+    index: number | ExpNum,
+    rank: number | ExpNum,
+    source?: ParseNode,
+    ctrSet?: ConstraintSet
+): number | ExpNum {
+    if (typeof index === 'number') {
+        if (index >= 0) return index;
+        else if (typeof rank === 'number') return rank + index;
+
+        const r = ctrSet ? simplifyNum(ctrSet, rank) : rank;
+        if (r.opType === NumOpType.Const) return r.value + index;
+        return ExpNum.bop(NumBopType.Add, r, index, source);
+    }
+
+    const i = ctrSet ? simplifyNum(ctrSet, index) : index;
+    if (i.opType === NumOpType.Const) {
+        index = i.value;
+        if (index >= 0) return index;
+        else if (typeof rank === 'number') return rank + index;
+
+        const r = ctrSet ? simplifyNum(ctrSet, rank) : rank;
+        if (r.opType === NumOpType.Const) return r.value + index;
+        return ExpNum.bop(NumBopType.Add, r, index, source);
+    }
+
+    // don't know sign of i
+    // return i + r * (1 - (r - |i|) // (r - i))
+    const r = typeof rank === 'number' ? ExpNum.fromConst(rank) : ctrSet ? simplifyNum(ctrSet, rank) : rank;
+    return ExpNum.bop(
+        NumBopType.Add,
+        i,
+        ExpNum.bop(
+            NumBopType.Mul,
+            r,
+            ExpNum.bop(
+                NumBopType.Sub,
+                1,
+                ExpNum.bop(
+                    NumBopType.FloorDiv,
+                    ExpNum.bop(NumBopType.Sub, r, ExpNum.uop(NumUopType.Abs, i, source), source),
+                    ExpNum.bop(NumBopType.Sub, r, i, source),
+                    source
+                ),
+                source
+            ),
+
+            source
+        ),
+        source
+    );
+}
+
+// return closed expression of length of a:b
+// return b >= a ? b - a : 0
+// that is, ((b - a) + |b - a|) // 2
+export function reluLen(
+    a: number | ExpNum,
+    b: number | ExpNum,
+    source?: ParseNode,
+    ctrSet?: ConstraintSet
+): number | ExpNum {
+    if (typeof a === 'number' && typeof b === 'number') return b - a >= 0 ? b - a : 0;
+    const bma = ExpNum.bop(NumBopType.Sub, b, a, source);
+    const result = ExpNum.bop(
+        NumBopType.FloorDiv,
+        ExpNum.bop(NumBopType.Add, bma, ExpNum.uop(NumUopType.Abs, bma, source), source),
+        2,
+        source
+    );
+    return ctrSet ? simplifyNum(ctrSet, result) : result;
+}
+
+// return undefined if inputVal points undefined value. else, return isinstance(inputVal, classVal)
+export function isInstanceOf(inputVal: ShValue, classVal: ShValue, env: ShEnv, heap: ShHeap): boolean | undefined {
+    const input = fetchAddr(inputVal, heap);
+    if (!input) return;
+
+    const mroList = trackMro(inputVal, heap, env);
+
+    if (classVal.type !== SVType.Addr) {
+        // direct comparison between int / float type function
+        return (
+            mroList.findIndex((v) => {
+                if (v === undefined) return false;
+                return fetchAddr(heap.getVal(v), heap) === classVal;
+            }) >= 0
+        );
+    }
+
+    let classPoint: SVAddr = classVal;
+    while (true) {
+        const next = heap.getVal(classPoint);
+        if (next?.type !== SVType.Addr) {
+            break;
+        }
+        classPoint = next;
+    }
+
+    return mroList.findIndex((v) => v === classPoint.addr) >= 0;
 }

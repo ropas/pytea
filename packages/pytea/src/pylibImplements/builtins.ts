@@ -2,7 +2,7 @@ import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { fetchAddr, sanitizeAddr, trackMro } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
-import { strLen } from '../backend/expUtils';
+import { isInstanceOf, strLen } from '../backend/expUtils';
 import {
     PrimitiveType,
     ShValue,
@@ -73,38 +73,14 @@ export namespace BuiltinsLCImpl {
         const { env, heap } = ctx;
         const [selfAddr, classAddr] = params;
 
-        const self = fetchAddr(selfAddr, heap);
-
-        if (!self) {
+        const result = isInstanceOf(selfAddr, classAddr, env, heap);
+        if (result === undefined) {
             return ctx.warnWithMsg(`from 'LibCall.builtins.isinstance': got invalid address`, source).toSet();
         }
 
-        const mroList = trackMro(self, heap, env);
-
-        if (classAddr.type !== SVType.Addr) {
-            // direct comparison between int / float type function
-            return ctx.toSetWith(
-                SVBool.create(
-                    mroList.findIndex((v) => {
-                        if (v === undefined) return false;
-                        return fetchAddr(heap.getVal(v), heap) === classAddr;
-                    }) >= 0,
-                    source
-                )
-            );
-        }
-
-        let classPoint: SVAddr = classAddr;
-        while (true) {
-            const next = heap.getVal(classPoint);
-            if (next?.type !== SVType.Addr) {
-                break;
-            }
-            classPoint = next;
-        }
-
-        return ctx.toSetWith(SVBool.create(mroList.findIndex((v) => v === classPoint.addr) >= 0, source));
+        return ctx.toSetWith(SVBool.create(result, source));
     }
+
     export function cast(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {

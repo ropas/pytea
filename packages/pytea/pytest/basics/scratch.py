@@ -1,17 +1,9 @@
-class A:
-    def __init__(self, x):
-        self.x = x
+import torch
+import random
 
-    def __call__(self, y):
-        self.x = self.x + y
-        return 101
+t = random.randint(3, 12)
+a = torch.rand(3, 5, 7, 9)
+d = a[0]
 
+b = a[:, 1:3, ::2, 4:-1]
 
-class B(A):
-    def __init__(self, x, y):
-        super().__init__(x)
-        self.y = y
-
-
-b = B(3, 2)
-c = b(12)
