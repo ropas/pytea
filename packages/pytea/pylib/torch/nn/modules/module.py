@@ -16,9 +16,15 @@ class Module:
         return self.train(False)
 
     def parameters(self):
-        # TODO: return something
+        # TODO: return something meaningful
         return None
 
     def cuda(self):
         return self
 
+    def to(self, *args, **kwargs):
+        # ignore it.
+        return self
+
+    def zero_grad(self, set_to_none=False):
+        return None

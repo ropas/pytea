@@ -1,6 +1,16 @@
 import LibCall
 from torch import Tensor
 from PIL import Image
+from . import functional as F
+
+
+def _get_image_size(img):
+    if isinstance(img, Image):
+        return img.size
+    elif isinstance(img, Tensor) and img.dim() > 2:
+        return img.shape[-2:][::-1]
+    else:
+        raise TypeError("Unexpected type from torchvision.transforms")
 
 
 class Compose:
@@ -32,6 +42,24 @@ class Normalize:
 
     def __call__(self, tensor):
         return tensor
+
+
+class RandomCrop:
+    def __init__(
+        self, size, padding=None, pad_if_needed=False, fill=0, padding_mode="constant"
+    ):
+        if isinstance(size, int) or isinstance(size, float):
+            self.size = (int(size), int(size))
+        else:
+            self.size = size
+        self.padding = padding
+        self.pad_if_needed = pad_if_needed
+        self.fill = fill
+        self.padding_mode = padding_mode
+
+    def __call__(self, img):
+        # TODO:
+        pass
 
 
 class RandomResizedCrop:
