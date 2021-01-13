@@ -12,6 +12,7 @@ import {
     AssignmentNode,
     ClassNode,
     ExpressionNode,
+    ForNode,
     FunctionNode,
     GlobalNode,
     ImportAsNode,
@@ -160,8 +161,8 @@ export function extractLocalDef(nodes: ParseNodeArray, exception?: (string | und
     return localSet;
 }
 
-export function extractSingleImport(nodes: ParseNodeArray): Set<string> {
-    return new ImportExtractor(nodes).extract();
+export function extractUnexportedGlobal(nodes: ParseNodeArray): Set<string> {
+    return new UnexportedGlobalExtractor(nodes).extract();
 }
 
 class LocalExtractor extends ParseTreeWalker {
@@ -216,6 +217,12 @@ class LocalExtractor extends ParseTreeWalker {
         return false;
     }
 
+    visitFor(node: ForNode) {
+        const idx = extractIds(node.targetExpression);
+        idx?.forEach((name) => this._names.add(name));
+        return true;
+    }
+
     visitImportAs(node: ImportAsNode) {
         if (node.alias) {
             this._names.add(node.alias.value);
@@ -239,11 +246,11 @@ class LocalExtractor extends ParseTreeWalker {
         if (node.target && node.target.nodeType === ParseNodeType.Name) {
             this._names.add(node.target.value);
         }
-        return false;
+        return true;
     }
 }
 
-class ImportExtractor extends ParseTreeWalker {
+class UnexportedGlobalExtractor extends ParseTreeWalker {
     private _names: Set<string>;
     private _nonlocal: Set<string>;
 
@@ -270,5 +277,18 @@ class ImportExtractor extends ParseTreeWalker {
             }
         }
         return false;
+    }
+
+    visitFor(node: ForNode) {
+        const idx = extractIds(node.targetExpression);
+        idx?.forEach((name) => this._names.add(name));
+        return true;
+    }
+
+    visitWithItem(node: WithItemNode) {
+        if (node.target && node.target.nodeType === ParseNodeType.Name) {
+            this._names.add(node.target.value);
+        }
+        return true;
     }
 }

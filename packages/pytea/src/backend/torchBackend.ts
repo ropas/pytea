@@ -704,10 +704,17 @@ export namespace TorchBackend {
                         }
                     }
 
-                    const [identAddr, newHeap] = ctx.heap.malloc();
-                    const newEnv = ctx.env.setId(ident, identAddr);
+                    let identAddr: SVAddr;
+                    let newCtx = ctx;
+                    if (ctx.env.hasId(ident)) {
+                        identAddr = ctx.env.getId(ident)!;
+                    } else {
+                        const [newAddr, newHeap] = ctx.heap.malloc();
+                        identAddr = newAddr;
+                        const newEnv = ctx.env.setId(ident, identAddr);
+                        newCtx = ctx.setEnv(newEnv).setHeap(newHeap);
+                    }
 
-                    const newCtx = ctx.setEnv(newEnv).setHeap(newHeap);
                     const resultSet =
                         typeof length === 'number'
                             ? _runConstFor(newCtx, identAddr, obj, length, stmt)

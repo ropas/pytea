@@ -62,7 +62,7 @@ import { PyteaService } from '../service/pyteaService';
 import {
     extractIds,
     extractLocalDef,
-    extractSingleImport,
+    extractUnexportedGlobal,
     flattenNodeArray,
     getFullAttrPath,
     parseBinOp,
@@ -189,16 +189,16 @@ export class TorchIRFrontend {
 
     visitModule(node: ModuleNode): ThStmt {
         const localDef = extractLocalDef(node.statements);
-        const singleImport = extractSingleImport(node.statements);
+        const importNames = extractUnexportedGlobal(node.statements);
         const stmt = this.visitArray(node.statements);
         stmt.source = node;
 
         // assign global variables and functions to '$module'
         localDef.delete('LibCall');
 
-        const noImport = new Set(localDef);
-        singleImport.forEach((im) => {
-            noImport.delete(im);
+        const exportSet = new Set(localDef);
+        importNames.forEach((im) => {
+            exportSet.delete(im);
         });
 
         const moduleName = TEName.create('$module');
@@ -206,7 +206,7 @@ export class TorchIRFrontend {
             stmt,
             this._mergeStmt(
                 // CAVEAT: do not import global variables that has name starting with '__'
-                [...noImport.values()]
+                [...exportSet.values()]
                     .filter((name) => !name.startsWith('__'))
                     .map((name) =>
                         TSExpr.create(
@@ -1022,12 +1022,7 @@ export class TorchIRFrontend {
                 );
             }
 
-            let mainFor: ThStmt = TSForIn.create(idxName, iter, body, node);
-
-            for (const name of idx) {
-                mainFor = TSLet.create(name, mainFor);
-            }
-            return mainFor;
+            return TSForIn.create(idxName, iter, body, node);
         }
 
         return TSForIn.create(idxName, iter, body, node);
@@ -1397,9 +1392,9 @@ export class TorchIRFrontend {
         throw 'invalid node for Python script: ' + inspect(node);
     }
 
-    private _mergeLocalDef(localDef: Set<string>, baseStmt: ThStmt): ThStmt {
+    private _mergeLocalDef(localDef: string[] | Set<string>, baseStmt: ThStmt): ThStmt {
         let stmt = baseStmt;
-        localDef.forEach((name) => {
+        localDef.forEach((name: string) => {
             stmt = TSLet.create(name, stmt);
         });
         return stmt;

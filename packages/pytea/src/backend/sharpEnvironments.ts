@@ -26,7 +26,10 @@ export class ShEnv extends Record(shEnvDefaults) implements ShEnvProps {
         addrMap ? super({ addrMap }) : super();
     }
 
-    // return TVUndef if id is not in addrMap
+    hasId(id: string): boolean {
+        return this.addrMap.has(id);
+    }
+
     getId(id: string): SVAddr | undefined {
         return this.addrMap.get(id);
     }
