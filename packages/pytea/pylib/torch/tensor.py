@@ -72,14 +72,14 @@ class Tensor:
     def cuda(self, **kwargs):
         return self
 
-    #TODO: Behavior of functions like to, type, long, item is dependent on dtype.
+    # TODO: Behavior of functions like to, type, long, item is dependent on dtype.
     #      They should be fixed if info of ExpShape extends.
     def to(self, *args, **kwargs):
         return self
 
     def type(self, dtype=None, **kwargs):
         if dtype is None:
-            return 'UnknownTensorType'
+            return "UnknownTensorType"
         else:
             return self
 
@@ -92,7 +92,24 @@ class Tensor:
         return self.shape[0]
 
     def __getitem__(self, index):
-        return LibCall.torch.getItem(self, index)
+        temp = self.shape
+
+        if isinstance(index, tuple):
+            idx_len = len(index)
+            if len(self.shape) > idx_len:
+                raise IndexError("too many indices for tensor")
+            for axis in range(idx_len - 1, 0, -1):
+                temp = LibCall.shape.tensorGetItem(temp, axis, index[axis])
+            return Tensor(temp)
+
+        p = len(temp)
+        if len(temp) <= 0:
+            raise IndexError(
+                "invalid index of a 0-dim tensor. Use tensor.item() to convert a 0-dim tensor to a Python number"
+            )
+
+        temp = LibCall.shape.tensorGetItem(temp, 0, index)
+        return Tensor(temp)
 
     def __add__(self, other):
         return torch._bop(self, other)

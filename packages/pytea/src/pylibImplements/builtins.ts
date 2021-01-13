@@ -2,7 +2,7 @@ import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { fetchAddr, sanitizeAddr, trackMro } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
-import { strLen } from '../backend/expUtils';
+import { isInstanceOf, simplifyString, strLen } from '../backend/expUtils';
 import {
     PrimitiveType,
     ShValue,
@@ -16,7 +16,7 @@ import {
     SVSize,
     SVType,
 } from '../backend/sharpValues';
-import { ExpNum, NumBopType } from '../backend/symExpressions';
+import { ExpNum, NumBopType, NumUopType } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
 import { LCImpl } from '.';
 import { LCBase } from './libcall';
@@ -75,38 +75,14 @@ export namespace BuiltinsLCImpl {
         const { env, heap } = ctx;
         const [selfAddr, classAddr] = params;
 
-        const self = fetchAddr(selfAddr, heap);
-
-        if (!self) {
+        const result = isInstanceOf(selfAddr, classAddr, env, heap);
+        if (result === undefined) {
             return ctx.warnWithMsg(`from 'LibCall.builtins.isinstance': got invalid address`, source).toSet();
         }
 
-        const mroList = trackMro(self, heap, env);
-
-        if (classAddr.type !== SVType.Addr) {
-            // direct comparison between int / float type function
-            return ctx.toSetWith(
-                SVBool.create(
-                    mroList.findIndex((v) => {
-                        if (v === undefined) return false;
-                        return fetchAddr(heap.getVal(v), heap) === classAddr;
-                    }) >= 0,
-                    source
-                )
-            );
-        }
-
-        let classPoint: SVAddr = classAddr;
-        while (true) {
-            const next = heap.getVal(classPoint);
-            if (next?.type !== SVType.Addr) {
-                break;
-            }
-            classPoint = next;
-        }
-
-        return ctx.toSetWith(SVBool.create(mroList.findIndex((v) => v === classPoint.addr) >= 0, source));
+        return ctx.toSetWith(SVBool.create(result, source));
     }
+
     export function cast(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
@@ -118,7 +94,7 @@ export namespace BuiltinsLCImpl {
                 .toSet();
         }
 
-        const { heap } = ctx;
+        const { env, heap } = ctx;
         const value = fetchAddr(params[0], heap);
         const type = fetchAddr(params[1], heap);
         // const kwargs = fetchAddr(params[2], heap)
@@ -129,14 +105,69 @@ export namespace BuiltinsLCImpl {
 
         switch (type.value) {
             // TODO: floor
-            case PrimitiveType.Tuple:
-            case PrimitiveType.List:
-            case PrimitiveType.Int:
+            case PrimitiveType.Int: {
+                switch (value.type) {
+                    case SVType.Int:
+                        return ctx.toSetWith(value);
+                    case SVType.Float:
+                        if (typeof value.value === 'number') {
+                            return ctx.toSetWith(SVInt.create(Math.floor(value.value), source));
+                        } else {
+                            return ctx.toSetWith(
+                                SVInt.create(ExpNum.uop(NumUopType.Floor, value.value, source), source)
+                            );
+                        }
+                    case SVType.String:
+                        {
+                            if (typeof value.value === 'string') {
+                                const intVal = Number.parseInt(value.value);
+                                if (intVal.toString() === value.value)
+                                    return ctx.toSetWith(SVInt.create(intVal, source));
+                            }
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                return ctx
+                    .addLog('int parsing of unknown value', source)
+                    .toSetWith(SVInt.create(ExpNum.fromSymbol(ctx.genSymInt('parseInt', source)), source));
+            }
+            case PrimitiveType.Tuple: {
+                const tuple = env.getId('tuple')!;
+                const list = env.getId('list')!;
+
+                if (value.type === SVType.Object && isInstanceOf(value, list, env, heap)) {
+                    const mro = value.getAttr('__mro__');
+                    if (mro?.type === SVType.Object) {
+                        // force casting
+                        return ctx.toSetWith(value.setAttr('__mro__', mro.setIndice(0, tuple)));
+                    }
+                } else if (isInstanceOf(value, tuple, env, heap)) {
+                    return ctx.toSetWith(value);
+                }
+                break;
+            }
+            case PrimitiveType.List: {
+                const tuple = env.getId('tuple')!;
+                const list = env.getId('list')!;
+                if (value.type === SVType.Object && isInstanceOf(value, tuple, env, heap)) {
+                    const mro = value.getAttr('__mro__');
+                    if (mro?.type === SVType.Object) {
+                        // force casting
+                        return ctx.toSetWith(value.setAttr('__mro__', mro.setIndice(0, list)));
+                    }
+                } else if (isInstanceOf(value, list, env, heap)) {
+                    return ctx.toSetWith(value);
+                }
+                break;
+            }
             case PrimitiveType.Float:
             case PrimitiveType.Str:
             case PrimitiveType.Bool:
             case PrimitiveType.Dict:
             case PrimitiveType.Set:
+                break;
         }
 
         return ctx.setRetVal(SVNotImpl.create('not implemented', source)).toSet();
@@ -379,6 +410,10 @@ export namespace BuiltinsLCImpl {
         });
     }
 
+    export function exit(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        return ctx.failWithMsg('explicit exit function call', source).toSet();
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         superGetAttr,
         isinstance,
@@ -389,6 +424,7 @@ export namespace BuiltinsLCImpl {
         randInt,
         randFloat,
         setSize,
+        exit,
     };
 }
 

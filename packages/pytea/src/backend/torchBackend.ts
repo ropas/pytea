@@ -382,7 +382,7 @@ export namespace TorchBackend {
         const objVal = BackUtils.fetchAddr(object, ctx.heap);
 
         if (!objVal) {
-            return ctx.warnWithMsg(`getAttrDeep(${name}): invalid address of object`, source).toSet();
+            return ctx.warnWithMsg(`getAttrDeep '${name}': invalid address of object`, source).toSet();
         }
 
         // propagate warning
@@ -412,11 +412,13 @@ export namespace TorchBackend {
 
         if (attr === undefined) {
             const getAttr = BackUtils.fetchAddr(objVal.attrs.get('__getattr__'), ctx.heap);
+            let mro: (number | undefined)[];
+
             if (getAttr && getAttr.type === SVType.Func) {
                 return functionCall(ctx, getAttr, [SVString.create(name, source)], source);
             } else {
                 // first, make a list of superclasses
-                const mro = BackUtils.trackMro(objVal, ctx.heap, ctx.env);
+                mro = BackUtils.trackMro(objVal, ctx.heap, ctx.env);
                 const classes = [];
 
                 // iterate superclasses and find matching attr.
@@ -455,7 +457,18 @@ export namespace TorchBackend {
                 }
             }
 
-            return ctx.warnWithMsg(`getAttrDeep(${name}): attribute not found`, source).toSet();
+            let classLog = '';
+            if (mro.length > 0 && mro[0] !== undefined) {
+                const thisClass = BackUtils.fetchAddr(ctx.heap.getVal(mro[0]), ctx.heap);
+                if (thisClass?.type === SVType.Object) {
+                    const className = BackUtils.fetchAddr(thisClass.getAttr('__name__'), ctx.heap);
+                    if (className?.type === SVType.String && typeof className.value === 'string') {
+                        classLog = ` from class <${className}>`;
+                    }
+                }
+            }
+
+            return ctx.warnWithMsg(`getAttrDeep '${name}': attribute not found${classLog}`, source).toSet();
         } else {
             return ctx.setRetVal(attr).toSet();
         }
@@ -709,10 +722,17 @@ export namespace TorchBackend {
                         }
                     }
 
-                    const [identAddr, newHeap] = ctx.heap.malloc();
-                    const newEnv = ctx.env.setId(ident, identAddr);
+                    let identAddr: SVAddr;
+                    let newCtx = ctx;
+                    if (ctx.env.hasId(ident)) {
+                        identAddr = ctx.env.getId(ident)!;
+                    } else {
+                        const [newAddr, newHeap] = ctx.heap.malloc();
+                        identAddr = newAddr;
+                        const newEnv = ctx.env.setId(ident, identAddr);
+                        newCtx = ctx.setEnv(newEnv).setHeap(newHeap);
+                    }
 
-                    const newCtx = ctx.setEnv(newEnv).setHeap(newHeap);
                     const resultSet =
                         typeof length === 'number'
                             ? _runConstFor(newCtx, identAddr, obj, length, stmt)

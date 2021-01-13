@@ -1,6 +1,6 @@
 class Module:
     def __init__(self):
-        self.is_training = False
+        self.training = False
 
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
@@ -18,16 +18,23 @@ class Module:
     def forward(self, *args, **kwargs):
         pass
 
-    def train(self):
-        self.is_training = True
+    def train(self, mode=True):
+        self.training = mode
+        return self
 
     def eval(self):
-        self.is_training = False
+        return self.train(False)
 
     def parameters(self):
-        # TODO: return something
+        # TODO: return something meaningful
         return None
 
     def cuda(self):
         return self
 
+    def to(self, *args, **kwargs):
+        # ignore it.
+        return self
+
+    def zero_grad(self, set_to_none=False):
+        return None

@@ -1,17 +1,4 @@
-class A:
-    def __init__(self, x):
-        self.x = x
-
-    def __call__(self, y):
-        self.x = self.x + y
-        return 101
+import torch
 
 
-class B(A):
-    def __init__(self, x, y):
-        super().__init__(x)
-        self.y = y
-
-
-b = B(3, 2)
-c = b(12)
+a = tuple([i for i in range(10) if i < 5])

@@ -1,11 +1,10 @@
-from .module import Module as Module
-from .conv import Conv2d as Conv2d
-from .linear import Linear as Linear
-from .dropout import Dropout2d as Dropout2d
-from .activation import ReLU as ReLU
-from .activation import Softmax as Softmax
-from .batchnorm import BatchNorm2d as BatchNorm2d
-from .loss import CrossEntropyLoss as CrossEntropyLoss
-from .distance import CosineSimilarity as CosineSimilarity
-from .container import Sequential as Sequential
-from .pooling import AvgPool2d as AvgPool2d
+from .module import Module
+from .activation import LeakyReLU, ReLU, Softmax
+from .batchnorm import BatchNorm2d
+from .container import Sequential, ModuleList
+from .conv import Conv2d
+from .distance import CosineSimilarity
+from .dropout import Dropout2d
+from .linear import Linear
+from .loss import CrossEntropyLoss
+from .pooling import AvgPool2d

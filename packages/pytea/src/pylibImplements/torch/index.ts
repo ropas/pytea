@@ -40,7 +40,7 @@ export namespace TorchLCImpl {
         }
 
         const heap = ctx.heap;
-        const [selfAddr, argsAddr, kwargs] = params;
+        const [selfAddr, argsAddr] = params;
 
         // TODO: use kwargs info.
 
@@ -262,65 +262,6 @@ export namespace TorchLCImpl {
                 source
             ) // TODO: match return value type with tensor dtype.
             .return(SVFloat.create(ExpNum.fromSymbol(ctx.genSymFloat('torchItemElem', source)), source));
-    }
-
-    // implementation of torch.Tensor.__getitem__
-    export function getItem(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
-        const params = ctx.retVal.params;
-        if (params.length !== 2) {
-            return ctx.warnTensorWithMsg(
-                `from 'LibCall.torch.getItem': got insufficient number of argument: ${params.length}`,
-                source
-            );
-        }
-
-        const heap = ctx.heap;
-        const [selfAddr, item] = params;
-
-        const selfSize = fetchSize(selfAddr, heap);
-        const indices = fetchAddr(item, heap);
-        const maskSize = fetchSize(item, heap);
-
-        if (typeof selfSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.getItem': ${selfSize}`, source);
-        } else if (indices?.type !== SVType.Int && typeof maskSize === 'string') {
-            // TODO: index by tuple
-            return ctx.warnTensorWithMsg(
-                `from 'LibCall.torch.getItem: index type mismatch. index: ${indices?.toString()}`,
-                source
-            );
-        }
-        const selfShape = selfSize.shape;
-        const selfRank = selfSize.rank();
-        if (indices?.type === SVType.Int) {
-            const firstDim = ExpNum.index(selfShape, 0, source);
-            const index = indices.value;
-
-            return ctx
-                .require([
-                    ctx.genLte(1, selfRank, source),
-                    ctx.genLte(ExpNum.bop(NumBopType.Sub, 0, firstDim, source), index, source),
-                    ctx.genLte(index, ExpNum.bop(NumBopType.Sub, firstDim, 1, source), source),
-                ])
-                .flatMap((ctx) => {
-                    return genTensor(ctx, ExpShape.slice(selfShape, 1, undefined, source));
-                });
-        } else {
-            // TODO: Implement other advanced indexing
-            //       https://numpy.org/doc/stable/reference/arrays.indexing.html
-            //
-            // mask indexing
-            const selfNumel = ExpNum.numel(selfShape, source);
-            const mask = maskSize as SVSize;
-            const maskCtx = ctx.genIntGte('maskIndex', 0, source);
-            const maskNum = maskCtx.retVal;
-
-            return maskCtx
-                .require([maskCtx.genLte(maskNum, selfNumel, source), maskCtx.genEq(selfShape, mask.shape, source)])
-                .flatMap((ctx) => {
-                    return genTensor(ctx, ExpShape.fromConst(1, [maskNum], source));
-                });
-        }
     }
 
     // implementation of torch.Tensor.repeat
@@ -1581,7 +1522,6 @@ export namespace TorchLCImpl {
         identityShape,
         matmul,
         item,
-        getItem,
         copyOut,
         repeat,
         callTensor,
