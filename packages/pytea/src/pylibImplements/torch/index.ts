@@ -4,7 +4,7 @@ import { LCImpl } from '..';
 import { fetchAddr } from '../../backend/backUtils';
 import { Constraint } from '../../backend/constraintType';
 import { Context, ContextSet } from '../../backend/context';
-import { ceilDiv, fetchSize, genTensor } from '../../backend/expUtils';
+import { ceilDiv, fetchSize, genTensor, isSize, simplifyNum } from '../../backend/expUtils';
 import {
     ShValue,
     SVAddr,
@@ -17,7 +17,15 @@ import {
     SVSize,
     SVType,
 } from '../../backend/sharpValues';
-import { ExpNum, ExpShape, ExpString, NumBopType, NumOpType, NumUopType } from '../../backend/symExpressions';
+import {
+    ExpNum,
+    ExpNumConst,
+    ExpShape,
+    ExpString,
+    NumBopType,
+    NumOpType,
+    NumUopType,
+} from '../../backend/symExpressions';
 import { TorchBackend } from '../../backend/torchBackend';
 import { LCBase } from '../libcall';
 
@@ -271,31 +279,48 @@ export namespace TorchLCImpl {
 
         const selfSize = fetchSize(selfAddr, heap);
         const indices = fetchAddr(item, heap);
+        const maskSize = fetchSize(item, heap);
 
         if (typeof selfSize === 'string') {
             return ctx.warnTensorWithMsg(`from 'LibCall.torch.getItem': ${selfSize}`, source);
-        } else if (indices?.type !== SVType.Int) {
+        } else if (indices?.type !== SVType.Int && typeof maskSize === 'string') {
             // TODO: index by tuple
             return ctx.warnTensorWithMsg(
-                `from 'LibCall.torch.getItem: index by non-integer value is not supported currently.`,
+                `from 'LibCall.torch.getItem: index type mismatch. index: ${indices?.toString()}`,
                 source
             );
         }
-
         const selfShape = selfSize.shape;
-        const rank = selfSize.rank();
-        const firstDim = ExpNum.index(selfShape, 0, source);
-        const index = indices.value;
+        const selfRank = selfSize.rank();
+        if (indices?.type === SVType.Int) {
+            const firstDim = ExpNum.index(selfShape, 0, source);
+            const index = indices.value;
 
-        return ctx
-            .require([
-                ctx.genLte(1, rank, source),
-                ctx.genLte(ExpNum.bop(NumBopType.Sub, 0, firstDim, source), index, source),
-                ctx.genLte(index, ExpNum.bop(NumBopType.Sub, firstDim, 1, source), source),
-            ])
-            .flatMap((ctx) => {
-                return genTensor(ctx, ExpShape.slice(selfShape, 1, undefined, source));
-            });
+            return ctx
+                .require([
+                    ctx.genLte(1, selfRank, source),
+                    ctx.genLte(ExpNum.bop(NumBopType.Sub, 0, firstDim, source), index, source),
+                    ctx.genLte(index, ExpNum.bop(NumBopType.Sub, firstDim, 1, source), source),
+                ])
+                .flatMap((ctx) => {
+                    return genTensor(ctx, ExpShape.slice(selfShape, 1, undefined, source));
+                });
+        } else {
+            // TODO: Implement other advanced indexing
+            //       https://numpy.org/doc/stable/reference/arrays.indexing.html
+            //
+            // mask indexing
+            const selfNumel = ExpNum.numel(selfShape, source);
+            const mask = maskSize as SVSize;
+            const maskCtx = ctx.genIntGte('maskIndex', 0, source);
+            const maskNum = maskCtx.retVal;
+
+            return maskCtx
+                .require([maskCtx.genLte(maskNum, selfNumel, source), maskCtx.genEq(selfShape, mask.shape, source)])
+                .flatMap((ctx) => {
+                    return genTensor(ctx, ExpShape.fromConst(1, [maskNum], source));
+                });
+        }
     }
 
     // implementation of torch.Tensor.repeat
@@ -692,25 +717,69 @@ export namespace TorchLCImpl {
 
                     // Special case: input size includes a -1.
                     if (wildCardIdx !== -1) {
-                        const shape1 = ExpShape.fromConst(wildCardIdx, dims.slice(0, wildCardIdx));
-                        const shape2 = ExpShape.fromConst(shapeRank - wildCardIdx - 1, dims.slice(wildCardIdx + 1));
-                        const numel1 = ExpNum.numel(shape1, source);
-                        const numel2 = ExpNum.numel(shape2, source);
-                        const numel12 = ExpNum.bop(NumBopType.Mul, numel1, numel2, source);
-                        const wildCardDim = ExpNum.bop(NumBopType.FloorDiv, selfNumel, numel12, source);
-                        const wildCardDimShape = ExpShape.fromConst(1, [wildCardDim], source);
-                        const newShape_ = ExpShape.concat(shape1, wildCardDimShape, source);
-                        const newShape = ExpShape.concat(newShape_, shape2);
+                        const shapeL = ExpShape.fromConst(wildCardIdx, dims.slice(0, wildCardIdx));
+                        const shapeR = ExpShape.fromConst(shapeRank - wildCardIdx - 1, dims.slice(wildCardIdx + 1));
+                        const numelL = ExpNum.numel(shapeL, source);
+                        const numelR = ExpNum.numel(shapeR, source);
 
-                        const mod = ExpNum.bop(NumBopType.Mod, selfNumel, numel12, source);
-
-                        return ctx
-                            .require([
-                                // TODO: Commented out to avoid call stack excess
-                                // ctx.genForall(ctx.genSymInt('i', source), [0, wildCardIdx], ctx.genLt(0, i)),
-                                ctx.genEq(mod, 0, source),
-                            ])
-                            .flatMap((ctx) => genTensor(ctx, newShape, source));
+                        const isLeftRankZero = ctx.genEq(0, shapeL.rank, source);
+                        const isRightRankZero = ctx.genEq(0, shapeR.rank, source);
+                        const [leftZeroPath, leftNonzeroPath] = ctx.ifThenElse(isLeftRankZero, source);
+                        const pathL = leftZeroPath.flatMap((ctx) => {
+                            const [rightZeroPath, rightNonzeroPath] = ctx.ifThenElse(isRightRankZero, source);
+                            // path0: shape argument is [-1]
+                            const pathLL = rightZeroPath.flatMap((ctx) => {
+                                const newShape = ExpShape.fromConst(1, [selfNumel], source);
+                                return genTensor(ctx, newShape, source);
+                            });
+                            // path1: shape argument is [-1, ...]
+                            const pathLR = rightNonzeroPath.flatMap((ctx) => {
+                                const wildCardDim = ExpNum.bop(NumBopType.FloorDiv, selfNumel, numelR, source);
+                                const wildCardDimShape = ExpShape.fromConst(1, [wildCardDim], source);
+                                const newShape = ExpShape.concat(wildCardDimShape, shapeR, source);
+                                const mod = ExpNum.bop(NumBopType.Mod, selfNumel, numelR, source);
+                                return ctx
+                                    .require(
+                                        [ctx.genEq(mod, 0, source)],
+                                        `from 'LibCall.torch.view': numel mismatch. selfSize: ${selfNumel} must be dividable by ${numelR}`
+                                    )
+                                    .flatMap((ctx) => genTensor(ctx, newShape, source));
+                            });
+                            return pathLL.join(pathLR);
+                        });
+                        const pathR = leftNonzeroPath.flatMap((ctx) => {
+                            const [rightZeroPath, rightNonzeroPath] = ctx.ifThenElse(isRightRankZero, source);
+                            // path2: shape argument is [..., -1]
+                            const pathRL = rightZeroPath.flatMap((ctx) => {
+                                const wildCardDim = ExpNum.bop(NumBopType.FloorDiv, selfNumel, numelL, source);
+                                const wildCardDimShape = ExpShape.fromConst(1, [wildCardDim], source);
+                                const newShape = ExpShape.concat(shapeL, wildCardDimShape, source);
+                                const mod = ExpNum.bop(NumBopType.Mod, selfNumel, numelL, source);
+                                return ctx
+                                    .require(
+                                        [ctx.genEq(mod, 0, source)],
+                                        `from 'LibCall.torch.view': numel mismatch. selfSize: ${selfNumel} must be dividable by ${numelL}`
+                                    )
+                                    .flatMap((ctx) => genTensor(ctx, newShape, source));
+                            });
+                            // path3: shape argument is [..., -1, ...]
+                            const pathRR = rightNonzeroPath.flatMap((ctx) => {
+                                const numelLR = ExpNum.bop(NumBopType.Mul, numelL, numelR, source);
+                                const wildCardDim = ExpNum.bop(NumBopType.FloorDiv, selfNumel, numelLR, source);
+                                const wildCardDimShape = ExpShape.fromConst(1, [wildCardDim], source);
+                                const newShape_ = ExpShape.concat(shapeL, wildCardDimShape, source);
+                                const newShape = ExpShape.concat(newShape_, shapeR);
+                                const mod = ExpNum.bop(NumBopType.Mod, selfNumel, numelLR, source);
+                                return ctx
+                                    .require(
+                                        [ctx.genEq(mod, 0, source)],
+                                        `from 'LibCall.torch.view': numel mismatch. selfSize: ${selfNumel} must be dividable by ${numelLR}`
+                                    )
+                                    .flatMap((ctx) => genTensor(ctx, newShape, source));
+                            });
+                            return pathRL.join(pathRR);
+                        });
+                        return pathL.join(pathR);
                     }
 
                     // input size doesn't include -1.
@@ -781,21 +850,47 @@ export namespace TorchLCImpl {
             biasRank = biasSize.rank();
         }
 
-        // stride can be either None or (int, int) tuple
+        const stride = fetchAddr(strideAddr, heap);
         let stride_0, stride_1: SVInt;
-        if (strideAddr.type === SVType.None) {
-            [stride_0, stride_1] = [kernel_size_0, kernel_size_1];
+        if (stride === undefined) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.conv2d: stride is undefined`, source);
+        } else if (stride.type !== SVType.Object && stride.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.conv2d: stride is not an int nor int pair`, source);
+        } else if (stride.type === SVType.Object) {
+            stride_0 = stride.getIndice(0) as SVInt;
+            stride_1 = stride.getIndice(1) as SVInt;
         } else {
-            const stride_tuple = fetchAddr(strideAddr, heap) as SVObject;
-            stride_0 = stride_tuple.getIndice(0) as SVInt;
-            stride_1 = stride_tuple.getIndice(1) as SVInt;
+            stride_0 = stride;
+            stride_1 = stride;
         }
-        const padding_tuple = fetchAddr(paddingAddr, heap) as SVObject;
-        const padding_0 = padding_tuple.getIndice(0) as SVInt;
-        const padding_1 = padding_tuple.getIndice(1) as SVInt;
-        const dilation_tuple = fetchAddr(dilationAddr, heap) as SVObject;
-        const dilation_0 = dilation_tuple.getIndice(0) as SVInt;
-        const dilation_1 = dilation_tuple.getIndice(1) as SVInt;
+
+        const padding = fetchAddr(paddingAddr, heap);
+        let padding_0, padding_1: SVInt;
+        if (padding === undefined) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.conv2d: padding is undefined`, source);
+        } else if (padding.type !== SVType.Object && padding.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.conv2d: padding is not an int nor int pair`, source);
+        } else if (padding.type === SVType.Object) {
+            padding_0 = padding.getIndice(0) as SVInt;
+            padding_1 = padding.getIndice(1) as SVInt;
+        } else {
+            padding_0 = padding;
+            padding_1 = padding;
+        }
+
+        const dilation = fetchAddr(dilationAddr, heap);
+        let dilation_0, dilation_1: SVInt;
+        if (dilation === undefined) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.conv2d: dilation is undefined`, source);
+        } else if (dilation.type !== SVType.Object && dilation.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.conv2d: dilation is not an int nor int pair`, source);
+        } else if (dilation.type === SVType.Object) {
+            dilation_0 = dilation.getIndice(0) as SVInt;
+            dilation_1 = dilation.getIndice(1) as SVInt;
+        } else {
+            dilation_0 = dilation;
+            dilation_1 = dilation;
+        }
 
         const groups = fetchAddr(groupsAddr, heap) as SVInt;
 
@@ -866,7 +961,7 @@ export namespace TorchLCImpl {
         if (kernel_size === undefined) {
             return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: kernel_size is undefined`, source);
         } else if (kernel_size.type !== SVType.Object && kernel_size.type !== SVType.Int) {
-            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: kernel_size is not an int or int pair`, source);
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: kernel_size is not an int nor int pair`, source);
         } else if (kernel_size.type === SVType.Object) {
             kernel_size_0 = kernel_size.getIndice(0) as SVInt;
             kernel_size_1 = kernel_size.getIndice(1) as SVInt;
@@ -881,7 +976,7 @@ export namespace TorchLCImpl {
         if (stride === undefined) {
             return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: stride is undefined`, source);
         } else if (stride.type !== SVType.Object && stride.type !== SVType.Int) {
-            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: stride is not an int or int pair`, source);
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: stride is not an int nor int pair`, source);
         } else if (stride.type === SVType.Object) {
             stride_0 = stride.getIndice(0) as SVInt;
             stride_1 = stride.getIndice(1) as SVInt;
@@ -896,7 +991,7 @@ export namespace TorchLCImpl {
         if (padding === undefined) {
             return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: padding is undefined`, source);
         } else if (padding.type !== SVType.Object && padding.type !== SVType.Int) {
-            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: padding is not an int or int pair`, source);
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: padding is not an int nor int pair`, source);
         } else if (padding.type === SVType.Object) {
             padding_0 = padding.getIndice(0) as SVInt;
             padding_1 = padding.getIndice(1) as SVInt;
@@ -911,7 +1006,7 @@ export namespace TorchLCImpl {
         if (dilation === undefined) {
             return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: dilation is undefined`, source);
         } else if (dilation.type !== SVType.Object && dilation.type !== SVType.Int) {
-            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: dilation is not an int or int pair`, source);
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.pool2d: dilation is not an int nor int pair`, source);
         } else if (dilation.type === SVType.Object) {
             dilation_0 = dilation.getIndice(0) as SVInt;
             dilation_1 = dilation.getIndice(1) as SVInt;
@@ -1031,11 +1126,16 @@ export namespace TorchLCImpl {
             .flatMap((ctx) => genTensor(ctx, inputShape, source));
     }
 
+    // ctr = [ -x1.rank <= dim < x1.rank, -x2.rank <= dim < x2.rank]
+    // if (dim < 0)
+    //     ctr += [broadcastable(x1, x2)]
+    // else
+    //     ctr += [x1.rank == x2.rank && broadcastable(x1, x2)]
     export function cosine_similarity(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 3) {
             return ctx.warnTensorWithMsg(
-                `from 'LibCall.torch.batchnorm2d': got insufficient number of argument: ${params.length}`,
+                `from 'LibCall.torch.cosine_similarity': got insufficient number of argument: ${params.length}`,
                 source
             );
         }
@@ -1045,7 +1145,7 @@ export namespace TorchLCImpl {
 
         const x1Size = fetchSize(x1Addr, heap);
         const x2Size = fetchSize(x2Addr, heap);
-        const dim = fetchAddr(dimAddr, heap);
+        const dimVal = fetchAddr(dimAddr, heap);
 
         if (typeof x1Size === 'string') {
             return ctx.warnTensorWithMsg(`from 'LibCall.torch.cosine_similarity': ${x1Size}`, source);
@@ -1053,30 +1153,73 @@ export namespace TorchLCImpl {
         if (typeof x2Size === 'string') {
             return ctx.warnTensorWithMsg(`from 'LibCall.torch.cosine_similarity': ${x2Size}`, source);
         }
-        if (dim?.type !== SVType.Int) {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.cosine_similarity': ${dim}`, source);
+        if (dimVal?.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.cosine_similarity': dim must be an int ${dimVal}`,
+                source
+            );
+        }
+        const x1Shape = x1Size.shape;
+        const x2Shape = x2Size.shape;
+        const x1Rank = x1Size.rank();
+        const x2Rank = x2Size.rank();
+
+        // Assume dim is always constant
+        let dim: ExpNum;
+        if (typeof dimVal.value === 'number') {
+            dim = ExpNum.fromConst(dimVal.value, source);
+        } else {
+            dim = simplifyNum(ctx.ctrSet, dimVal.value);
+            if (dim.opType !== NumOpType.Const) {
+                return ctx.warnTensorWithMsg(
+                    `from 'LibCall.torch.cosine_similarity': dim must be a constant number ${dimVal}`,
+                    source
+                );
+            }
         }
 
-        const x1Shape = x1Size.shape;
-        const x1Rank = x1Size.rank();
-        const x2hape = x2Size.shape;
-
-        const shape1 = ExpShape.slice(x1Shape, 0, dim.value, source);
-        const shape2 = ExpShape.slice(x1Shape, ExpNum.bop(NumBopType.Add, dim.value, 1), x1Rank, source);
+        const x1x2Bc = ExpShape.broadcast(x1Shape, x2Shape, source);
+        // negative index handling
+        let dim_: ExpNum;
+        if (dim.value < 0) {
+            dim_ = ExpNum.bop(NumBopType.Add, ExpShape.getRank(x1x2Bc), dim, source);
+        } else {
+            dim_ = dim;
+        }
+        const shape1 = ExpShape.slice(x1x2Bc, 0, dim_, source);
+        const shape2 = ExpShape.slice(x1x2Bc, ExpNum.bop(NumBopType.Add, dim_, 1), ExpShape.getRank(x1x2Bc), source);
         const returnShape = ExpShape.concat(shape1, shape2, source);
 
-        return ctx
-            .require(
-                // TODO: handle negative index
-                [
-                    ctx.genEq(x1Shape, x2hape, source),
-                    ctx.genLte(0, dim.value, source),
-                    ctx.genLt(dim.value, x1Rank, source),
-                ],
-                `from 'LibCall.torch.cosine_similarity': shapes must be equal, dim must be within rank`,
-                source
-            )
-            .flatMap((ctx) => genTensor(ctx, returnShape, source));
+        if (dim.value < 0) {
+            return ctx
+                .require(
+                    [
+                        ctx.genLte(ExpNum.uop(NumUopType.Neg, x1Rank, source), dim, source),
+                        ctx.genLt(dim, x1Rank, source),
+                        ctx.genLte(ExpNum.uop(NumUopType.Neg, x2Rank, source), dim, source),
+                        ctx.genLt(dim, x2Rank, source),
+                        ctx.genBroadcastable(x1Shape, x2Shape, source),
+                    ],
+                    `from 'LibCall.torch.cosine_similarity': shapes must be broadcastable, dim must be within rank`,
+                    source
+                )
+                .flatMap((ctx) => genTensor(ctx, returnShape, source));
+        } else {
+            return ctx
+                .require(
+                    [
+                        ctx.genLte(ExpNum.uop(NumUopType.Neg, x1Rank, source), dim, source),
+                        ctx.genLt(dim, x1Rank, source),
+                        ctx.genLte(ExpNum.uop(NumUopType.Neg, x2Rank, source), dim, source),
+                        ctx.genLt(dim, x2Rank, source),
+                        ctx.genEq(x1Rank, x2Rank, source),
+                        ctx.genBroadcastable(x1Shape, x2Shape, source),
+                    ],
+                    `from 'LibCall.torch.cosine_similarity': shapes must be broadcastable, dim must be within rank`,
+                    source
+                )
+                .flatMap((ctx) => genTensor(ctx, returnShape, source));
+        }
     }
 
     // conditions of elements in "target" is not considered.

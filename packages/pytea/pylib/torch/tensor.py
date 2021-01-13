@@ -17,13 +17,19 @@ class Tensor:
     def backward(self):
         return self
 
-    def size(self):
-        return self.shape
+    def size(self, dim=None):
+        if dim is None:
+            return self.shape
+        else:
+            return self.shape[dim]
 
     def matmul(self, other):
         return LibCall.torch.matmul(self, other)
 
     def mul(self, other):
+        return torch._bop(self, other)
+
+    def div(self, other):
         return torch._bop(self, other)
 
     def pow(self, exponent):

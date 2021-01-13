@@ -39,7 +39,7 @@ class DataLoader:
         return self._len
 
     def __getitem__(self, index):
-        item = self.dataset[index]
+        item, target = self.dataset[index]
         _len = len(self)
 
         if self.drop_last == False and self._last_batch > 0 and index == _len - 1:
@@ -54,9 +54,9 @@ class DataLoader:
                     ret_list.append(LibCall.shape.repeat(list_item, 0, batch_size))
                 else:
                     ret_list.append(Tensor(batch_size))
-            return ret_list
+            return ret_list, Tensor([batch_size])
         else:
             if isinstance(item, Tensor):
-                return LibCall.shape.repeat(item, 0, batch_size)
+                return LibCall.shape.repeat(item, 0, batch_size), Tensor([batch_size])
             else:
-                return Tensor(batch_size)
+                return Tensor(batch_size)), Tensor([batch_size])

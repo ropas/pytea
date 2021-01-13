@@ -65,6 +65,7 @@ import {
     SVUndef,
 } from './sharpValues';
 import { ExpNum, ExpString, NumBopType, SymExp } from './symExpressions';
+import { formatParseNode } from '../service/pyteaUtils';
 
 export namespace TorchBackend {
     export function runEmpty(stmt: ThStmt): ContextSet<ShValue | ShContFlag> {
@@ -944,12 +945,7 @@ export namespace TorchBackend {
                 }
 
                 if (funcVal.type === SVType.Func) {
-                    // debuggin original
                     return functionCall(ctx.setRetVal(funcVal), funcVal, ctx.retVal, expr.source);
-                    //
-                    //let newSet = functionCall(ctx.setRetVal(funcVal), funcVal, ctx.retVal, expr.source);
-                    //newSet = newSet.map((ctx) => ctx.addLog(`%%%%evalCall :: retVal: ${ctx.retVal} `, expr.source));
-                    //return newSet;
                 } else if (funcVal.type === SVType.Object) {
                     const call = funcVal.getAttr('__call__');
                     if (call) {
