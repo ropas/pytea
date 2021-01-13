@@ -143,6 +143,7 @@ export namespace ShapeLCImpl {
         const size = fetchAddr(sizeAddr, heap);
         const axis = fetchAddr(axisAddr, heap);
         const index = fetchAddr(indexAddr, heap);
+        const mayTensorIndex = fetchSize(indexAddr, heap);
 
         if (!(size && size instanceof SVSize)) {
             return ctx.warnWithMsg(`from 'LibCall.shape.tensorGetItem': input is not a Size type`, source).toSet();
@@ -231,14 +232,14 @@ export namespace ShapeLCImpl {
                 return ctx
                     .require(ctrList, 'index out of range', source)
                     .map((ctx) => ctx.setRetVal(SVSize.createSize(ctx, newShape, source)));
-            } else if (isSize(index)) {
+            } else if (mayTensorIndex && mayTensorIndex instanceof SVSize) {
                 // TOOD: distinguish dtype of tensor
                 // TODO: Implement other advanced tensor indexing
                 //       https://numpy.org/doc/stable/reference/arrays.indexing.html
 
                 // mask indexing
                 const sizeNumel = ExpNum.numel(shape, source);
-                const mask = index;
+                const mask = mayTensorIndex;
                 const maskCtx = ctx.genIntGte('maskIndex', 0, source);
                 const maskNum = maskCtx.retVal;
 

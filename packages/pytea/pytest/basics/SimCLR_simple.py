@@ -285,7 +285,8 @@ train_loader = DataLoader(
 )
 
 # hparams settings: list of (BATCH_SIZE, TOTAL_EPOCHS, TEMPERATURE) tuples.
-hparams_settings = ((256, 10, 0.07), (64, 200, 0.07))
+# hparams_settings = ((256, 10, 0.07), (64, 200, 0.07))
+hparams_settings = ((256, 10, 0.07), (64, 10, 0.07))
 
 for B, E, T in hparams_settings:
     # change global variables.

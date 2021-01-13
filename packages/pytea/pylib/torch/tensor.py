@@ -79,6 +79,7 @@ class Tensor:
 
     def type(self, dtype=None, **kwargs):
         if dtype is None:
+            # TODO: return dtype of self
             return "UnknownTensorType"
         else:
             return self
