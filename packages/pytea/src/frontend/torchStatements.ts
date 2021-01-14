@@ -337,7 +337,6 @@ export namespace TECall {
 export enum LibCallType {
     DEBUG = 'DEBUG',
     import = 'import',
-    importQualified = 'importQualified',
     genList = 'genList',
     genDict = 'genDict',
     setDefault = 'setDefault',

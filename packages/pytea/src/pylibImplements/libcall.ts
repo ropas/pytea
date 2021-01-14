@@ -144,8 +144,16 @@ export namespace LCBase {
             const retVal = ctx.imported.getId(lastPath);
 
             if (assignTo) {
-                const to = baseEnv.getId(assignTo);
+                let to = baseEnv.getId(assignTo);
                 const val = BackUtils.sanitizeAddr(retVal, newCtx.heap);
+
+                if (!to) {
+                    const [addr, newHeap] = newCtx.heap.malloc(source);
+                    const newEnv = newCtx.env.setId(assignTo, addr);
+                    to = addr;
+                    newCtx = ctx.setEnv(newEnv).setHeap(newHeap);
+                }
+
                 if (to) {
                     if (val && val.type !== SVType.Undef) {
                         newCtx = newCtx.setHeap(newCtx.heap.setVal(to, val));
@@ -159,91 +167,6 @@ export namespace LCBase {
                 return newCtx.setRetVal(retVal);
             } else if (hasWild) {
                 return newCtx.setRetVal(SVNone.create());
-            } else {
-                return newCtx.warnWithMsg(`import ${qualPath}(${lastPath}) failed `, source) as Context<ShValue>;
-            }
-        });
-    }
-
-    // return module object and inject it to env.
-    export function importQualified(ctx: Context<ImportParams>, source?: ParseNode): ContextSet<ShValue> {
-        // TODO: qualified.
-        const service = PyteaService.getGlobalService();
-        if (!service) {
-            return ctx.failWithMsg('PyTea service uninitialized.', source).toSet();
-        }
-        const qualPath = ctx.retVal.qualPath;
-        const currPath = ctx.relPath;
-
-        const paths = PyteaUtils.scanQualPath(qualPath, currPath);
-
-        let baseEnv = ctx.env;
-        const basePath = ctx.relPath;
-
-        const lastPath = paths[paths.length - 1];
-        const hasWild = lastPath.endsWith('*');
-        const wildId = paths.length - 1;
-
-        let ctxSet: ContextSet<any> = ctx.toSet();
-        paths.forEach((libRelPath, index) => {
-            // import wildcard
-            if (hasWild && libRelPath.endsWith('*')) {
-                return;
-            }
-
-            // do not import twice
-            ctxSet = ctxSet.flatMap((ctx) => {
-                const currEnv = ctx.env;
-                const imported = ctx.imported;
-                if (imported.addrMap.has(libRelPath)) return ctx.toSet();
-
-                const [stmt] = service.getImportModuleStmt(libRelPath);
-                if (!stmt) return ctx.toSet();
-
-                const newPath = `${libRelPath}.__init__`;
-
-                const newCtx = ctx.setEnv(new ShEnv()).setRelPath(newPath);
-                const ctxSet = TorchBackend.runModule(stmt as TSLet, newPath, newCtx);
-                return ctxSet.map((ctx) => {
-                    const env = ctx.env;
-                    let imported = ctx.imported;
-                    env.addrMap.forEach((addr, id) => {
-                        imported = imported.setId(`${libRelPath}.${id}`, addr);
-                    });
-                    imported = imported.setId(libRelPath, ctx.retVal);
-
-                    if (hasWild && index === wildId - 1) {
-                        let heap = ctx.heap;
-                        baseEnv = baseEnv.mergeAddr(env);
-                        const moduleBase = baseEnv.getId('$module');
-                        const moduleAddr = BackUtils.sanitizeAddr(moduleBase, heap);
-                        // assign imported variables to $module.
-                        // (wildcard import does not controlled by frontend)
-                        if (moduleAddr && moduleAddr.type === SVType.Addr) {
-                            const moduleObj = heap.getVal(moduleAddr);
-                            if (moduleObj && moduleObj.type === SVType.Object) {
-                                let obj: SVObject = moduleObj;
-                                env.addrMap.forEach((addr, id) => {
-                                    obj = obj.setAttr(id, addr);
-                                });
-                                heap = heap.setVal(moduleAddr, obj);
-                            }
-                        }
-                        return ctx.setImported(imported).setEnv(currEnv).setHeap(heap);
-                    }
-
-                    return ctx.setImported(imported).setEnv(currEnv);
-                });
-            });
-        });
-
-        // TODO: Garbage collection
-
-        return ctxSet.map((ctx) => {
-            const newCtx = ctx.setEnv(baseEnv).setRelPath(basePath);
-            const retVal = ctx.imported.getId(lastPath);
-            if (retVal) {
-                return newCtx.setRetVal(retVal);
             } else {
                 return newCtx.warnWithMsg(`import ${qualPath}(${lastPath}) failed `, source) as Context<ShValue>;
             }
@@ -450,7 +373,6 @@ export namespace LCBase {
 
     export const libCallImpls: { [key in keyof typeof LibCallType]: LCImpl } = {
         import: thImport,
-        importQualified,
         genList,
         genDict,
         DEBUG,

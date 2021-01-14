@@ -12,8 +12,8 @@ import {
     SVInt,
     SVNotImpl,
     SVObject,
-    SVString,
     SVSize,
+    SVString,
     SVType,
 } from '../backend/sharpValues';
 import { ExpNum, NumBopType, NumUopType } from '../backend/symExpressions';
@@ -259,7 +259,7 @@ export namespace BuiltinsLCImpl {
         let [pairList, pairListAddr, newHeap] = SVObject.create(heap, source);
         let pairListLen = 0;
         let pair, pairAddr;
-        for (let [key, value] of dict.keyValues) {
+        for (const [key, value] of dict.keyValues) {
             [pair, pairAddr, newHeap] = SVObject.create(newHeap, source);
             pair = pair.setAttr('$length', SVInt.create(2, source));
             pair = pair.setIndice(0, SVString.create(key, source));
@@ -414,6 +414,15 @@ export namespace BuiltinsLCImpl {
         return ctx.failWithMsg('explicit exit function call', source).toSet();
     }
 
+    export function warn(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const warnObj = fetchAddr(ctx.retVal.params[0], ctx.heap);
+        const warnMsg =
+            warnObj?.type === SVType.String && typeof warnObj.value === 'string'
+                ? warnObj.value
+                : 'Explicit warn called';
+        return ctx.warnWithMsg(warnMsg, source).toSet();
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         superGetAttr,
         isinstance,
@@ -425,6 +434,7 @@ export namespace BuiltinsLCImpl {
         randFloat,
         setSize,
         exit,
+        warn,
     };
 }
 

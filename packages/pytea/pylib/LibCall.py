@@ -34,8 +34,30 @@ class builtins:
         return float(value)
 
     @staticmethod
-    def setSize(value, shape):
-        value.shape = shape
+    def len(value):
+        return len(value)
+
+    @staticmethod
+    def randInt(lo, hi):
+        import random
+
+        return random.randint(lo, hi)
+
+    @staticmethod
+    def randFloat(lo, hi):
+        import random
+
+        return random.random() * (hi - lo) + lo
+
+    @staticmethod
+    def exit():
+        import sys
+
+        sys.exit(-1)
+
+    @staticmethod
+    def warn(msg):
+        return NotImplementedError(msg)
 
 
 class TorchLibCallImpl:
@@ -73,10 +95,6 @@ class TorchLibCallImpl:
 
     @staticmethod
     def copyOut(tensor, out):
-        pass
-
-    @staticmethod
-    def transpose(tensor, dim0, dim1):
         pass
 
     @staticmethod

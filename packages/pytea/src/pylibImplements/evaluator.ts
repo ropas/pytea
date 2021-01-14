@@ -41,7 +41,6 @@ export function evalLibCall<T>(ctxSet: ContextSet<T>, expr: TELibCall): ContextS
                 }
             });
         case LibCallType.import:
-        case LibCallType.importQualified:
             return paramSet.flatMap((ctx) => {
                 const params = ctx.retVal;
 

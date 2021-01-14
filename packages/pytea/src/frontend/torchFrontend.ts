@@ -250,14 +250,47 @@ export class TorchIRFrontend {
         }
 
         const path = TEConst.genStr(toQualPath(node.module));
-        const qualPath: [string, ThExpr][] = [['qualPath', path]];
+
         if (!node.alias && node.module.nameParts.length >= 2) {
-            // import x.y
-            return TSExpr.create(TELibCall.create(LibCallType.importQualified, qualPath, node));
+            // TODO: should check leading dots?
+            const modulePath: [string, ThExpr][] = [
+                ['qualPath', path],
+                ['assignTo', TEConst.genStr(this._getImm() + '_import', node)],
+            ];
+            const nameNode = node.module.nameParts[0];
+            const name = TEConst.genStr(nameNode.value, nameNode);
+            const basePath: [string, ThExpr][] = [
+                ['qualPath', name],
+                ['assignTo', name],
+            ];
+            const stmts: ThStmt[] = [];
+            let nameStr: string = '.'.repeat(node.module.leadingDots);
+            let nameObj: ThLeftExpr | undefined;
+            node.module.nameParts.forEach((nameNode, id) => {
+                const tempName = this._getImm() + '_imp';
+                nameStr = nameStr + (id === 0 ? '' : '.') + nameNode.value;
+                nameObj = nameObj
+                    ? TEAttr.create(nameObj, nameNode.value, nameNode)
+                    : TEName.create(nameNode.value, nameNode);
+
+                const path: [string, ThExpr][] = [
+                    ['qualPath', TEConst.genStr(nameStr, nameNode)],
+                    ['assignTo', TEConst.genStr(tempName)],
+                ];
+                stmts.push(
+                    TSSeq.create(
+                        TSExpr.create(TELibCall.create(LibCallType.import, path, nameNode)),
+                        TSAssign.create(nameObj, TEName.create(tempName))
+                    )
+                );
+            });
+
+            return this._mergeStmt(stmts);
         } else {
+            const qualPath: [string, ThExpr][] = [['qualPath', path]];
             const nameNode = node.alias ? node.alias : node.module.nameParts[0];
-            const name = nameNode.value;
-            qualPath.push(['assignTo', TEConst.genStr(name, nameNode)]);
+            const name = TEConst.genStr(nameNode.value, nameNode);
+            qualPath.push(['assignTo', name]);
 
             return TSExpr.create(TELibCall.create(LibCallType.import, qualPath, node));
         }

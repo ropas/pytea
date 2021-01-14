@@ -207,3 +207,7 @@ class ValueError(Exception):
 
 class IndexError(Exception):
     pass
+
+
+class OSError(Exception):
+    pass
