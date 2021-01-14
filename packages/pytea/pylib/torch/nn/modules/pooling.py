@@ -12,7 +12,7 @@ class _AvgPoolNd(Module):
 
 class AvgPool2d(_AvgPoolNd):
     def __init__(self, kernel_size, stride=None, padding=0,
-                 ceil_mode=False, count_include_pad=True, divisor_override):
+                 ceil_mode=False, count_include_pad=True, divisor_override=None):
         super(AvgPool2d, self).__init__()
         self.kernel_size = kernel_size
         self.stride = stride if (stride is not None) else kernel_size

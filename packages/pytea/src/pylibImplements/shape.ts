@@ -17,6 +17,7 @@ import {
     fetchSize,
     genTensor,
     isInstanceOf,
+    isSize,
     reluLen,
     simplifyNum,
     simplifyShape,
@@ -142,6 +143,7 @@ export namespace ShapeLCImpl {
         const size = fetchAddr(sizeAddr, heap);
         const axis = fetchAddr(axisAddr, heap);
         const index = fetchAddr(indexAddr, heap);
+        const mayTensorIndex = fetchSize(indexAddr, heap);
 
         if (!(size && size instanceof SVSize)) {
             return ctx.warnWithMsg(`from 'LibCall.shape.tensorGetItem': input is not a Size type`, source).toSet();
@@ -230,13 +232,28 @@ export namespace ShapeLCImpl {
                 return ctx
                     .require(ctrList, 'index out of range', source)
                     .map((ctx) => ctx.setRetVal(SVSize.createSize(ctx, newShape, source)));
+            } else if (mayTensorIndex && mayTensorIndex instanceof SVSize) {
+                // TOOD: distinguish dtype of tensor
+                // TODO: Implement other advanced tensor indexing
+                //       https://numpy.org/doc/stable/reference/arrays.indexing.html
+
+                // mask indexing
+                const sizeNumel = ExpNum.numel(shape, source);
+                const mask = mayTensorIndex;
+                const maskCtx = ctx.genIntGte('maskIndex', 0, source);
+                const maskNum = maskCtx.retVal;
+
+                return maskCtx
+                    .require([maskCtx.genLte(maskNum, sizeNumel, source), maskCtx.genEq(shape, mask.shape, source)])
+                    .flatMap((ctx) => {
+                        return genTensor(ctx, ExpShape.fromConst(1, [maskNum], source));
+                    });
             }
         }
 
-        // TODO: index by Tensor
         return ctx
             .warnWithMsg(
-                `from 'LibCall.tensor.getItem: only indexing by integer and slice is supported currently.`,
+                `from 'LibCall.tensor.getItem: only indexing by integer, slice or bool tensor is supported currently.`,
                 source
             )
             .toSet();

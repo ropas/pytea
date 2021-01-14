@@ -16,6 +16,12 @@ class Image:
         self.height = height
         LibCall.builtins.setSize(self, (channel, width, height))
 
+    def copy(self):
+        im = Image()
+        im._setSize(self._channel, self.width, self.height)
+        im.mode = self.mode
+        return im
+
     def convert(self, mode=None, *args, **kwargs):
         if mode is None:
             return self

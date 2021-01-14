@@ -766,9 +766,13 @@ class Ctr:
 
         # TODO: How to handle cases where "start" and "end" are not given?
         start = self.encodeExpNum(expShape["start"])
+        if start is None:
+            start = 0
         if not is_int(start):
             raise Exception("_encodeExpShapeSlice: a start index must be an int")
         end = self.encodeExpNum(expShape["end"])
+        if end is None:
+            end = self.getRank(dims)
         if not is_int(end):
             raise Exception("_encodeExpShapeSlice: a end index must be an int")
         i = Int("i")

@@ -5,6 +5,7 @@ import torch
 class Tensor:
     def __init__(self, *args, **kwargs):
         LibCall.torch.tensorInit(self, args, kwargs)
+        self.data = self
 
     # # TODO: make @staticmethod
     # def __getattr__(self, attr):
@@ -16,13 +17,19 @@ class Tensor:
     def backward(self):
         return self
 
-    def size(self):
-        return self.shape
+    def size(self, dim=None):
+        if dim is None:
+            return self.shape
+        else:
+            return self.shape[dim]
 
     def matmul(self, other):
         return LibCall.torch.matmul(self, other)
 
     def mul(self, other):
+        return torch._bop(self, other)
+
+    def div(self, other):
         return torch._bop(self, other)
 
     def pow(self, exponent):
@@ -72,6 +79,7 @@ class Tensor:
 
     def type(self, dtype=None, **kwargs):
         if dtype is None:
+            # TODO: return dtype of self
             return "UnknownTensorType"
         else:
             return self

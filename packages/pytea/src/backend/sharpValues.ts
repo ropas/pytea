@@ -459,6 +459,7 @@ export class SVSize extends SVObject {
             // .set('$length', SVInt.create(ExpShape.getRank(shape), shape.source)),
             indices: obj.indices,
             keyValues: obj.keyValues,
+            addr: obj.addr,
             shape,
         });
         return value;

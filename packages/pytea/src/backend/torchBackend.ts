@@ -65,6 +65,7 @@ import {
     SVUndef,
 } from './sharpValues';
 import { ExpNum, ExpString, NumBopType, SymExp } from './symExpressions';
+import { formatParseNode } from '../service/pyteaUtils';
 
 export namespace TorchBackend {
     export function runEmpty(stmt: ThStmt): ContextSet<ShValue | ShContFlag> {
@@ -389,6 +390,24 @@ export namespace TorchBackend {
             return ctx.setRetVal(objVal).toSet();
         }
 
+        // if name == '__dict__', return dictionary of attrs
+        if (name === '__dict__') {
+            let [dictObj, dictAddr, newHeap] = SVObject.create(ctx.heap, source);
+            for (let [attrName, attrVal] of objVal.attrs.entries()) {
+                dictObj = dictObj.setKeyVal(attrName, attrVal);
+            }
+            dictObj = dictObj.setAttr('$length', SVInt.create(dictObj.keyValues.size, source));
+            let dictType = BackUtils.fetchAddr(ctx.env.getId('dict'), newHeap);
+            if (dictType?.type === SVType.Object) {
+                // class _Primitives defines self.mro = (self, object)
+                dictType = BackUtils.fetchAddr(dictType.getAttr('__mro__'), newHeap);
+            }
+            if (dictType?.type === SVType.Object) {
+                dictObj = dictObj.setAttr('__mro__', dictType);
+            }
+            return ctx.setHeap(newHeap.setVal(dictAddr, dictObj)).toSetWith(dictObj);
+        }
+
         const attr = objVal.attrs.get(name);
 
         if (attr === undefined) {
@@ -542,7 +561,6 @@ export namespace TorchBackend {
                     }
                     return newCtx.setRetVal(ShContFlag.Run).toSet();
                 }
-
                 const nextSet2 = evaluate(nextSet, rexpr);
                 const nextSet3 = nextSet2.map((ctx) => {
                     return ctx.setHeap(ctx.heap.setVal(addr, ctx.retVal));
@@ -669,7 +687,7 @@ export namespace TorchBackend {
 
                 // TODO: for string
                 if (obj?.type !== SVType.Object) {
-                    return ctx.warnWithMsg('loop value is not an object', exp.source).toSet();
+                    return ctx.warnWithMsg(`loop value is not an object ${obj}`, exp.source).toSet();
                 }
 
                 return BuiltinsLCImpl.len(ctx.setRetVal({ params: [objAddr] }), exp.source).flatMap((ctx) => {
