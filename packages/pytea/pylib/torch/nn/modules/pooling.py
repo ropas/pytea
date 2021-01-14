@@ -24,3 +24,14 @@ class AvgPool2d(_AvgPoolNd):
     def forward(self, input):
         return F.avg_pool2d(input, self.kernel_size, self.stride,
                             self.padding, self.ceil_mode, self.count_include_pad, self.divisor_override)
+
+class AdaptiveAvgPool2d(_AvgPoolNd):
+    def __init__(self, output_size):
+        super(AdaptiveAvgPool2d, self).__init__()
+        if isinstance(output_size, tuple) or isinstance(output_size, list):
+            self.output_size = output_size
+        else:
+            self.output_size = (output_size, output_size)
+
+    def forward(self, input):
+        return LibCall.torch.adaptive(input, self.output_size)

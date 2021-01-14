@@ -129,7 +129,7 @@ class Resize:
 
 class Lambda:
     def __init__(self, lambd):
-        self.labmd = lambd
+        self.lambd = lambd
 
     def __call__(self, img):
         return self.lambd(img)

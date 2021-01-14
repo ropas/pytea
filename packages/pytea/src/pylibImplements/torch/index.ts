@@ -1547,6 +1547,71 @@ export namespace TorchLCImpl {
             });
     }
 
+    export function adaptive(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.adaptive': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [selfAddr, padsAddr] = params;
+
+        const selfSize = fetchSize(selfAddr, heap);
+        const outputSize = fetchAddr(padsAddr, heap);
+
+        if (typeof selfSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.adaptive': ${selfSize}`, source);
+        } else if (outputSize?.type !== SVType.Object) {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.adaptive': output size is not iterable`, source);
+        }
+
+        const selfShape = selfSize.shape;
+        const selfRank = selfSize.rank();
+
+        const tupleLenObj = fetchAddr(outputSize.getAttr('$length'), heap);
+
+        if (tupleLenObj?.type !== SVType.Int || typeof tupleLenObj.value !== 'number') {
+            return ctx.failWithMsg(`from 'LibCall.torch.adaptive': output size is not iterable`, source).toSet();
+        }
+
+        const tupleLen = tupleLenObj.value;
+        if (tupleLen <= 0) {
+            return ctx.failWithMsg(`from 'LibCall.torch.adaptive': invalid length of output size`, source).toSet();
+        }
+
+        let newCtx: Context<any> = ctx;
+        const outSizes: (ExpNum | number)[] = [];
+        for (let i = 0; i < tupleLen; i++) {
+            const outDim = fetchAddr(outputSize.getIndice(i), heap);
+            if (outDim?.type === SVType.Int) {
+                outSizes.push(outDim.value);
+            } else {
+                const dimCtx = newCtx.genIntGte(`out_dim${i}`, 0, source);
+                newCtx = dimCtx;
+                outSizes.push(dimCtx.retVal);
+            }
+        }
+
+        return newCtx
+            .require(
+                newCtx.genLte(tupleLen, selfRank, source),
+                "from 'LibCall.torch.adaptive': input shape has rank shorter than output size",
+                source
+            )
+            .flatMap((ctx) => {
+                let shape = selfShape;
+                const rankN = tupleLen;
+                for (let i = 0; i < rankN; i++) {
+                    const outDim = outSizes[rankN - i - 1];
+                    shape = ExpShape.setDim(shape, ExpNum.bop(NumBopType.Sub, selfRank, i + 1, source), outDim, source);
+                }
+                return genTensor(ctx, shape, source);
+            });
+    }
+
     export function genDatasetLen(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
@@ -1612,6 +1677,7 @@ export namespace TorchLCImpl {
         diag,
         flatten,
         pad,
+        adaptive,
         genDatasetLen,
         datasetGetItem,
         warnTensorWithMsg,

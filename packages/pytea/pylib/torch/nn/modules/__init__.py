@@ -7,6 +7,6 @@ from .distance import CosineSimilarity
 from .dropout import Dropout2d
 from .linear import Linear
 from .loss import CrossEntropyLoss
-from .pooling import AvgPool2d
+from .pooling import AdaptiveAvgPool2d, AvgPool2d
 from .instancenorm import InstanceNorm2d
 from .padding import ReflectionPad2d
