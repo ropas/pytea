@@ -115,3 +115,22 @@ def dropout(input, p=0.5, training=True, inplace=False):
     if p < 0.0 or p > 1.0:
         raise ValueError("dropout probability has to be between 0 and 1, but got ...")
     return LibCall.torch.identityShape(input)
+
+
+def instance_norm(
+    input,
+    running_mean=None,
+    running_var=None,
+    weight=None,
+    bias=None,
+    use_input_stats=True,
+    momentum=0.1,
+    eps=1e-5,
+):
+    return LibCall.torch.identityShape(input)
+
+
+# pad should be even-length tuple or list
+def pad(input, pad, mode="constant", value=0):
+    return LibCall.torch.pad(input, pad)
+

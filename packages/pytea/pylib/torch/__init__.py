@@ -14,3 +14,8 @@ from .autograd import no_grad, enable_grad
 
 class bool:
     pass
+
+
+class device:
+    def __init__(self, type):
+        self.type = type

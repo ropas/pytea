@@ -253,16 +253,6 @@ export class TorchIRFrontend {
 
         if (!node.alias && node.module.nameParts.length >= 2) {
             // TODO: should check leading dots?
-            const modulePath: [string, ThExpr][] = [
-                ['qualPath', path],
-                ['assignTo', TEConst.genStr(this._getImm() + '_import', node)],
-            ];
-            const nameNode = node.module.nameParts[0];
-            const name = TEConst.genStr(nameNode.value, nameNode);
-            const basePath: [string, ThExpr][] = [
-                ['qualPath', name],
-                ['assignTo', name],
-            ];
             const stmts: ThStmt[] = [];
             let nameStr: string = '.'.repeat(node.module.leadingDots);
             let nameObj: ThLeftExpr | undefined;
@@ -917,7 +907,8 @@ export class TorchIRFrontend {
         const args = node.arguments.map((arg) => this.visitExprNode(arg.valueExpression));
         const left = this.visitExprNode(node.leftExpression);
 
-        // resolve explicit LibCall.
+        // resolve explicit LibCall.\
+        // also inline sys.exit
         if (left.etype === TEType.Attr) {
             const leftPath = getFullAttrPath(left);
             if (leftPath && leftPath[0] === 'LibCall') {
@@ -941,6 +932,12 @@ export class TorchIRFrontend {
                         ['$func', TEConst.genStr(leftPath.splice(1).join('.'))],
                         ...args.map((expr) => ['', expr] as [string, ThExpr]),
                     ],
+                    node
+                );
+            } else if (leftPath && leftPath.length === 2 && leftPath[0] === 'sys' && leftPath[1] === 'exit') {
+                return TELibCall.create(
+                    LibCallType.explicit,
+                    [['$func', TEConst.genStr('builtins.exit')], ...args.map((expr) => ['', expr] as [string, ThExpr])],
                     node
                 );
             }

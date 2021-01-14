@@ -411,7 +411,7 @@ export namespace BuiltinsLCImpl {
     }
 
     export function exit(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
-        return ctx.failWithMsg('explicit exit function call', source).toSet();
+        return ctx.failWithMsg('explicit process exit function call', source).toSet();
     }
 
     export function warn(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {

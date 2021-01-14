@@ -110,3 +110,7 @@ def flatten(input, start_dim=0, end_dim=-1):
 def sqrt(input, out=None):
     LibCall.torch.copyOut(input, out)
     return input
+
+
+def manual_seed(seed=0):
+    pass

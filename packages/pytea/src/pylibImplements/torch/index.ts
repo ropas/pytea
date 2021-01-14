@@ -4,7 +4,7 @@ import { LCImpl } from '..';
 import { fetchAddr } from '../../backend/backUtils';
 import { Constraint } from '../../backend/constraintType';
 import { Context, ContextSet } from '../../backend/context';
-import { ceilDiv, fetchSize, genTensor, isSize, simplifyNum } from '../../backend/expUtils';
+import { ceilDiv, fetchSize, genTensor, simplifyNum } from '../../backend/expUtils';
 import {
     ShValue,
     SVAddr,
@@ -17,15 +17,7 @@ import {
     SVSize,
     SVType,
 } from '../../backend/sharpValues';
-import {
-    ExpNum,
-    ExpNumConst,
-    ExpShape,
-    ExpString,
-    NumBopType,
-    NumOpType,
-    NumUopType,
-} from '../../backend/symExpressions';
+import { ExpNum, ExpShape, ExpString, NumBopType, NumOpType, NumUopType } from '../../backend/symExpressions';
 import { TorchBackend } from '../../backend/torchBackend';
 import { LCBase } from '../libcall';
 
@@ -296,11 +288,11 @@ export namespace TorchLCImpl {
             return ctx.failWithMsg(`from 'LibCall.torch.repeat': sizes is not iterable`, source).toSet();
         }
 
-        let tupleLen = tupleLenFetch.value;
+        let tupleLenObj = tupleLenFetch.value;
         if (sizeObj.type === SVType.Object) {
             // first argument is object
-            tupleLen = -1;
-        } else if (typeof tupleLen === 'number' && tupleLen >= 2) {
+            tupleLenObj = -1;
+        } else if (typeof tupleLenObj === 'number' && tupleLenObj >= 2) {
             // size is given as vararg
             sizeObj = repeatSizes;
         } else if (sizeObj.type === SVType.Int) {
@@ -1474,6 +1466,87 @@ export namespace TorchLCImpl {
             .flatMap((ctx) => genTensor(ctx, returnShape, source));
     }
 
+    export function pad(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.pad': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [selfAddr, padsAddr] = params;
+
+        const selfSize = fetchSize(selfAddr, heap);
+        const pads = fetchAddr(padsAddr, heap);
+
+        if (typeof selfSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.pad': ${selfSize}`, source);
+        } else if (pads?.type !== SVType.Object) {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.pad': pad is not iterable`, source);
+        }
+
+        const selfShape = selfSize.shape;
+        const selfRank = selfSize.rank();
+
+        const tupleLenObj = fetchAddr(pads.getAttr('$length'), heap);
+
+        if (tupleLenObj?.type !== SVType.Int || typeof tupleLenObj.value !== 'number') {
+            return ctx.failWithMsg(`from 'LibCall.torch.pad': pad is not iterable`, source).toSet();
+        }
+
+        const tupleLen = tupleLenObj.value;
+        if (tupleLen % 2 === 1 || tupleLen <= 0) {
+            return ctx.failWithMsg(`from 'LibCall.torch.pad': pad has an odd or invalid length`, source).toSet();
+        }
+
+        let newCtx: Context<any> = ctx;
+        const padSizes: (ExpNum | number)[] = [];
+        for (let i = 0; i < tupleLen; i++) {
+            const padDim = fetchAddr(pads.getIndice(i), heap);
+            if (padDim?.type === SVType.Int) {
+                padSizes.push(padDim.value);
+            } else {
+                const dimCtx = newCtx.genIntGte(`pad_dim${i}`, 0, source);
+                newCtx = dimCtx;
+                padSizes.push(dimCtx.retVal);
+            }
+        }
+
+        return newCtx
+            .require(
+                newCtx.genLte(tupleLen / 2, selfRank, source),
+                "from 'LibCall.torch.pad': input shape has rank shorter than pad count / 2",
+                source
+            )
+            .flatMap((ctx) => {
+                let shape = selfShape;
+                const rankN = tupleLen / 2;
+                for (let i = 0; i < rankN; i++) {
+                    const padLeft = padSizes[(rankN - i - 1) * 2];
+                    const padRight = padSizes[(rankN - i - 1) * 2 + 1];
+                    shape = ExpShape.setDim(
+                        shape,
+                        ExpNum.bop(NumBopType.Sub, selfRank, i + 1, source),
+                        ExpNum.bop(
+                            NumBopType.Add,
+                            ExpNum.bop(
+                                NumBopType.Add,
+                                ExpNum.index(shape, ExpNum.bop(NumBopType.Sub, selfRank, i + 1, source), source),
+                                padLeft,
+                                source
+                            ),
+                            padRight,
+                            source
+                        ),
+                        source
+                    );
+                }
+                return genTensor(ctx, shape, source);
+            });
+    }
+
     export function genDatasetLen(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
@@ -1538,6 +1611,7 @@ export namespace TorchLCImpl {
         unsqueeze,
         diag,
         flatten,
+        pad,
         genDatasetLen,
         datasetGetItem,
         warnTensorWithMsg,
