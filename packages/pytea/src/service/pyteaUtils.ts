@@ -207,6 +207,10 @@ export function getStmtsFromDir(service: AnalyzerService, dirPath: string): Map<
         const fp = libFilePaths[fpId];
         const fn = libFileNames[fpId];
 
+        if (fp.endsWith('LibCall.py')) {
+            continue;
+        }
+
         const sourceFile = program.getSourceFile(fp);
         if (!sourceFile) {
             console.log(`Source file not found for ${fp}`);

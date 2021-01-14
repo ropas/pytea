@@ -20,8 +20,10 @@ export interface PyteaOptions {
     entryPath: string;
 
     // Python command line arguments.
-    // arguments is given as key "$defaults"
     pythonCmdArgs: PyCmdArgs;
+
+    // 'dest' of argparse.add_subparsers(...)
+    pythonSubcommand: string;
 
     // Debug log level (default: reduced)
     logLevel: 'none' | 'result-only' | 'reduced' | 'full';
@@ -40,6 +42,7 @@ export type PyteaOptionsPart = Partial<PyteaOptions>;
 
 export const defaultOptions: PyteaOptionsPart = {
     pythonCmdArgs: {},
+    pythonSubcommand: '',
     logLevel: 'reduced',
     immediateConstraintCheck: true,
     ignoreAssert: false,

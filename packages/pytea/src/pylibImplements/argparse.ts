@@ -192,8 +192,65 @@ export namespace BuiltinsLCImpl {
                 .toSet();
         }
     }
+
+    // return current subcommand
+    export function set_subcommand(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx
+                .failWithMsg(
+                    `from 'LibCall.argparse.set_subcommand': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const heap = ctx.heap;
+        const [selfAddrx, kwargsAddr] = params;
+
+        const selfAddr = sanitizeAddr(selfAddrx, heap);
+        const self = fetchAddr(selfAddr, heap);
+        const kwargs = fetchAddr(kwargsAddr, heap);
+
+        if (selfAddr?.type !== SVType.Addr || self?.type !== SVType.Object || kwargs?.type !== SVType.Object) {
+            return ctx.warnWithMsg(`from 'LibCall.argparse.set_subcommand': got non-object values.`).toSet();
+        }
+
+        const subcmd = PyteaService.getSubcommand();
+
+        if (!subcmd) {
+            return ctx.toSetWith(SVNone.create(source));
+        }
+
+        const dest = fetchAddr(kwargs.getKeyVal('dest'), heap);
+
+        let newCtx = ctx;
+        const subcmdVal = SVString.create(subcmd, source);
+
+        if (dest && dest.type === SVType.String && typeof dest.value === 'string') {
+            const namespace = sanitizeAddr(self.getAttr('parsed'), heap);
+            const nsObj = fetchAddr(namespace, heap);
+
+            if (nsObj && nsObj.type === SVType.Object) {
+                const newNS = nsObj.setAttr(dest.value, subcmdVal);
+
+                if (namespace?.type === SVType.Addr) {
+                    const newHeap = ctx.heap.setVal(namespace, newNS);
+                    newCtx = ctx.setHeap(newHeap);
+                } else {
+                    const newSelf = self.setAttr('parsed', newNS);
+                    const newHeap = ctx.heap.setVal(selfAddr, newSelf);
+                    newCtx = ctx.setHeap(newHeap);
+                }
+            }
+        }
+
+        return newCtx.toSetWith(subcmdVal);
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         inject_argument,
+        set_subcommand,
     };
 }
 
