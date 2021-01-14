@@ -31,6 +31,7 @@ import {
     ImportFromNode,
     ImportNode,
     IndexNode,
+    LambdaNode,
     ListComprehensionNode,
     ListNode,
     MemberAccessNode,
@@ -103,11 +104,13 @@ import {
 
 export class TorchIRFrontend {
     private _immId: number;
-    private _listCompStack: [string, ThStmt][];
+    // temporary fundef before each stmt translation.
+    // each means function name, function parameters, and function body
+    private _preStmtStack: [string, string[], ThStmt][];
 
     constructor() {
         this._immId = 0;
-        this._listCompStack = [];
+        this._preStmtStack = [];
     }
 
     translate(node: ParseNode): ThStmt {
@@ -1213,9 +1216,19 @@ export class TorchIRFrontend {
             node
         );
 
-        this._listCompStack.push([tempFun, funBody]);
+        this._preStmtStack.push([tempFun, [], funBody]);
 
         return TECall.create(TEName.create(tempFun, node), [], node);
+    }
+
+    visitLambda(node: LambdaNode): ThExpr {
+        const tempFun = this._getImm() + '_LMFun';
+        const funBody = TSReturn.create(this.visitExprNode(node.expression), node.expression);
+        const params = extractIds(node.parameters) ?? [];
+
+        this._preStmtStack.push([tempFun, params, funBody]);
+
+        return TEName.create(tempFun, node);
     }
 
     visitNode(node: ParseNode): ThStmt | ThExpr {
@@ -1258,6 +1271,8 @@ export class TorchIRFrontend {
             case ParseNodeType.Dictionary:
             case ParseNodeType.Slice:
             case ParseNodeType.Ellipsis:
+            case ParseNodeType.Lambda:
+            case ParseNodeType.ListComprehension:
                 return this.visitExprNode(node as ExpressionNode);
             default:
                 return TSPass.get(node);
@@ -1338,11 +1353,11 @@ export class TorchIRFrontend {
                 break;
         }
 
-        if (this._listCompStack.length > 0) {
-            this._listCompStack.reverse().forEach(([tempFunName, tempFunBody]) => {
-                stmt = TSFunDef.create(tempFunName, [], tempFunBody, stmt);
+        if (this._preStmtStack.length > 0) {
+            this._preStmtStack.reverse().forEach(([tempFunName, tempFunParams, tempFunBody]) => {
+                stmt = TSFunDef.create(tempFunName, tempFunParams, tempFunBody, stmt);
             });
-            this._listCompStack = [];
+            this._preStmtStack = [];
         }
         return stmt;
     }
@@ -1383,6 +1398,8 @@ export class TorchIRFrontend {
                 return this.visitEllipsis(node);
             case ParseNodeType.ListComprehension:
                 return this.visitListComprehension(node);
+            case ParseNodeType.Lambda:
+                return this.visitLambda(node);
             default:
                 return this.fail(node);
         }
