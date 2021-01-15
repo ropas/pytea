@@ -25,3 +25,11 @@ class CrossEntropyLoss(_WeightedLoss):
     def forward(self, input, target):
         return F.cross_entropy(input, target, None,
                                ignore_index=self.ignore_index, reduction=self.reduction)
+
+
+class MSELoss(_Loss):
+    def __init__(self, size_average=None, reduce=None, reduction='mean'):
+        super(MSELoss, self).__init__(size_average, reduce, reduction)
+
+    def forward(self, input, target):
+        return F.mse_loss(input, target, reduction=self.reduction)

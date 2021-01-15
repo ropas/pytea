@@ -1156,11 +1156,11 @@ export namespace TorchLCImpl {
     }
 
     // conditions of elements in "target" is not considered.
-    export function loss(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function cross_entropy(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
-                `from 'LibCall.torch.loss': got insufficient number of argument: ${params.length}`,
+                `from 'LibCall.torch.cross_entropy': got insufficient number of argument: ${params.length}`,
                 source
             );
         }
@@ -1170,21 +1170,23 @@ export namespace TorchLCImpl {
 
         const inputSize = fetchSize(inputAddr, heap);
         if (typeof inputSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.loss': ${inputSize}`, source);
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.cross_entropy': ${inputSize}`, source);
         }
         const inputShape = inputSize.shape;
         const inputRank = inputSize.rank();
 
         const targetSize = fetchSize(targetAddr, heap);
         if (typeof targetSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.loss': ${targetSize}`, source);
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.cross_entropy': ${targetSize}`, source);
         }
         const targetShape = targetSize.shape;
         const targetRank = ExpShape.getRank(targetShape);
 
         const reduction = fetchAddr(reductionAddr, heap);
         if (reduction === undefined || reduction.type !== SVType.Bool) {
-            return ctx.failWithMsg(`from 'LibCall.torch.loss': cannot infer reduction as boolean`, source).toSet();
+            return ctx
+                .failWithMsg(`from 'LibCall.torch.cross_entropy': cannot infer reduction as boolean`, source)
+                .toSet();
         }
 
         return ctx
@@ -1199,7 +1201,7 @@ export namespace TorchLCImpl {
                         source
                     ),
                 ],
-                `from 'LibCall.torch.loss': input target shapes mismatch`,
+                `from 'LibCall.torch.cross_entropy': input target shapes mismatch`,
                 source
             )
             .flatMap((ctx) => {
@@ -1219,6 +1221,39 @@ export namespace TorchLCImpl {
 
                 return leftPath.join(rightpath);
             });
+    }
+
+    export function checkSameShape(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.checkSameShape': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [inputAddr, targetAddr] = params;
+
+        const inputSize = fetchSize(inputAddr, heap);
+        if (typeof inputSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.checkSameShape': ${inputSize}`, source);
+        }
+        const inputShape = inputSize.shape;
+
+        const targetSize = fetchSize(targetAddr, heap);
+        if (typeof targetSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.checkSameShape': ${targetSize}`, source);
+        }
+        const targetShape = targetSize.shape;
+
+        return ctx
+            .setRetVal(SVNone.create(source))
+            .require(
+                ctx.genEq(inputShape, targetShape, source),
+                "from 'LibCall.torch.checkSameShape': got different shape",
+                source
+            );
     }
 
     // Assumption: "tensors" is a constantRanked sequence, and each element is available.
@@ -1671,7 +1706,8 @@ export namespace TorchLCImpl {
         pool2d,
         batchnorm2d,
         cosine_similarity,
-        loss,
+        cross_entropy,
+        checkSameShape,
         cat,
         unsqueeze,
         diag,

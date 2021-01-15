@@ -72,9 +72,9 @@ def nll_loss(
     reduction="mean",
 ):
     if reduction == "none":
-        return LibCall.torch.loss(input, target, False)
+        return LibCall.torch.cross_entropy(input, target, False)
     else:
-        return LibCall.torch.loss(input, target, True)
+        return LibCall.torch.cross_entropy(input, target, True)
 
 
 def cross_entropy(
@@ -87,9 +87,9 @@ def cross_entropy(
     reduction="mean",
 ):
     if reduction == "none":
-        return LibCall.torch.loss(input, target, False)
+        return LibCall.torch.cross_entropy(input, target, False)
     else:
-        return LibCall.torch.loss(input, target, True)
+        return LibCall.torch.cross_entropy(input, target, True)
 
 
 def cosine_similarity(x1, x2, dim=1, eps=1e-8):
@@ -134,3 +134,10 @@ def instance_norm(
 def pad(input, pad, mode="constant", value=0):
     return LibCall.torch.pad(input, pad)
 
+def mse_loss(input, target, size_average=None, reduce=None, reduction='mean'):
+    LibCall.torch.checkSameShape(input, target)
+
+    if reduction == "none":
+        return LibCall.torch.identityShape(input)
+    else:
+        return torch.Tensor()
