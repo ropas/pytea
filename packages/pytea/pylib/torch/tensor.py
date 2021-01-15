@@ -26,14 +26,40 @@ class Tensor:
     def matmul(self, other):
         return LibCall.torch.matmul(self, other)
 
+    def add(self, other):
+        return torch._bop(self, other)
+
+    def add_(self, other):
+        torch._bop(self, other)
+        return self
+
+    def sub(self, other)
+        return torch._bop(self, other)
+
+    def sub_(self, other):
+        torch._bop(self, other)
+        return self
+
     def mul(self, other):
         return torch._bop(self, other)
+
+    def mul_(self, other):
+        torch._bop(self, other)
+        return self
 
     def div(self, other):
         return torch._bop(self, other)
 
+    def div_(self, other):
+        torch._bop(self, other)
+        return self
+
     def pow(self, exponent):
         return torch._bop(self, exponent)
+
+    def pow_(self, other):
+        torch._bop(self, other)
+        return self
 
     def normal_(self, *args, **kwargs):
         return self

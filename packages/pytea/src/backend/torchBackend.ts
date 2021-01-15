@@ -43,6 +43,7 @@ import {
 } from '../frontend/torchStatements';
 import { BuiltinsLCImpl } from '../pylibImplements/builtins';
 import { evalLibCall } from '../pylibImplements/evaluator';
+import { formatParseNode } from '../service/pyteaUtils';
 import { sanitizeAddrSet, SymOpUtils } from './backUtils';
 import * as BackUtils from './backUtils';
 import { Context, ContextSet, CtxExpr, CtxStmt } from './context';
@@ -65,7 +66,6 @@ import {
     SVUndef,
 } from './sharpValues';
 import { ExpNum, ExpString, NumBopType, SymExp } from './symExpressions';
-import { formatParseNode } from '../service/pyteaUtils';
 
 export namespace TorchBackend {
     export function runEmpty(stmt: ThStmt): ContextSet<ShValue | ShContFlag> {
@@ -285,13 +285,17 @@ export namespace TorchBackend {
         });
 
         if (varargTuple) {
-            varargTuple = varargTuple.setAttr('$length', SVInt.create(varargLen, source));
+            const tupleMro = (BackUtils.fetchAddr(heap.getVal(env.getId('tuple')!)!, heap) as SVObject).getAttr(
+                '__mro__'
+            )!;
+            varargTuple = varargTuple.setAttr('$length', SVInt.create(varargLen, source)).setAttr('__mro__', tupleMro);
             newHeap = newHeap.setVal(paramAddrs.get(f.varargsParam!)!, varargTuple);
         }
 
         // assigning kwargs
         // TODO: set kwargDict as dict class
         let kwargDict: SVObject | undefined;
+        let kwargLen = 0;
         if (f.kwargsParam) {
             const dictAddr = paramAddrs.get(f.kwargsParam!)!;
             kwargDict = SVObject.createWithAddr(dictAddr);
@@ -303,10 +307,16 @@ export namespace TorchBackend {
                     newHeap = newHeap.setVal(paramAddrs.get(k)!, v);
                 } else if (kwargDict) {
                     kwargDict = kwargDict.setKeyVal(k, v);
+                    kwargLen++;
                 }
             });
         }
         if (kwargDict) {
+            const dictMro = (BackUtils.fetchAddr(heap.getVal(env.getId('dict')!)!, heap) as SVObject).getAttr(
+                '__mro__'
+            )!;
+
+            kwargDict.setAttr('__mro__', dictMro).setAttr('$length', SVInt.create(kwargLen, source));
             newHeap = newHeap.setVal(paramAddrs.get(f.kwargsParam!)!, kwargDict);
         }
 
@@ -393,7 +403,7 @@ export namespace TorchBackend {
         // if name == '__dict__', return dictionary of attrs
         if (name === '__dict__') {
             let [dictObj, dictAddr, newHeap] = SVObject.create(ctx.heap, source);
-            for (let [attrName, attrVal] of objVal.attrs.entries()) {
+            for (const [attrName, attrVal] of objVal.attrs.entries()) {
                 dictObj = dictObj.setKeyVal(attrName, attrVal);
             }
             dictObj = dictObj.setAttr('$length', SVInt.create(dictObj.keyValues.size, source));
@@ -687,7 +697,12 @@ export namespace TorchBackend {
 
                 // TODO: for string
                 if (obj?.type !== SVType.Object) {
-                    return ctx.warnWithMsg(`loop value is not an object ${obj}`, exp.source).toSet();
+                    return ctx
+                        .warnWithMsg(
+                            `loop value is not an object: got ${obj ? svTypeToString(obj.type) : 'undefined'} type`,
+                            exp.source
+                        )
+                        .toSet();
                 }
 
                 return BuiltinsLCImpl.len(ctx.setRetVal({ params: [objAddr] }), exp.source).flatMap((ctx) => {

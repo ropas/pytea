@@ -168,7 +168,7 @@ export namespace BuiltinsLCImpl {
                 const list = env.getId('list')!;
 
                 if (value.type === SVType.Object && isInstanceOf(value, list, env, heap)) {
-                    const mro = value.getAttr('__mro__');
+                    const mro = fetchAddr(value.getAttr('__mro__'), heap);
                     if (mro?.type === SVType.Object) {
                         // force casting
                         return ctx.toSetWith(value.setAttr('__mro__', mro.setIndice(0, tuple)));
@@ -182,7 +182,7 @@ export namespace BuiltinsLCImpl {
                 const tuple = env.getId('tuple')!;
                 const list = env.getId('list')!;
                 if (value.type === SVType.Object && isInstanceOf(value, tuple, env, heap)) {
-                    const mro = value.getAttr('__mro__');
+                    const mro = fetchAddr(value.getAttr('__mro__'), heap);
                     if (mro?.type === SVType.Object) {
                         // force casting
                         return ctx.toSetWith(value.setAttr('__mro__', mro.setIndice(0, list)));
@@ -453,42 +453,60 @@ export namespace BuiltinsLCImpl {
         return ctx.warnWithMsg(warnMsg, source).toSet();
     }
 
-    // explicit setAttr
-    export function setNamedTupleAttr(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    // explicit setIndice by value
+    export function setIndice(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
-        if (params.length !== 4) {
+        if (params.length !== 3) {
             return ctx
                 .warnWithMsg(
-                    `from 'LibCall.builtins.setNamedTupleAttr': got insufficient number of argument: ${params.length}`,
+                    `from 'LibCall.builtins.setIndice': got insufficient number of argument: ${params.length}`,
                     source
                 )
                 .toSet();
         }
         const heap = ctx.heap;
-        const [objAddr, indiceAddr, attrAddr, value] = params;
+        const [objAddr, indiceAddr, value] = params;
 
         const obj = fetchAddr(objAddr, heap);
         const indice = fetchAddr(indiceAddr, heap);
-        const attr = fetchAddr(attrAddr, heap);
 
-        if (
-            indice?.type !== SVType.Int ||
-            typeof indice.value !== 'number' ||
-            attr?.type !== SVType.String ||
-            typeof attr.value !== 'string'
-        ) {
-            return ctx
-                .warnWithMsg(`from 'LibCall.builtins.setNamedTupleAttr': attribute is not a constant`, source)
-                .toSet();
+        if (indice?.type !== SVType.Int || typeof indice.value !== 'number') {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.setIndice': attribute is not a constant`, source).toSet();
         }
 
         if (obj?.type !== SVType.Object) {
-            return ctx.warnWithMsg(`from 'LibCall.builtins.setNamedTupleAttr': got non-object`, source).toSet();
+            return ctx.warnWithMsg(`from 'LibCall.builtins.setIndice': got non-object`, source).toSet();
         }
 
-        return ctx
-            .setHeap(heap.setVal(obj.addr, obj.setAttr(attr.value, value).setIndice(indice.value, value)))
-            .toSetWith(SVNone.create(source));
+        return ctx.setHeap(heap.setVal(obj.addr, obj.setIndice(indice.value, value))).toSetWith(SVNone.create(source));
+    }
+
+    // explicit setAttr by value
+    export function setAttr(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 3) {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.builtins.setAttr': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+        const heap = ctx.heap;
+        const [objAddr, attrAddr, value] = params;
+
+        const obj = fetchAddr(objAddr, heap);
+        const attr = fetchAddr(attrAddr, heap);
+
+        if (attr?.type !== SVType.String || typeof attr.value !== 'string') {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.setAttr': attribute is not a constant`, source).toSet();
+        }
+
+        if (obj?.type !== SVType.Object) {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.setAttr': got non-object`, source).toSet();
+        }
+
+        return ctx.setHeap(heap.setVal(obj.addr, obj.setAttr(attr.value, value))).toSetWith(SVNone.create(source));
     }
 
     export const libCallImpls: { [key: string]: LCImpl } = {
@@ -503,7 +521,8 @@ export namespace BuiltinsLCImpl {
         setSize,
         exit,
         warn,
-        setNamedTupleAttr,
+        setAttr,
+        setIndice,
     };
 }
 

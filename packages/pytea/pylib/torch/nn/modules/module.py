@@ -27,7 +27,7 @@ class Module:
 
     def parameters(self):
         # TODO: return something meaningful
-        return None
+        return []
 
     def cuda(self):
         return self

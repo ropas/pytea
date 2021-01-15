@@ -79,7 +79,7 @@ def sum(input, dim=None, keepdim=False, dtype=None):
 
 
 def softmax(input, dim=None, dtype=None):
-    return LibCall.torch.identtyShape(input)
+    return LibCall.torch.identityShape(input)
 
 
 def mul(input, other, out=None):

@@ -5,7 +5,8 @@ def namedtuple(typename, field_names, **kwargs):
         # TODO: kwargs
         def __init__(self, *args):
             for i, name in enumerate(field_names):
-                LibCall.builtins.setNamedTupleAttr(self, i, name, args[i])
+                LibCall.builtins.setIndice(self, i, args[i])
+                LibCall.builtins.setAttr(self, name, args[i])
 
     __TempTuple.__name__ = typename
 
