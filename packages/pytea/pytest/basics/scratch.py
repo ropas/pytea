@@ -1,5 +1,6 @@
-import torch
+from collections import namedtuple
 
-a = 3
-x = lambda x: x + a
-y = x(3)
+TT = namedtuple('TT', ['x', 'y'])
+a = TT(3, 5)
+b = a[0]
+c = a.y
