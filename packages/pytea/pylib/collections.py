@@ -8,6 +8,9 @@ def namedtuple(typename, field_names, **kwargs):
                 LibCall.builtins.setIndice(self, i, args[i])
                 LibCall.builtins.setAttr(self, name, args[i])
 
+        def __len__(self):
+            return len(field_names)
+
     __TempTuple.__name__ = typename
 
     return __TempTuple
