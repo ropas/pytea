@@ -33,7 +33,7 @@ class Tensor:
         torch._bop(self, other)
         return self
 
-    def sub(self, other)
+    def sub(self, other):
         return torch._bop(self, other)
 
     def sub_(self, other):
@@ -62,9 +62,6 @@ class Tensor:
         return self
 
     def normal_(self, *args, **kwargs):
-        return self
-
-    def backward(self):
         return self
 
     def repeat(self, *sizes):
