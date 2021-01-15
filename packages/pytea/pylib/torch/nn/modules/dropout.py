@@ -20,5 +20,4 @@ class Dropout(_DropoutNd):
 
 
 class Dropout2d(_DropoutNd):
-    def forward(self, x):
-        return x
+    pass

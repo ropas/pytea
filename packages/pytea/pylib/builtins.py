@@ -107,6 +107,13 @@ def _list_append(self, item):
 list.append = _list_append
 
 
+def _list__add__(self, items):
+    for item in items:
+        LibCall.builtins.list_append(self, item)
+    return self
+
+list.__add__ = _list__add__
+
 def _dict_items(self):
     return LibCall.builtins.dict_items(self)
 
