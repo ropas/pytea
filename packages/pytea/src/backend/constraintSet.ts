@@ -877,7 +877,30 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
                                 if (left !== undefined && right !== undefined) return left === right;
                             }
                             break;
-                        case SEType.Shape:
+                        case SEType.Shape: {
+                            // check falsy constant shape
+                            if (
+                                leftExp.opType === ShapeOpType.Const &&
+                                rightExp.expType === SEType.Shape &&
+                                rightExp.opType === ShapeOpType.Const
+                            ) {
+                                if (leftExp.dims.length !== rightExp.dims.length) {
+                                    return false;
+                                }
+                                for (let i = 0; i < leftExp.dims.length; i++) {
+                                    const ld = leftExp.dims[i];
+                                    const rd = rightExp.dims[i];
+                                    if (
+                                        ld.opType === NumOpType.Const &&
+                                        rd.opType === NumOpType.Const &&
+                                        ld.value !== rd.value
+                                    ) {
+                                        return false;
+                                    }
+                                }
+                            }
+                            break;
+                        }
                         case SEType.String:
                         default:
                             break;
