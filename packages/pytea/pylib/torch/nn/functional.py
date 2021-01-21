@@ -141,3 +141,6 @@ def mse_loss(input, target, size_average=None, reduce=None, reduction='mean'):
         return LibCall.torch.identityShape(input)
     else:
         return torch.Tensor()
+
+def interpolate(input, size=None, scale_factor=None, mode='nearest', align_corners=None, recompute_scale_factor=None):
+    return LibCall.torch.interpolate(input, size, scale_factor)

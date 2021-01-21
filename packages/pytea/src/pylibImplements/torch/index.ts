@@ -1,3 +1,5 @@
+import { exists } from 'fs-extra';
+
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { LCImpl } from '..';
@@ -1826,6 +1828,155 @@ export namespace TorchLCImpl {
         return ctx.warnTensorWithMsg(typeof msg.value === 'string' ? msg.value : ExpString.toString(msg.value), source);
     }
 
+    // implementation of torch.nn.functional.interpolate
+    export function interpolate(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 3) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.interpolate': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [inputAddr, sizeAddr, scaleFactorAddr] = params;
+
+        const inputSize = fetchSize(inputAddr, heap);
+        const outSizeObj = fetchAddr(sizeAddr, heap);
+        const scaleFactorObj = fetchAddr(scaleFactorAddr, heap);
+
+        if (typeof inputSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.interpolate': ${inputSize}`, source);
+        }
+
+        if (outSizeObj?.type === SVType.None && scaleFactorObj?.type === SVType.None) {
+            return ctx
+                .failWithMsg(
+                    `from 'LibCall.torch.interpolate': only one of size or scale_factor should be defined`,
+                    source
+                )
+                .toSet();
+        }
+
+        const outSize: (ExpNum | number)[] = [];
+        let outSizeConst: ExpNum | number | undefined;
+        if (outSizeObj?.type === SVType.Int) {
+            outSizeConst = outSizeObj.value;
+            outSize.push(outSizeConst);
+        } else if (outSizeObj?.type === SVType.Object) {
+            const dims = outSizeObj.extractIndexedNumber(ctx.heap);
+            if (dims.has(0)) outSize.push(dims.get(0)!);
+            if (dims.has(1)) outSize.push(dims.get(1)!);
+            if (dims.has(2)) outSize.push(dims.get(2)!);
+        }
+
+        const scaleFactor: (ExpNum | number)[] = [];
+        let scaleFactorConst: ExpNum | number | undefined;
+        if (scaleFactorObj?.type === SVType.Float || scaleFactorObj?.type === SVType.Int) {
+            scaleFactorConst = scaleFactorObj.value;
+            scaleFactor.push(scaleFactorConst);
+        } else if (scaleFactorObj?.type === SVType.Object) {
+            const factors = scaleFactorObj.extractIndexedNumber(ctx.heap);
+            if (factors.has(0)) scaleFactor.push(factors.get(0)!);
+            if (factors.has(1)) scaleFactor.push(factors.get(1)!);
+            if (factors.has(2)) scaleFactor.push(factors.get(2)!);
+        }
+
+        if (outSize.length === 0 && scaleFactor.length === 0) {
+            return ctx
+                .failWithMsg(
+                    `from 'LibCall.torch.interpolate': only one of size or scale_factor should be defined`,
+                    source
+                )
+                .toSet();
+        }
+
+        const inputShape = inputSize.shape;
+        const inputRank = inputSize.rank();
+
+        if (outSizeConst !== undefined || scaleFactorConst !== undefined) {
+            return ctx
+                .require(
+                    [ctx.genLte(3, inputRank, source), ctx.genLte(inputRank, 5, source)],
+                    `from 'LibCall.torch.interpolate': expected inputs are 3, 4, or 5-D shape`,
+                    source
+                )
+                .flatMap((ctx: Context<unknown>) => {
+                    const [rank3, rank45] = ctx.ifThenElse(ctx.genEq(3, inputRank, source));
+                    const [rank4, rank5] = rank45.ifThenElse(ctx.genEq(4, inputRank, source));
+
+                    const shapes: ExpShape[] = [];
+                    let newShape: ExpShape = inputShape;
+                    for (let dim = 2; dim <= 4; dim++) {
+                        if (outSizeConst !== undefined) {
+                            newShape = ExpShape.setDim(newShape, dim, outSizeConst, source);
+                        } else {
+                            newShape = ExpShape.setDim(
+                                newShape,
+                                dim,
+                                ExpNum.uop(
+                                    NumUopType.Floor,
+                                    ExpNum.bop(
+                                        NumBopType.Mul,
+                                        ExpNum.index(newShape, dim, source),
+                                        scaleFactorConst!,
+                                        source
+                                    ),
+                                    source
+                                ),
+                                source
+                            );
+                        }
+                        shapes.push(newShape);
+                    }
+
+                    return rank3
+                        .flatMap((ctx) => genTensor(ctx, shapes[0], source))
+                        .join(rank4.flatMap((ctx) => genTensor(ctx, shapes[1], source)))
+                        .join(rank5.flatMap((ctx) => genTensor(ctx, shapes[2], source)));
+                });
+        } else if (outSize.length > 0) {
+            return ctx
+                .require(
+                    ctx.genEq(inputRank, 2 + outSize.length, source),
+                    `from 'LibCall.torch.interpolate': size shape must match with input shape`,
+                    source
+                )
+                .flatMap((ctx) => {
+                    let newShape: ExpShape = inputShape;
+                    outSize.forEach((size, dim) => {
+                        newShape = ExpShape.setDim(newShape, dim + 2, size, source);
+                    });
+
+                    return genTensor(ctx, newShape, source);
+                });
+        } else {
+            return ctx
+                .require(
+                    ctx.genEq(inputRank, 2 + scaleFactor.length, source),
+                    `from 'LibCall.torch.interpolate': scale_factor shape must match with input shape`,
+                    source
+                )
+                .flatMap((ctx) => {
+                    let newShape: ExpShape = inputShape;
+                    scaleFactor.forEach((factor, dim) => {
+                        newShape = ExpShape.setDim(
+                            newShape,
+                            dim + 2,
+                            ExpNum.uop(
+                                NumUopType.Floor,
+                                ExpNum.bop(NumBopType.Mul, ExpNum.index(inputShape, dim + 2, source), factor, source),
+                                source
+                            ),
+                            source
+                        );
+                    });
+
+                    return genTensor(ctx, newShape, source);
+                });
+        }
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         tensorInit,
         identityShape,
@@ -1843,6 +1994,7 @@ export namespace TorchLCImpl {
         broadcast,
         pool2d,
         batchnorm2d,
+        interpolate,
         cosine_similarity,
         cross_entropy,
         checkSameShape,
