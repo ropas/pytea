@@ -94,6 +94,7 @@ class ImageTransformHandler:
 
 
 def open(fp, mode="r"):
+    # TODO: image size range and target range settings in pyteaconfig.json
     im = Image()
     # make symbolic image
     im._setSize(
