@@ -203,6 +203,9 @@ interface ContextMethods<T> {
     // immediate linear SMT : generates conservative range.
     getCachedRange(num: number | ExpNum): NumRange | undefined; // return conservative range
     checkImmediate(constraint: Constraint): boolean | undefined; // return true if always true, false if always false, undefined if don't know
+
+    // Check if this ctx has path constraints.
+    hasPathCtr(): boolean;
 }
 
 export interface ContextSet<T> {
@@ -224,6 +227,7 @@ export interface ContextSet<T> {
 
     getList(): List<Context<T>>;
     getFailed(): List<Context<SVError>>;
+    getStopped(): List<Context<SVError>>;
 
     isEmpty(): boolean;
     addLog(message: string, source?: ParseNode): ContextSet<T>;
@@ -741,6 +745,11 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     checkImmediate(constraint: Constraint): boolean | undefined {
         return this.ctrSet.checkImmediate(constraint);
     }
+
+    // Check if this ctx has path constraints.
+    hasPathCtr(): boolean {
+        return !this.ctrSet.pathCtr.isEmpty();
+    }
 }
 
 export class ContextSetImpl<T> implements ContextSet<T> {
@@ -749,11 +758,15 @@ export class ContextSetImpl<T> implements ContextSet<T> {
     private _ctxList: List<Context<T>>;
     // failed path
     private _failed: List<Context<SVError>>;
+    // stopped path: failed but possibly unreachable path
+    // TODO: path constraint resolution
+    private _stopped: List<Context<SVError>>;
 
-    constructor(ctxList: List<Context<T>>, failed?: List<Context<SVError>>) {
+    constructor(ctxList: List<Context<T>>, failed?: List<Context<SVError>>, stopped?: List<Context<SVError>>) {
         this.env = false;
         this._ctxList = ctxList;
         this._failed = failed ? failed : List();
+        this._stopped = stopped ? stopped : List();
     }
 
     static fromCtx<A>(ctx: Context<A>): ContextSet<A> {
@@ -762,9 +775,13 @@ export class ContextSetImpl<T> implements ContextSet<T> {
             if (failedCtx.failId === -1) {
                 failedCtx = failedCtx.set('failId', getFailedId());
             }
-            return new ContextSetImpl(List(), List([failedCtx]));
+            if (failedCtx.hasPathCtr()) {
+                return new ContextSetImpl(List(), List(), List([failedCtx]));
+            } else {
+                return new ContextSetImpl(List(), List([failedCtx]), List());
+            }
         } else {
-            return new ContextSetImpl(List([ctx]), List());
+            return new ContextSetImpl(List([ctx]), List(), List());
         }
     }
 
@@ -776,20 +793,33 @@ export class ContextSetImpl<T> implements ContextSet<T> {
         return this._failed;
     }
 
+    getStopped(): List<Context<SVError>> {
+        return this._stopped;
+    }
+
     filter(tester: (ctx: Context<T>) => boolean): ContextSet<T> {
-        return new ContextSetImpl(this._ctxList.filter(tester), this._failed);
+        return new ContextSetImpl(this._ctxList.filter(tester), this._failed, this._stopped);
     }
 
     setCtxList<A>(ctxList: List<Context<A>>): ContextSet<A> {
         const succeed = ctxList.filter((ctx) => ctx.failed === undefined);
         const failed = ctxList
             .filter((ctx) => ctx.failed !== undefined)
+            .filter((ctx) => !ctx.hasPathCtr())
             .map((ctx) => {
                 let failed = ctx.setRetVal(ctx.failed!);
                 if (ctx.failId === -1) failed = failed.set('failId', getFailedId());
                 return failed;
             });
-        return new ContextSetImpl(succeed, this._failed.concat(failed));
+        const stopped = ctxList
+            .filter((ctx) => ctx.failed !== undefined)
+            .filter((ctx) => ctx.hasPathCtr())
+            .map((ctx) => {
+                let stopped = ctx.setRetVal(ctx.failed!);
+                if (ctx.failId === -1) stopped = stopped.set('failId', getFailedId());
+                return stopped;
+            });
+        return new ContextSetImpl(succeed, this._failed.concat(failed), this._stopped.concat(stopped));
     }
 
     map<A>(mapper: (ctx: Context<T>) => Context<A>): ContextSet<A> {
@@ -800,14 +830,20 @@ export class ContextSetImpl<T> implements ContextSet<T> {
         const mapped = this._ctxList.map(mapper);
         const succeed = mapped.toArray().flatMap((cs) => cs.getList().toArray());
         const failed = mapped.toArray().flatMap((cs) => cs.getFailed().toArray());
+        const stopped = mapped.toArray().flatMap((cs) => cs.getStopped().toArray());
 
-        return new ContextSetImpl(List(succeed), List(failed).concat(this._failed));
+        return new ContextSetImpl(
+            List(succeed),
+            List(failed).concat(this._failed),
+            List(stopped).concat(this._stopped)
+        );
     }
 
     return<A>(retVal: A): ContextSet<A> {
         return new ContextSetImpl(
             this._ctxList.map((ctx) => ctx.setRetVal(retVal)),
-            this._failed
+            this._failed,
+            this._stopped
         );
     }
 
@@ -815,11 +851,23 @@ export class ContextSetImpl<T> implements ContextSet<T> {
         return new ContextSetImpl(
             List(),
             this._ctxList
+                .filter((ctx) => {
+                    !ctx.hasPathCtr();
+                })
                 .map((ctx) => {
                     const err = SVError.create(errMsg, source);
                     return ctx.fail(err);
                 })
-                .concat(this._failed)
+                .concat(this._failed),
+            this._ctxList
+                .filter((ctx) => {
+                    ctx.hasPathCtr();
+                })
+                .map((ctx) => {
+                    const err = SVError.create(errMsg, source);
+                    return ctx.fail(err);
+                })
+                .concat(this._stopped)
         );
     }
 
@@ -833,7 +881,16 @@ export class ContextSetImpl<T> implements ContextSet<T> {
         this._failed.forEach((ctx) => (failedSet[ctx.failId] = ctx));
         thatFailed.forEach((ctx) => (failedSet[ctx.failId] = ctx));
 
-        return new ContextSetImpl(thisList.concat(thatList), List(Object.values(failedSet)));
+        const stoppedSet: { [id: number]: Context<SVError> } = {};
+        const thatStopped = ctxSet.getStopped();
+        this._stopped.forEach((ctx) => (stoppedSet[ctx.failId] = ctx));
+        thatStopped.forEach((ctx) => (stoppedSet[ctx.failId] = ctx));
+
+        return new ContextSetImpl(
+            thisList.concat(thatList),
+            List(Object.values(failedSet)),
+            List(Object.values(stoppedSet))
+        );
     }
 
     require(ctr: Constraint | Constraint[], failMsg?: string, source?: ParseNode): ContextSet<T | SVError> {
@@ -879,7 +936,10 @@ export class ContextSetImpl<T> implements ContextSet<T> {
             }
         });
 
-        return [new ContextSetImpl(List(ifPath), this._failed), new ContextSetImpl(List(elsePath), this._failed)];
+        return [
+            new ContextSetImpl(List(ifPath), this._failed, this._stopped),
+            new ContextSetImpl(List(elsePath), this._failed, this._stopped),
+        ];
     }
 
     isEmpty(): boolean {
