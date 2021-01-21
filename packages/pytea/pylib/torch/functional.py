@@ -123,3 +123,7 @@ def sqrt(input, out=None):
 
 def manual_seed(seed=0):
     pass
+
+
+def save(obj, f, pickle_module=None, pickle_protocol=2, _use_new_zipfile_serialization=True):
+    pass

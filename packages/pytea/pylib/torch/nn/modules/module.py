@@ -32,9 +32,16 @@ class Module:
     def cuda(self):
         return self
 
+    def cpu(self):
+        return self
+
     def to(self, *args, **kwargs):
         # ignore it.
         return self
 
     def zero_grad(self, set_to_none=False):
         return None
+
+    def state_dict(self, destination=None, prefix=None, keep_vars=None):
+        # TODO: make key-value pair
+        return {}

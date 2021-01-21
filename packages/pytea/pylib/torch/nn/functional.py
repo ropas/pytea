@@ -1,5 +1,5 @@
 import LibCall
-
+import torch
 
 def relu(input, inplace=False):
     return input
