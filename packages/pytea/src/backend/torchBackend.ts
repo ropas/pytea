@@ -766,6 +766,10 @@ export namespace TorchBackend {
         loopCnt: number,
         stmt: TSForIn
     ): ContextSet<ShValue | ShContFlag> {
+        if (loopCnt <= 0) {
+            return ctx.toSetWith(ShContFlag.Run);
+        }
+
         let brkRtnSet: ContextSet<ShValue | ShContFlag> = Context.getEmptySet();
         let nextSetIter: ContextSet<ShValue | ShContFlag> = ctx.toSet();
 
