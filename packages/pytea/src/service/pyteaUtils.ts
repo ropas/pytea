@@ -286,6 +286,9 @@ export function runZ3Py<T>(result: ContextSet<T>): void {
     result.getList().forEach((ctx) => {
         jsonList.push(ctx.ctrSet.getConstraintJSON());
     });
+    result.getStopped().forEach((ctx) => {
+        jsonList.push(ctx.ctrSet.getConstraintJSON());
+    });
 
     if (jsonList.length === 0) {
         return;
@@ -305,6 +308,9 @@ export function runZ3Py<T>(result: ContextSet<T>): void {
 export function exportConstraintSet<T>(result: ContextSet<T>, path: string): void {
     const jsonList: string[] = [];
     result.getList().forEach((ctx) => {
+        jsonList.push(ctx.ctrSet.getConstraintJSON());
+    });
+    result.getStopped().forEach((ctx) => {
         jsonList.push(ctx.ctrSet.getConstraintJSON());
     });
 
