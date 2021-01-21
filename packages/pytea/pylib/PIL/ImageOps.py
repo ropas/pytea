@@ -6,7 +6,7 @@ def autocontrast(image, cutoff=0, ignore=None, mask=None):
     im = image.copy()
     return im
 
-def colorize(image, block, white, mid=None, blockpoint=0, whitepoint=255, midpoint=127)
+def colorize(image, block, white, mid=None, blockpoint=0, whitepoint=255, midpoint=127):
     if image.mode is not "L":
         raise Exception("mode must be \"L\"")
     im = Image.Image()

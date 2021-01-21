@@ -14,7 +14,7 @@ class Image:
         self._channel = channel
         self.width = width
         self.height = height
-        self.size = (width, hight)
+        self.size = (width, height)
         LibCall.builtins.setSize(self, (channel, width, height))
 
     def copy(self):
@@ -59,7 +59,7 @@ class Image:
             im._setSize(1, size[0], size[1])
             im.mode = self.mode
             return im
-        elif self.mode == "RGBA" or mode == "CMYK":
+        elif self.mode == "RGBA" or self.mode == "CMYK":
             im = Image()
             im._setSize(4, size[0], size[1])
             im.mode = self.mode

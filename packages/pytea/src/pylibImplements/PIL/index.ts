@@ -4,7 +4,7 @@ import { LCImpl } from '..';
 import { fetchAddr } from '../../backend/backUtils';
 import { Context, ContextSet } from '../../backend/context';
 import { fetchSize, genTensor } from '../../backend/expUtils';
-import { ShValue, SVType, SVNone } from '../../backend/sharpValues';
+import { ShValue, SVNone, SVType } from '../../backend/sharpValues';
 import { ExpNum, ExpShape, NumBopType } from '../../backend/symExpressions';
 import { LCBase } from '../libcall';
 
