@@ -71,8 +71,8 @@ export function buildPyteaOption(args: CommandLineOptions): PyteaOptions | strin
     options.configPath = configPath;
 
     // find config by entryPath if configPath is not set
+    let isDir = false;
     if (!configPath && entryPath) {
-        let isDir = false;
         if (fs.lstatSync(entryPath).isDirectory()) {
             isDir = true;
         }
@@ -99,8 +99,8 @@ export function buildPyteaOption(args: CommandLineOptions): PyteaOptions | strin
         throw `'${configPath}' is not a valid JSON file`;
     }
 
-    // entry path is explicitly given
-    if (entryPath) options.entryPath = entryPath;
+    // entry path is explicitly given && given path is not dir -> set entry path explicitly
+    if (entryPath && !isDir) options.entryPath = entryPath;
 
     if (!options.entryPath || !fs.existsSync(options.entryPath)) {
         return `file path '${options.entryPath}' does not exist`;
