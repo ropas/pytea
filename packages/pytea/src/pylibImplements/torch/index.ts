@@ -17,7 +17,15 @@ import {
     SVSize,
     SVType,
 } from '../../backend/sharpValues';
-import { ExpNum, ExpShape, ExpString, NumBopType, NumOpType, NumUopType } from '../../backend/symExpressions';
+import {
+    ExpNum,
+    ExpShape,
+    ExpString,
+    NumBopType,
+    NumOpType,
+    NumUopType,
+    ShapeOpType,
+} from '../../backend/symExpressions';
 import { TorchBackend } from '../../backend/torchBackend';
 import { LCBase } from '../libcall';
 
@@ -223,6 +231,108 @@ export namespace TorchLCImpl {
                 });
 
                 return leftPath.join(rightPath);
+            });
+    }
+
+    // implementation of torch.mm
+    export function mm(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.mm': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [leftAddr, rightAddr] = params;
+
+        const leftSize = fetchSize(leftAddr, heap);
+        const rightSize = fetchSize(rightAddr, heap);
+
+        if (typeof leftSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.mm': ${leftSize}`, source);
+        } else if (typeof rightSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.mm': ${rightSize}`, source);
+        }
+
+        const leftShape = leftSize.shape;
+        const rightShape = rightSize.shape;
+        const leftRank = leftSize.rank();
+        const rightRank = rightSize.rank();
+
+        return ctx
+            .require(
+                [ctx.genEq(2, leftRank, source), ctx.genEq(2, rightRank, source)],
+                `from 'LibCall.torch.mm': input must be 2-D tensors`,
+                source
+            )
+            .require(
+                ctx.genEq(ExpNum.index(leftShape, 1, source), ExpNum.index(rightShape, 0, source)),
+                `from 'LibCall.torch.mm': dimension mismatch`
+            )
+            .flatMap((ctx) => {
+                const newShape = ExpShape.fromConst(
+                    2,
+                    [ExpNum.index(leftShape, 0, source), ExpNum.index(rightShape, 1, source)],
+                    source
+                );
+                return genTensor(ctx, newShape, source);
+            });
+    }
+
+    // implementation of torch.mm
+    export function bmm(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.bmm': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [leftAddr, rightAddr] = params;
+
+        const leftSize = fetchSize(leftAddr, heap);
+        const rightSize = fetchSize(rightAddr, heap);
+
+        if (typeof leftSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.bmm': ${leftSize}`, source);
+        } else if (typeof rightSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.bmm': ${rightSize}`, source);
+        }
+
+        const leftShape = leftSize.shape;
+        const rightShape = rightSize.shape;
+        const leftRank = leftSize.rank();
+        const rightRank = rightSize.rank();
+        const leftBatch = ExpNum.index(leftShape, 0, source);
+        const rightBatch = ExpNum.index(rightShape, 0, source);
+
+        return ctx
+            .require(
+                [ctx.genEq(3, leftRank, source), ctx.genEq(3, rightRank, source)],
+                `from 'LibCall.torch.bmm': input must be 3-D tensors`,
+                source
+            )
+            .require(
+                [ctx.genEq(leftBatch, rightBatch, source)],
+                `from 'LibCall.torch.bmm': batch size mismatch`,
+                source
+            )
+            .require(
+                ctx.genEq(ExpNum.index(leftShape, 2, source), ExpNum.index(rightShape, 1, source)),
+                `from 'LibCall.torch.mm': dimension mismatch`
+            )
+            .flatMap((ctx) => {
+                const simplerBatch = leftShape.opType === ShapeOpType.Const ? leftBatch : rightBatch;
+                const newShape = ExpShape.fromConst(
+                    3,
+                    [simplerBatch, ExpNum.index(leftShape, 0, source), ExpNum.index(rightShape, 1, source)],
+                    source
+                );
+                return genTensor(ctx, newShape, source);
             });
     }
 
@@ -1694,6 +1804,8 @@ export namespace TorchLCImpl {
         tensorInit,
         identityShape,
         matmul,
+        mm,
+        bmm,
         item,
         copyOut,
         repeat,

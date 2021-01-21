@@ -61,6 +61,15 @@ def matmul(input, other, out=None):
     LibCall.torch.copyOut(tensor, out)
     return tensor
 
+def mm(input, mat2, out=None):
+    tensor = LibCall.torch.mm(input, mat2)
+    LibCall.torch.copyOut(tensor, out)
+    return tensor
+
+def bmm(input, mat2, deterministic=False, out=None):
+    tensor = LibCall.torch.bmm(input, mat2)
+    LibCall.torch.copyOut(tensor, out)
+    return tensor
 
 def transpose(input, dim0, dim1):
     return LibCall.torch.transpose(input, dim0, dim1)

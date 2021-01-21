@@ -8,11 +8,11 @@ class Tensor:
         self.data = self
 
     # # TODO: make @staticmethod
-    # def __getattr__(self, attr):
-    #     if attr == 'ndim':
-    #         return len(self.shape)
+    def __getattr__(self, attr):
+        if attr == 'ndim':
+            return len(self.shape)
 
-    #     return NotImplemented
+        return NotImplemented
 
     def backward(self):
         return self
@@ -94,6 +94,12 @@ class Tensor:
 
     def cuda(self, **kwargs):
         return self
+
+    def mm(self, mat2):
+        return torch.mm(self, mat2)
+
+    def bmm(self, batch2):
+        return torch.bmm(self, batch2)
 
     # TODO: Behavior of functions like to, type, long, item is dependent on dtype.
     #      They should be fixed if info of ExpShape extends.
