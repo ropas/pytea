@@ -423,7 +423,8 @@ export namespace TorchLCImpl {
             return ctx
                 .require(
                     ctx.genLte(selfRank, sizeRank, source),
-                    `from 'LibCall.torch.repeat': Number of dimensions of repeat dims can not be smaller than number of dimensions of tensor`
+                    `from 'LibCall.torch.repeat': Number of dimensions of repeat dims can not be smaller than number of dimensions of tensor`,
+                    source
                 )
                 .flatMap((ctx) => {
                     const selfRankRng = ctx.getCachedRange(selfRank);
@@ -784,7 +785,8 @@ export namespace TorchLCImpl {
                                 return ctx
                                     .require(
                                         [ctx.genEq(mod, 0, source)],
-                                        `from 'LibCall.torch.view': numel mismatch. selfSize: ${selfNumel} must be dividable by ${numelR}`
+                                        `from 'LibCall.torch.view': numel mismatch. selfSize: ${selfNumel} must be dividable by ${numelR}`,
+                                        source
                                     )
                                     .flatMap((ctx) => genTensor(ctx, newShape, source));
                             });
@@ -801,7 +803,8 @@ export namespace TorchLCImpl {
                                 return ctx
                                     .require(
                                         [ctx.genEq(mod, 0, source)],
-                                        `from 'LibCall.torch.view': numel mismatch. selfSize: ${selfNumel} must be dividable by ${numelL}`
+                                        `from 'LibCall.torch.view': numel mismatch. selfSize: ${selfNumel} must be dividable by ${numelL}`,
+                                        source
                                     )
                                     .flatMap((ctx) => genTensor(ctx, newShape, source));
                             });
@@ -816,7 +819,8 @@ export namespace TorchLCImpl {
                                 return ctx
                                     .require(
                                         [ctx.genEq(mod, 0, source)],
-                                        `from 'LibCall.torch.view': numel mismatch. selfSize: ${selfNumel} must be dividable by ${numelLR}`
+                                        `from 'LibCall.torch.view': numel mismatch. selfSize: ${selfNumel} must be dividable by ${numelLR}`,
+                                        source
                                     )
                                     .flatMap((ctx) => genTensor(ctx, newShape, source));
                             });
@@ -837,11 +841,15 @@ export namespace TorchLCImpl {
         const shapeNumel = ExpNum.numel(shape, source);
 
         return ctx
-            .require([
-                // TODO: Commented out to avoid call stack excess
-                // ctx.genForall(ctx.genSymInt('i', source), [0, shapeRank], ctx.genLt(0, i)),
-                ctx.genEq(selfNumel, shapeNumel, source),
-            ])
+            .require(
+                [
+                    // TODO: Commented out to avoid call stack excess
+                    // ctx.genForall(ctx.genSymInt('i', source), [0, shapeRank], ctx.genLt(0, i)),
+                    ctx.genEq(selfNumel, shapeNumel, source),
+                ],
+                `from 'LibCall.torch.view': numel mismatch`,
+                source
+            )
             .flatMap((ctx) => genTensor(ctx, shape, source));
     }
 
@@ -970,17 +978,31 @@ export namespace TorchLCImpl {
         );
 
         return ctx
-            .require([
-                ctx.genEq(4, inputRank, source),
-                ctx.genEq(4, weightRank, source),
-                ctx.genEq(1, biasRank, source),
-                ctx.genOr(ctx.genEq(-1, bias_channels), ctx.genEq(out_channels.value, bias_channels)),
-                ctx.genEq(ExpNum.index(inputShape, 1, source), in_channels.value, source),
-                ctx.genLte(0, size1, source),
-                ctx.genLte(0, size2, source),
-                ctx.genEq(0, ExpNum.bop(NumBopType.Mod, in_channels.value, groups.value, source), source),
-                ctx.genEq(0, ExpNum.bop(NumBopType.Mod, out_channels.value, groups.value, source), source),
-            ])
+            .require(
+                [ctx.genEq(4, inputRank, source), ctx.genEq(4, weightRank, source), ctx.genEq(1, biasRank, source)],
+                `from 'LibCall.torch.conv2d': (input, weight, bias) rank is not (4, 4, 1)`,
+                source
+            )
+            .require(
+                [ctx.genOr(ctx.genEq(-1, bias_channels), ctx.genEq(out_channels.value, bias_channels))],
+                `from 'LibCall.torch.conv2d': bias channel mismatch`,
+                source
+            )
+            .require(
+                [ctx.genEq(ExpNum.index(inputShape, 1, source), in_channels.value, source)],
+                `from 'LibCall.torch.conv2d': in-channel mismatch`,
+                source
+            )
+            .require(
+                [
+                    ctx.genLte(0, size1, source),
+                    ctx.genLte(0, size2, source),
+                    ctx.genEq(0, ExpNum.bop(NumBopType.Mod, in_channels.value, groups.value, source), source),
+                    ctx.genEq(0, ExpNum.bop(NumBopType.Mod, out_channels.value, groups.value, source), source),
+                ],
+                `from 'LibCall.torch.conv2d': output size should be non-negative`,
+                source
+            )
             .flatMap((ctx) => genTensor(ctx, ExpShape.fromConst(4, [dim0, dim1, dim2, dim3], source), source));
     }
 
@@ -1557,7 +1579,7 @@ export namespace TorchLCImpl {
         }
 
         const heap = ctx.heap;
-        const [inputAddr, start_dimAddr, end_dimAddr] = params;
+        const [inputAddr, startDimAddr, endDimAddr] = params;
 
         // TODO: use kwargs info.
         // TODO: handle negative indexing
@@ -1569,33 +1591,33 @@ export namespace TorchLCImpl {
         const inputShape = inputSize.shape;
         const inputRank = inputSize.rank();
 
-        let start_dim = fetchAddr(start_dimAddr, heap);
-        if (start_dim === undefined) {
-            start_dim = SVInt.create(ExpNum.fromConst(0), source);
-        } else if (start_dim.type !== SVType.Int) {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.flatten': ${start_dim}`, source);
+        let startDim = fetchAddr(startDimAddr, heap);
+        if (startDim === undefined) {
+            startDim = SVInt.create(ExpNum.fromConst(0), source);
+        } else if (startDim.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.flatten': ${startDim}`, source);
         }
 
-        let end_dim = fetchAddr(end_dimAddr, heap);
-        if (end_dim === undefined) {
-            end_dim = SVInt.create(ExpNum.bop(NumBopType.Sub, inputRank, 1, source), source);
-        } else if (end_dim.type !== SVType.Int) {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.flatten': ${end_dim}`, source);
-        } else if (end_dim.value === -1 || end_dim.value === ExpNum.fromConst(-1)) {
-            end_dim = SVInt.create(ExpNum.bop(NumBopType.Sub, inputRank, 1, source), source);
+        let endDim = fetchAddr(endDimAddr, heap);
+        if (endDim === undefined) {
+            endDim = SVInt.create(ExpNum.bop(NumBopType.Sub, inputRank, 1, source), source);
+        } else if (endDim.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.flatten': ${endDim}`, source);
+        } else if (endDim.value === -1 || endDim.value === ExpNum.fromConst(-1)) {
+            endDim = SVInt.create(ExpNum.bop(NumBopType.Sub, inputRank, 1, source), source);
         }
 
-        const frontShape = ExpShape.slice(inputShape, 0, start_dim.value, source);
+        const frontShape = ExpShape.slice(inputShape, 0, startDim.value, source);
         const endShape = ExpShape.slice(
             inputShape,
-            ExpNum.bop(NumBopType.Add, end_dim.value, 1, source),
+            ExpNum.bop(NumBopType.Add, endDim.value, 1, source),
             inputRank,
             source
         );
         const middleShape = ExpShape.slice(
             inputShape,
-            start_dim.value,
-            ExpNum.bop(NumBopType.Add, end_dim.value, 1, source),
+            startDim.value,
+            ExpNum.bop(NumBopType.Add, endDim.value, 1, source),
             source
         );
 
@@ -1607,7 +1629,11 @@ export namespace TorchLCImpl {
         );
 
         return ctx
-            .require([ctx.genLte(0, start_dim.value, source), ctx.genLt(end_dim.value, inputRank, source)])
+            .require(
+                [ctx.genLte(0, startDim.value, source), ctx.genLt(endDim.value, inputRank, source)],
+                `from 'LibCall.torch.flatten': start_dim, end_dim range error`,
+                source
+            )
             .flatMap((ctx) => genTensor(ctx, returnShape, source));
     }
 
