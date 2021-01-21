@@ -368,6 +368,7 @@ export class PyteaService {
     private _resultOnlyLog(result: ContextSet<ShValue | ShContFlag>): void {
         const success = result.getList();
         const failed = result.getFailed();
+        const stopped = result.getStopped();
 
         failed.forEach((ctx, i) => {
             const source = ctx.retVal.source;
@@ -381,6 +382,7 @@ export class PyteaService {
 
         this._console.log(
             chalk.green(`potential success path #: ${success.count()}\n`) +
+                chalk.yellow(`potential unreachable path #: ${stopped.count()}\n`) +
                 chalk.red(`immediate failed path #: ${failed.count()}\n\n`) +
                 'RUNNING TIMES:\n' +
                 this._timeLog.map(([name, interval]) => `  ${name}: ${(interval / 1000).toFixed(4)}s`).join('\n')
@@ -390,6 +392,7 @@ export class PyteaService {
     private _reducedLog(result: ContextSet<ShValue | ShContFlag>): void {
         const success = result.getList();
         const failed = result.getFailed();
+        const stopped = result.getStopped();
 
         const jsonList: string[] = [];
 
@@ -422,6 +425,30 @@ export class PyteaService {
             );
         });
 
+        stopped.forEach((ctx, i) => {
+            jsonList.push(ctx.ctrSet.getConstraintJSON());
+
+            const source = ctx.retVal.source;
+
+            const heapLog = ctx.env.addrMap
+                .filter((v) => v.addr >= 0)
+                .map((addr, key) => {
+                    return `  ${key} => ${this._reducedToString(addr, ctx.heap)}`;
+                })
+                .join('\n');
+
+            this._console.log(
+                chalk.yellow(`stopped path #${i + 1}`) +
+                    `: ${ctx.retVal.reason} - ${PyteaUtils.formatParseNode(source)}\n\n` +
+                    `LOGS:\n${ctx.logsToString()}\n\n` +
+                    'CONSTRAINTS:\n' +
+                    ctx.ctrSet.toString() +
+                    '\n\nCALL STACK:\n' +
+                    ctx.callStackToString() +
+                    `\n\nREDUCED HEAP (${ctx.heap.valMap.count()}):\n${heapLog}`
+            );
+        });
+
         failed.forEach((ctx, i) => {
             const source = ctx.retVal.source;
 
@@ -448,6 +475,7 @@ export class PyteaService {
 
         this._console.log(
             chalk.green(`potential success path #: ${success.count()}\n`) +
+                chalk.yellow(`potential unreachable path #: ${stopped.count()}\n`) +
                 chalk.red(`immediate failed path #: ${failed.count()}\n\n`) +
                 'RUNNING TIMES:\n' +
                 this._timeLog.map(([name, interval]) => `  ${name}: ${(interval / 1000).toFixed(4)}s`).join('\n')
@@ -457,6 +485,7 @@ export class PyteaService {
     private _fullLog(result: ContextSet<ShValue | ShContFlag>): void {
         const success = result.getList();
         const failed = result.getFailed();
+        const stopped = result.getStopped();
 
         if (this._mainStmt) {
             this._console.log(
@@ -471,6 +500,22 @@ export class PyteaService {
                     `CONSTRAINTS:\n${ctx.ctrSet.toString()}\n` +
                     `ENV:\n${ctx.env.toString()}\n` +
                     `HEAP (size: ${ctx.heap.valMap.count()}):\n${ctx.heap.filter((_, key) => key >= 0).toString()}\n`
+            );
+        });
+
+        stopped.forEach((ctx, i) => {
+            const source = ctx.retVal.source;
+
+            this._console.log(
+                chalk.yellow(`stopped path #${i + 1}`) +
+                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${PyteaUtils.formatParseNode(source)}\n` +
+                    `LOGS:\n${ctx.logsToString()}\n` +
+                    'CONSTRAINTS:\n' +
+                    ctx.ctrSet.toString() +
+                    '\n\nCALL STACK:\n' +
+                    ctx.callStackToString() +
+                    `\nENV:\n${ctx.env.toString()}\n` +
+                    `\nHEAP (${ctx.heap.valMap.count()}):\n${ctx.heap.filter((_, key) => key >= 0).toString()}`
             );
         });
 
@@ -494,6 +539,7 @@ export class PyteaService {
 
         this._console.log(
             chalk.green(`potential success path #: ${success.count()}\n`) +
+                chalk.yellow(`potential unreachable path #: ${stopped.count()}\n`) +
                 chalk.red(`immediate failed path #: ${failed.count()}\n\n`) +
                 'RUNNING TIMES:\n' +
                 this._timeLog.map(([name, interval]) => `  ${name}: ${(interval / 1000).toFixed(4)}s`).join('\n')
