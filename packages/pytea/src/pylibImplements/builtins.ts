@@ -2,7 +2,7 @@ import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { fetchAddr, sanitizeAddr, trackMro } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
-import { isInstanceOf, simplifyString, strLen } from '../backend/expUtils';
+import { isInstanceOf, strLen } from '../backend/expUtils';
 import {
     PrimitiveType,
     ShValue,
@@ -164,14 +164,17 @@ export namespace BuiltinsLCImpl {
                     .toSetWith(SVInt.create(ExpNum.fromSymbol(ctx.genSymInt('parseInt', source)), source));
             }
             case PrimitiveType.Tuple: {
-                const tuple = env.getId('tuple')!;
                 const list = env.getId('list')!;
-
+                const tuple = env.getId('tuple')!;
                 if (value.type === SVType.Object && isInstanceOf(value, list, env, heap)) {
                     const mro = fetchAddr(value.getAttr('__mro__'), heap);
                     if (mro?.type === SVType.Object) {
                         // force casting
-                        return ctx.toSetWith(value.setAttr('__mro__', mro.setIndice(0, tuple)));
+                        const tupleObj = fetchAddr(heap.getVal(tuple)!, heap)!;
+                        const tupleMro = (tupleObj as SVObject).getAttr('__mro__')!;
+                        const casted = value.setAttr('__mro__', tupleMro);
+
+                        return ctx.setHeap(ctx.heap.setVal(casted.addr, casted)).toSetWith(casted.addr);
                     }
                 } else if (isInstanceOf(value, tuple, env, heap)) {
                     return ctx.toSetWith(value);
@@ -179,13 +182,16 @@ export namespace BuiltinsLCImpl {
                 break;
             }
             case PrimitiveType.List: {
-                const tuple = env.getId('tuple')!;
                 const list = env.getId('list')!;
+                const tuple = env.getId('tuple')!;
                 if (value.type === SVType.Object && isInstanceOf(value, tuple, env, heap)) {
                     const mro = fetchAddr(value.getAttr('__mro__'), heap);
                     if (mro?.type === SVType.Object) {
                         // force casting
-                        return ctx.toSetWith(value.setAttr('__mro__', mro.setIndice(0, list)));
+                        const listObj = fetchAddr(heap.getVal(list)!, heap)!;
+                        const listMro = (listObj as SVObject).getAttr('__mro__')!;
+                        const casted = value.setAttr('__mro__', listMro);
+                        return ctx.setHeap(ctx.heap.setVal(casted.addr, casted)).toSetWith(casted.addr);
                     }
                 } else if (isInstanceOf(value, list, env, heap)) {
                     return ctx.toSetWith(value);
