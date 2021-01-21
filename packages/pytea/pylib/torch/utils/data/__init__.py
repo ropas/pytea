@@ -1,2 +1,2 @@
-from .dataset import Dataset, Subset, random_split
+from .dataset import Dataset, Subset, TensorDataset, random_split
 from .dataloader import DataLoader

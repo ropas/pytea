@@ -20,6 +20,12 @@ def randn(*size, out=None, **kwargs):
     return tensor
 
 
+def randint(low=0, high, size, generator=None, out=None, **kwargs):
+    tensor = Tensor(*size)
+    LibCall.torch.copyOut(tensor, out)
+    return tensor
+
+
 def ones(*size, out=None, **kwargs):
     tensor = Tensor(*size)
     LibCall.torch.copyOut(tensor, out)
@@ -114,3 +120,20 @@ def sqrt(input, out=None):
 
 def manual_seed(seed=0):
     pass
+
+
+def tanh(input, out=None):
+    LibCall.torch.copyOut(input, out)
+    return input
+
+def gelu(input):
+    return LibCall.torch.identityShape(input)
+
+def sigmoid(input, out=None):
+    LibCall.torch.copyOut(input, out)
+    return input
+
+def arange(start=0, end, step=1, out=None, **kwargs):
+    tensor = Tensor(int((end - start) / step))
+    LibCall.torch.copyOut(tensor, out)
+    return tensor

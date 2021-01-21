@@ -121,6 +121,27 @@ def _dict_items(self):
 dict.items = _dict_items
 
 
+def _dict_setitem(self, key, value):
+    return LibCall.builtins.dict_setitem(self, key, value)
+
+
+dict.__setitem__ = _dict_setitem
+
+
+def _dict_getitem(self, key):
+    return LibCall.builtins.dict_getitem(self, key)
+
+
+dict.__getitem__ = _dict_getitem
+
+
+def _dict_pop(self, key, defaultVal):
+    return LibCall.builtins.dict_pop(self, key, defaultVal)
+
+
+dict.pop = _dict_pop
+
+
 def _str_format(self, *args, **kwargs):
     # TODO: format it.
     return self

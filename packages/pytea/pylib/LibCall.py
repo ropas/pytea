@@ -109,6 +109,14 @@ class TorchLibCallImpl:
     def flatten(tensor, start_dim=0, end_dim=-1):
         pass
 
+    @staticmethod
+    def embedding(tensor, weight):
+        pass
+
+    @staticmethod
+    def layer_norm(tensor, norm_tensor, weight, bias):
+        pass
+
 
 torch = TorchLibCallImpl()
 

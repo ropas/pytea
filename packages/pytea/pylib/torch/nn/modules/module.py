@@ -1,3 +1,6 @@
+from ... import LibCall
+
+
 class Module:
     def __init__(self):
         self.training = False
@@ -38,3 +41,7 @@ class Module:
 
     def zero_grad(self, set_to_none=False):
         return None
+
+    def register_buffer(self, name, tensor):
+        # TODO: this is not workly currently.. fix this
+        LibCall.builtins.dict_setitem(self, name, tensor)

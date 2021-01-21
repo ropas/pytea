@@ -302,6 +302,101 @@ export namespace BuiltinsLCImpl {
         return ctx.setHeap(newHeap.setVal(pairListAddr, pairList)).toSetWith(pairListAddr);
     }
 
+    // TODO: fix this to support non-string typed key
+    export function dict_setitem(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 3) {
+            return ctx
+                .failWithMsg(
+                    `from 'LibCall.builtins.dict_setitem': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const { heap } = ctx;
+        const dict = fetchAddr(params[0], heap);
+        const key = fetchAddr(params[1], heap);
+        const value = sanitizeAddr(params[2], heap);
+
+        if (dict?.type !== SVType.Object || key?.type !== SVType.String || !value) {
+            // currently, only supports string typed key
+            return ctx.warnWithMsg(`from 'LibCall.builtins.dict_setitem': invalid value type`, source).toSet();
+        }
+        if (typeof key.value !== 'string') {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.dict_setitem': does not supports symbolic string`, source).toSet();
+        }
+
+        const newDict = dict.setKeyVal(key.value, value);
+
+        return ctx.setHeap(heap.setVal(dict.addr, newDict)).toSetWith(SVNone.create(source));
+    }
+
+    // TODO: fix this to support non-string typed key
+    export function dict_getitem(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx
+                .failWithMsg(
+                    `from 'LibCall.builtins.dict_getitem': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const { heap } = ctx;
+        const dict = fetchAddr(params[0], heap);
+        const key = fetchAddr(params[1], heap);
+
+        if (dict?.type !== SVType.Object || key?.type !== SVType.String) {
+            // currently, only supports string typed key
+            return ctx.warnWithMsg(`from 'LibCall.builtins.dict_getitem': invalid value type`, source).toSet();
+        }
+        if (typeof key.value !== 'string') {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.dict_getitem': does not supports symbolic string`, source).toSet();
+        }
+
+        const value = dict.getKeyVal(key.value);
+        if (value === undefined) {
+            return ctx.failWithMsg(`LibCall.builtins.dict_getitem': invalid key value`, source).toSet();
+        }
+
+        return ctx.toSetWith(value);
+    }
+
+    // TODO: fix this to support non-string typed key
+    export function dict_pop(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 3) {
+            return ctx
+                .failWithMsg(
+                    `from 'LibCall.builtins.dict_setitem': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const { heap } = ctx;
+        const dict = fetchAddr(params[0], heap);
+        const key = fetchAddr(params[1], heap);
+        const defaultVal = sanitizeAddr(params[2], heap);
+
+        if (dict?.type !== SVType.Object || key?.type !== SVType.String || !defaultVal) {
+            // currently, only supports string typed key
+            return ctx.warnWithMsg(`from 'LibCall.builtins.dict_pop': invalid value type`, source).toSet();
+        }
+        if (typeof key.value !== 'string') {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.dict_pop': does not supports symbolic string`, source).toSet();
+        }
+
+        let retVal = dict.getKeyVal(key.value);
+        if (retVal === undefined) {
+            retVal = defaultVal;
+        }
+
+        return ctx.toSetWith(retVal);
+    }
+
     export function len(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
@@ -515,6 +610,9 @@ export namespace BuiltinsLCImpl {
         cast,
         list_append,
         dict_items,
+        dict_getitem,
+        dict_setitem,
+        dict_pop,
         len,
         randInt,
         randFloat,

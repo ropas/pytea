@@ -1,4 +1,5 @@
 import LibCall
+from ..tensor import Tensor
 
 
 def relu(input, inplace=False):
@@ -141,3 +142,15 @@ def mse_loss(input, target, size_average=None, reduce=None, reduction='mean'):
         return LibCall.torch.identityShape(input)
     else:
         return torch.Tensor()
+
+
+def gelu(input):
+    return LibCall.torch.identityShape(input)
+
+def embedding(input, weight, offsets=None, max_norm=None, norm_type=2, scale_grad_by_freq=False, mode='mean', sparse=False, per_sample_weights=None):
+    return LibCall.torch.embedding(input, weight)
+
+def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
+    # TODO: implement weight and bias
+    norm_tensor = Tensor(*normalized_shape)
+    return LibCall.torch.layer_norm(input, norm_tensor, weight, bias)

@@ -22,6 +22,9 @@ class Tensor:
             return self.shape
         else:
             return self.shape[dim]
+    
+    def dim(self):
+        return len(self.shape)
 
     def matmul(self, other):
         return LibCall.torch.matmul(self, other)
@@ -110,6 +113,16 @@ class Tensor:
     def long(self, **kwargs):
         return self.to(self, kwargs)
 
+    def numpy(self):
+        return LibCall.torch.identityShape(self)
+
+    def expand(self, shape):
+        # TODO: implement this
+        pass
+    
+    def device(self):
+        return "cuda"
+
     def __len__(self):
         if len(self.shape) == 0:
             raise TypeError("len() of a 0-d tensor")
@@ -170,3 +183,8 @@ class Tensor:
 
     def __rmatmul__(self, other):
         return LibCall.torch.matmul(other, self)
+
+
+class tensor(Tensor):
+    def __init__(self, *args, **kwargs):
+        super(tensor, self).__init__(*args, **kwargs)
