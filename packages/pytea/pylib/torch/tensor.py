@@ -128,11 +128,10 @@ class Tensor:
             idx_len = len(index)
             if len(self.shape) > idx_len:
                 raise IndexError("too many indices for tensor")
-            for axis in range(idx_len - 1, 0, -1):
+            for axis in range(idx_len - 1, -1, -1):
                 temp = LibCall.shape.tensorGetItem(temp, axis, index[axis])
             return Tensor(temp)
 
-        p = len(temp)
         if len(temp) <= 0:
             raise IndexError(
                 "invalid index of a 0-dim tensor. Use tensor.item() to convert a 0-dim tensor to a Python number"

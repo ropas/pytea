@@ -54,21 +54,16 @@ class Image:
         ):
             raise Exception("unknown method type")
 
-        if len(self.mode) == 1:
-            im = Image()
-            im._setSize(1, size[0], size[1])
-            im.mode = self.mode
-            return im
-        elif self.mode == "RGBA" or self.mode == "CMYK":
-            im = Image()
-            im._setSize(4, size[0], size[1])
-            im.mode = self.mode
-            return im
-        else:
-            im = Image()
-            im._setSize(3, size[0], size[1])
-            im.mode = self.mode
-            return im
+        im = Image()
+        im._setSize(self._channel, size[0], size[1])
+        im.mode = self.mode
+        return im
+
+    def resize(self, size, resample=3, box=None, reducing_gap=None):
+        im = Image()
+        im._setSize(im._channel, size[0], size[1])
+        im.mode = self.mode
+        return im
 
 
 def new(mode, size, color=0):
@@ -98,7 +93,7 @@ def open(fp, mode="r"):
     im = Image()
     # make symbolic image
     im._setSize(
-        random.randint(1, 4), random.randint(1, 10000), random.randint(1, 10000)
+        random.randint(1, 4), random.randint(24, 4096), random.randint(24, 4096)
     )
     return im
 

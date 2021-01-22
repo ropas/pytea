@@ -331,7 +331,7 @@ export namespace TorchLCImpl {
                 const simplerBatch = leftShape.opType === ShapeOpType.Const ? leftBatch : rightBatch;
                 const newShape = ExpShape.fromConst(
                     3,
-                    [simplerBatch, ExpNum.index(leftShape, 0, source), ExpNum.index(rightShape, 1, source)],
+                    [simplerBatch, ExpNum.index(leftShape, 1, source), ExpNum.index(rightShape, 2, source)],
                     source
                 );
                 return genTensor(ctx, newShape, source);
