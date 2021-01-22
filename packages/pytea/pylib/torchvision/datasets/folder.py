@@ -22,7 +22,7 @@ class ImageFolder(data.Dataset):
 
     def __getitem__(self, index):
         img = Image.open('RANDOM_IMAGE')
-        target = random.randint(0, 9)
+        target = LibCall.builtins.randInt(0, 9, 'ImageFolder_Class')
 
         if self.transform is not None:
             img = self.transform(img)

@@ -4,5 +4,6 @@
     "logLevel": "reduced",
     "printIR": true,
     "entryPath": "./neural_style.py",
-    "immediateConstraintCheck": true
+    "immediateConstraintCheck": true,
+    "variableRange": {}
 }

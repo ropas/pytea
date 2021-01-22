@@ -1,3 +1,5 @@
+import { PyteaService } from 'src/service/pyteaService';
+
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { fetchAddr, sanitizeAddr, trackMro } from '../backend/backUtils';
@@ -366,6 +368,21 @@ export namespace BuiltinsLCImpl {
         const bVal = fetchAddr(b, heap);
         const prefix = (fetchAddr(prefixAddr, heap)! as SVString).value as string;
 
+        // inject explicit variable range
+        const varRangeMap = PyteaService.getVariableRange();
+        if (prefix in varRangeMap) {
+            const range = varRangeMap[prefix];
+            if (typeof range === 'number') {
+                return ctx.toSetWith(SVInt.create(range, source));
+            } else {
+                let symCtx = ctx.genFloatGte(prefix, range[0], source);
+                const num = symCtx.retVal;
+                symCtx = symCtx.guarantee(symCtx.genLt(num, range[1], source));
+
+                return symCtx.toSetWith(SVInt.create(num, source));
+            }
+        }
+
         if (!(aVal?.type === SVType.Int || aVal?.type === SVType.Float)) {
             return ctx.warnWithMsg(`from 'LibCall.builtins.randInt: value a is non-numeric`, source).toSet();
         }
@@ -398,6 +415,21 @@ export namespace BuiltinsLCImpl {
         const aVal = fetchAddr(a, heap);
         const bVal = fetchAddr(b, heap);
         const prefix = (fetchAddr(prefixAddr, heap)! as SVString).value as string;
+
+        // inject explicit variable range
+        const varRangeMap = PyteaService.getVariableRange();
+        if (prefix in varRangeMap) {
+            const range = varRangeMap[prefix];
+            if (typeof range === 'number') {
+                return ctx.toSetWith(SVFloat.create(range, source));
+            } else {
+                let symCtx = ctx.genFloatGte(prefix, range[0], source);
+                const num = symCtx.retVal;
+                symCtx = symCtx.guarantee(symCtx.genLt(num, range[1], source));
+
+                return symCtx.toSetWith(SVFloat.create(num, source));
+            }
+        }
 
         if (!(aVal?.type === SVType.Int || aVal?.type === SVType.Float)) {
             return ctx.warnWithMsg(`from 'LibCall.builtins.randFloat: value a is non-numeric`, source).toSet();

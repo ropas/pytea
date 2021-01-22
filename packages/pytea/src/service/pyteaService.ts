@@ -101,6 +101,11 @@ export class PyteaService {
         return options ? options.pythonSubcommand : '';
     }
 
+    static getVariableRange(): { [varName: string]: number | [number, number] } {
+        const options = _globalService?.options;
+        return options ? options.variableRange : {};
+    }
+
     static log(...message: any[]): void {
         _globalService?._console.log(message.map((x) => `${x}`).join(' '));
     }

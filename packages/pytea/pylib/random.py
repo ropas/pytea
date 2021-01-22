@@ -1,7 +1,7 @@
 import LibCall
 
 def random():
-    return LibCall.builtins.randFloat(0, 1, 'randFloat')
+    return LibCall.builtins.randFloat(0, 1, 'randfloat')
 
 
 def uniform(a, b):

@@ -36,6 +36,10 @@ export interface PyteaOptions {
 
     // Extract internal representation to file (TorchIR)
     extractIR: boolean;
+
+    // Explicit range of random variables.
+    // The range of random varaible which name starts with prefix will be altered to this.
+    variableRange: { [prefix: string]: number | [number, number] };
 }
 
 export type PyteaOptionsPart = Partial<PyteaOptions>;
@@ -47,4 +51,5 @@ export const defaultOptions: PyteaOptionsPart = {
     immediateConstraintCheck: true,
     ignoreAssert: false,
     extractIR: false,
+    variableRange: {},
 };
