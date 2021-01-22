@@ -101,7 +101,7 @@ export class PyteaService {
         return options ? options.pythonSubcommand : '';
     }
 
-    static getVariableRange(): { [varName: string]: number | [number, number] } {
+    static getVariableRange(): { [varName: string]: number | [number | null, number | null] } {
         const options = _globalService?.options;
         return options ? options.variableRange : {};
     }

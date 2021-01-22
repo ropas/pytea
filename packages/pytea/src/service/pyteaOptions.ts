@@ -39,7 +39,8 @@ export interface PyteaOptions {
 
     // Explicit range of random variables.
     // The range of random varaible which name starts with prefix will be altered to this.
-    variableRange: { [prefix: string]: number | [number, number] };
+    // undefined means unbounded, range is inclusive.
+    variableRange: { [prefix: string]: number | [number | null, number | null] };
 }
 
 export type PyteaOptionsPart = Partial<PyteaOptions>;

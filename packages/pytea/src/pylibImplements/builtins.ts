@@ -19,7 +19,7 @@ import {
     SVString,
     SVType,
 } from '../backend/sharpValues';
-import { ExpNum, NumBopType, NumUopType } from '../backend/symExpressions';
+import { ExpNum, ExpNumSymbol, NumBopType, NumUopType } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
 import { LCImpl } from '.';
 import { LCBase } from './libcall';
@@ -372,12 +372,25 @@ export namespace BuiltinsLCImpl {
         const varRangeMap = PyteaService.getVariableRange();
         if (prefix in varRangeMap) {
             const range = varRangeMap[prefix];
+            let num: ExpNumSymbol | undefined;
+
             if (typeof range === 'number') {
                 return ctx.toSetWith(SVInt.create(range, source));
             } else {
-                let symCtx = ctx.genFloatGte(prefix, range[0], source);
-                const num = symCtx.retVal;
-                symCtx = symCtx.guarantee(symCtx.genLt(num, range[1], source));
+                let symCtx: Context<unknown> = ctx;
+                if (typeof range[0] === 'number') {
+                    const numCtx = ctx.genIntGte(prefix, range[0], source);
+                    symCtx = numCtx;
+                    num = numCtx.retVal;
+                    if (typeof range[1] === 'number') {
+                        symCtx = symCtx.guarantee(symCtx.genLte(num, range[1], source));
+                    }
+                } else if (typeof range[1] === 'number') {
+                    num = ExpNum.fromSymbol(ctx.genSymInt(prefix, source));
+                    symCtx = symCtx.guarantee(symCtx.genLte(num, range[1], source));
+                } else {
+                    num = ExpNum.fromSymbol(ctx.genSymInt(prefix, source));
+                }
 
                 return symCtx.toSetWith(SVInt.create(num, source));
             }
@@ -416,16 +429,29 @@ export namespace BuiltinsLCImpl {
         const bVal = fetchAddr(b, heap);
         const prefix = (fetchAddr(prefixAddr, heap)! as SVString).value as string;
 
-        // inject explicit variable range
+        // inject explicit variable range (inclusive)
         const varRangeMap = PyteaService.getVariableRange();
         if (prefix in varRangeMap) {
             const range = varRangeMap[prefix];
+            let num: ExpNumSymbol | undefined;
+
             if (typeof range === 'number') {
                 return ctx.toSetWith(SVFloat.create(range, source));
             } else {
-                let symCtx = ctx.genFloatGte(prefix, range[0], source);
-                const num = symCtx.retVal;
-                symCtx = symCtx.guarantee(symCtx.genLt(num, range[1], source));
+                let symCtx: Context<unknown> = ctx;
+                if (typeof range[0] === 'number') {
+                    const numCtx = ctx.genFloatGte(prefix, range[0], source);
+                    symCtx = numCtx;
+                    num = numCtx.retVal;
+                    if (typeof range[1] === 'number') {
+                        symCtx = symCtx.guarantee(symCtx.genLte(num, range[1], source));
+                    }
+                } else if (typeof range[1] === 'number') {
+                    num = ExpNum.fromSymbol(ctx.genSymFloat(prefix, source));
+                    symCtx = symCtx.guarantee(symCtx.genLte(num, range[1], source));
+                } else {
+                    num = ExpNum.fromSymbol(ctx.genSymFloat(prefix, source));
+                }
 
                 return symCtx.toSetWith(SVFloat.create(num, source));
             }
