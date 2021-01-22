@@ -350,7 +350,7 @@ export namespace BuiltinsLCImpl {
     // inclusive randint (a <= retVal <= b)
     export function randInt(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
-        if (params.length !== 2) {
+        if (params.length !== 3) {
             return ctx
                 .warnWithMsg(
                     `from 'LibCall.builtins.randInt': got insufficient number of argument: ${params.length}`,
@@ -360,10 +360,11 @@ export namespace BuiltinsLCImpl {
         }
 
         const heap = ctx.heap;
-        const [a, b] = params;
+        const [a, b, prefixAddr] = params;
 
         const aVal = fetchAddr(a, heap);
         const bVal = fetchAddr(b, heap);
+        const prefix = (fetchAddr(prefixAddr, heap)! as SVString).value as string;
 
         if (!(aVal?.type === SVType.Int || aVal?.type === SVType.Float)) {
             return ctx.warnWithMsg(`from 'LibCall.builtins.randInt: value a is non-numeric`, source).toSet();
@@ -372,7 +373,7 @@ export namespace BuiltinsLCImpl {
             return ctx.warnWithMsg(`from 'LibCall.builtins.randInt: value b is non-numeric`, source).toSet();
         }
 
-        let symCtx = ctx.genIntGte('randInt', aVal.value, source);
+        let symCtx = ctx.genIntGte(prefix, aVal.value, source);
         const num = symCtx.retVal;
         symCtx = symCtx.guarantee(symCtx.genLte(num, bVal.value, source));
 
@@ -382,7 +383,7 @@ export namespace BuiltinsLCImpl {
     // exclusive randfloat (a <= retVal < b)
     export function randFloat(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
-        if (params.length !== 2) {
+        if (params.length !== 3) {
             return ctx
                 .warnWithMsg(
                     `from 'LibCall.builtins.randFloat': got insufficient number of argument: ${params.length}`,
@@ -392,10 +393,11 @@ export namespace BuiltinsLCImpl {
         }
 
         const heap = ctx.heap;
-        const [a, b] = params;
+        const [a, b, prefixAddr] = params;
 
         const aVal = fetchAddr(a, heap);
         const bVal = fetchAddr(b, heap);
+        const prefix = (fetchAddr(prefixAddr, heap)! as SVString).value as string;
 
         if (!(aVal?.type === SVType.Int || aVal?.type === SVType.Float)) {
             return ctx.warnWithMsg(`from 'LibCall.builtins.randFloat: value a is non-numeric`, source).toSet();
@@ -404,7 +406,7 @@ export namespace BuiltinsLCImpl {
             return ctx.warnWithMsg(`from 'LibCall.builtins.randFloat: value b is non-numeric`, source).toSet();
         }
 
-        let symCtx = ctx.genFloatGte('randFloat', aVal.value, source);
+        let symCtx = ctx.genFloatGte(prefix, aVal.value, source);
         const num = symCtx.retVal;
         symCtx = symCtx.guarantee(symCtx.genLt(num, bVal.value, source));
 

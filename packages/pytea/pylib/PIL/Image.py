@@ -93,7 +93,9 @@ def open(fp, mode="r"):
     im = Image()
     # make symbolic image
     im._setSize(
-        random.randint(1, 4), random.randint(24, 4096), random.randint(24, 4096)
+        LibCall.builtins.randInt(1, 4, 'PILImgC'),
+        LibCall.builtins.randInt(24, 4096, 'PILImgW'),
+        LibCall.builtins.randInt(24, 4096, 'PILImgH')
     )
     return im
 
