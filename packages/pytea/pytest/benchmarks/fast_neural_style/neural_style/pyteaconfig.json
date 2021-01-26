@@ -3,5 +3,7 @@
     "pythonCmdArgs": { "batch-size": 32, "epochs": 1, "dataset": "./", "cuda": 0, "save-model-dir": "./" },
     "logLevel": "reduced",
     "printIR": true,
-    "immediateConstraintCheck": true
+    "entryPath": "./neural_style.py",
+    "immediateConstraintCheck": true,
+    "variableRange": {}
 }

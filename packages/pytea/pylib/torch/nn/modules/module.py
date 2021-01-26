@@ -35,6 +35,9 @@ class Module:
     def cuda(self):
         return self
 
+    def cpu(self):
+        return self
+
     def to(self, *args, **kwargs):
         # ignore it.
         return self
@@ -45,3 +48,7 @@ class Module:
     def register_buffer(self, name, tensor):
         # TODO: this is not workly currently.. fix this
         LibCall.builtins.dict_setitem(self, name, tensor)
+        
+    def state_dict(self, destination=None, prefix=None, keep_vars=None):
+        # TODO: make key-value pair
+        return {}

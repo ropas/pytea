@@ -38,13 +38,13 @@ class builtins:
         return len(value)
 
     @staticmethod
-    def randInt(lo, hi):
+    def randInt(lo, hi, prefix):
         import random
 
         return random.randint(lo, hi)
 
     @staticmethod
-    def randFloat(lo, hi):
+    def randFloat(lo, hi, prefix):
         import random
 
         return random.random() * (hi - lo) + lo

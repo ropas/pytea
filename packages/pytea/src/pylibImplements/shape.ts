@@ -17,7 +17,6 @@ import {
     fetchSize,
     genTensor,
     isInstanceOf,
-    isSize,
     reluLen,
     simplifyNum,
     simplifyShape,

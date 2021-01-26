@@ -8,11 +8,11 @@ class Tensor:
         self.data = self
 
     # # TODO: make @staticmethod
-    # def __getattr__(self, attr):
-    #     if attr == 'ndim':
-    #         return len(self.shape)
+    def __getattr__(self, attr):
+        if attr == 'ndim':
+            return len(self.shape)
 
-    #     return NotImplemented
+        return NotImplemented
 
     def backward(self):
         return self
@@ -98,6 +98,12 @@ class Tensor:
     def cuda(self, **kwargs):
         return self
 
+    def mm(self, mat2):
+        return torch.mm(self, mat2)
+
+    def bmm(self, batch2):
+        return torch.bmm(self, batch2)
+
     # TODO: Behavior of functions like to, type, long, item is dependent on dtype.
     #      They should be fixed if info of ExpShape extends.
     def to(self, *args, **kwargs):
@@ -152,11 +158,10 @@ class Tensor:
             idx_len = len(index)
             if len(self.shape) > idx_len:
                 raise IndexError("too many indices for tensor")
-            for axis in range(idx_len - 1, 0, -1):
+            for axis in range(idx_len - 1, -1, -1):
                 temp = LibCall.shape.tensorGetItem(temp, axis, index[axis])
             return Tensor(temp)
 
-        p = len(temp)
         if len(temp) <= 0:
             raise IndexError(
                 "invalid index of a 0-dim tensor. Use tensor.item() to convert a 0-dim tensor to a Python number"

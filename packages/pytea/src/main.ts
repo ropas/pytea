@@ -141,7 +141,11 @@ function runMain(args: CommandLineOptions) {
             const entryPath = pyteaService.options.entryPath;
 
             // this triggers translation of project folder .
-            pyteaService.translateMainEntry(entryPath);
+            const errMsg = pyteaService.translateMainEntry(entryPath);
+            if (errMsg) {
+                console.error(errMsg);
+                process.exit(ExitStatus.FatalError);
+            }
 
             if (!pyteaService.validate()) {
                 console.error('pytea service got error');

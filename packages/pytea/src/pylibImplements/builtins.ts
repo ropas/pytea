@@ -1,8 +1,10 @@
+import { PyteaService } from 'src/service/pyteaService';
+
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { fetchAddr, sanitizeAddr, trackMro } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
-import { isInstanceOf, simplifyString, strLen } from '../backend/expUtils';
+import { isInstanceOf, strLen } from '../backend/expUtils';
 import {
     PrimitiveType,
     ShValue,
@@ -17,7 +19,7 @@ import {
     SVString,
     SVType,
 } from '../backend/sharpValues';
-import { ExpNum, NumBopType, NumUopType } from '../backend/symExpressions';
+import { ExpNum, ExpNumSymbol, NumBopType, NumUopType } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
 import { LCImpl } from '.';
 import { LCBase } from './libcall';
@@ -164,14 +166,17 @@ export namespace BuiltinsLCImpl {
                     .toSetWith(SVInt.create(ExpNum.fromSymbol(ctx.genSymInt('parseInt', source)), source));
             }
             case PrimitiveType.Tuple: {
-                const tuple = env.getId('tuple')!;
                 const list = env.getId('list')!;
-
+                const tuple = env.getId('tuple')!;
                 if (value.type === SVType.Object && isInstanceOf(value, list, env, heap)) {
                     const mro = fetchAddr(value.getAttr('__mro__'), heap);
                     if (mro?.type === SVType.Object) {
                         // force casting
-                        return ctx.toSetWith(value.setAttr('__mro__', mro.setIndice(0, tuple)));
+                        const tupleObj = fetchAddr(heap.getVal(tuple)!, heap)!;
+                        const tupleMro = (tupleObj as SVObject).getAttr('__mro__')!;
+                        const casted = value.setAttr('__mro__', tupleMro);
+
+                        return ctx.setHeap(ctx.heap.setVal(casted.addr, casted)).toSetWith(casted.addr);
                     }
                 } else if (isInstanceOf(value, tuple, env, heap)) {
                     return ctx.toSetWith(value);
@@ -179,13 +184,16 @@ export namespace BuiltinsLCImpl {
                 break;
             }
             case PrimitiveType.List: {
-                const tuple = env.getId('tuple')!;
                 const list = env.getId('list')!;
+                const tuple = env.getId('tuple')!;
                 if (value.type === SVType.Object && isInstanceOf(value, tuple, env, heap)) {
                     const mro = fetchAddr(value.getAttr('__mro__'), heap);
                     if (mro?.type === SVType.Object) {
                         // force casting
-                        return ctx.toSetWith(value.setAttr('__mro__', mro.setIndice(0, list)));
+                        const listObj = fetchAddr(heap.getVal(list)!, heap)!;
+                        const listMro = (listObj as SVObject).getAttr('__mro__')!;
+                        const casted = value.setAttr('__mro__', listMro);
+                        return ctx.setHeap(ctx.heap.setVal(casted.addr, casted)).toSetWith(casted.addr);
                     }
                 } else if (isInstanceOf(value, list, env, heap)) {
                     return ctx.toSetWith(value);
@@ -439,7 +447,7 @@ export namespace BuiltinsLCImpl {
     // inclusive randint (a <= retVal <= b)
     export function randInt(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
-        if (params.length !== 2) {
+        if (params.length !== 3) {
             return ctx
                 .warnWithMsg(
                     `from 'LibCall.builtins.randInt': got insufficient number of argument: ${params.length}`,
@@ -449,10 +457,39 @@ export namespace BuiltinsLCImpl {
         }
 
         const heap = ctx.heap;
-        const [a, b] = params;
+        const [a, b, prefixAddr] = params;
 
         const aVal = fetchAddr(a, heap);
         const bVal = fetchAddr(b, heap);
+        const prefix = (fetchAddr(prefixAddr, heap)! as SVString).value as string;
+
+        // inject explicit variable range
+        const varRangeMap = PyteaService.getVariableRange();
+        if (prefix in varRangeMap) {
+            const range = varRangeMap[prefix];
+            let num: ExpNumSymbol | undefined;
+
+            if (typeof range === 'number') {
+                return ctx.toSetWith(SVInt.create(range, source));
+            } else {
+                let symCtx: Context<unknown> = ctx;
+                if (typeof range[0] === 'number') {
+                    const numCtx = ctx.genIntGte(prefix, range[0], source);
+                    symCtx = numCtx;
+                    num = numCtx.retVal;
+                    if (typeof range[1] === 'number') {
+                        symCtx = symCtx.guarantee(symCtx.genLte(num, range[1], source));
+                    }
+                } else if (typeof range[1] === 'number') {
+                    num = ExpNum.fromSymbol(ctx.genSymInt(prefix, source));
+                    symCtx = symCtx.guarantee(symCtx.genLte(num, range[1], source));
+                } else {
+                    num = ExpNum.fromSymbol(ctx.genSymInt(prefix, source));
+                }
+
+                return symCtx.toSetWith(SVInt.create(num, source));
+            }
+        }
 
         if (!(aVal?.type === SVType.Int || aVal?.type === SVType.Float)) {
             return ctx.warnWithMsg(`from 'LibCall.builtins.randInt: value a is non-numeric`, source).toSet();
@@ -461,7 +498,7 @@ export namespace BuiltinsLCImpl {
             return ctx.warnWithMsg(`from 'LibCall.builtins.randInt: value b is non-numeric`, source).toSet();
         }
 
-        let symCtx = ctx.genIntGte('randInt', aVal.value, source);
+        let symCtx = ctx.genIntGte(prefix, aVal.value, source);
         const num = symCtx.retVal;
         symCtx = symCtx.guarantee(symCtx.genLte(num, bVal.value, source));
 
@@ -471,7 +508,7 @@ export namespace BuiltinsLCImpl {
     // exclusive randfloat (a <= retVal < b)
     export function randFloat(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
-        if (params.length !== 2) {
+        if (params.length !== 3) {
             return ctx
                 .warnWithMsg(
                     `from 'LibCall.builtins.randFloat': got insufficient number of argument: ${params.length}`,
@@ -481,10 +518,39 @@ export namespace BuiltinsLCImpl {
         }
 
         const heap = ctx.heap;
-        const [a, b] = params;
+        const [a, b, prefixAddr] = params;
 
         const aVal = fetchAddr(a, heap);
         const bVal = fetchAddr(b, heap);
+        const prefix = (fetchAddr(prefixAddr, heap)! as SVString).value as string;
+
+        // inject explicit variable range (inclusive)
+        const varRangeMap = PyteaService.getVariableRange();
+        if (prefix in varRangeMap) {
+            const range = varRangeMap[prefix];
+            let num: ExpNumSymbol | undefined;
+
+            if (typeof range === 'number') {
+                return ctx.toSetWith(SVFloat.create(range, source));
+            } else {
+                let symCtx: Context<unknown> = ctx;
+                if (typeof range[0] === 'number') {
+                    const numCtx = ctx.genFloatGte(prefix, range[0], source);
+                    symCtx = numCtx;
+                    num = numCtx.retVal;
+                    if (typeof range[1] === 'number') {
+                        symCtx = symCtx.guarantee(symCtx.genLte(num, range[1], source));
+                    }
+                } else if (typeof range[1] === 'number') {
+                    num = ExpNum.fromSymbol(ctx.genSymFloat(prefix, source));
+                    symCtx = symCtx.guarantee(symCtx.genLte(num, range[1], source));
+                } else {
+                    num = ExpNum.fromSymbol(ctx.genSymFloat(prefix, source));
+                }
+
+                return symCtx.toSetWith(SVFloat.create(num, source));
+            }
+        }
 
         if (!(aVal?.type === SVType.Int || aVal?.type === SVType.Float)) {
             return ctx.warnWithMsg(`from 'LibCall.builtins.randFloat: value a is non-numeric`, source).toSet();
@@ -493,7 +559,7 @@ export namespace BuiltinsLCImpl {
             return ctx.warnWithMsg(`from 'LibCall.builtins.randFloat: value b is non-numeric`, source).toSet();
         }
 
-        let symCtx = ctx.genFloatGte('randFloat', aVal.value, source);
+        let symCtx = ctx.genFloatGte(prefix, aVal.value, source);
         const num = symCtx.retVal;
         symCtx = symCtx.guarantee(symCtx.genLt(num, bVal.value, source));
 

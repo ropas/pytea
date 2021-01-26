@@ -21,13 +21,8 @@ class ImageFolder(data.Dataset):
         self.len = 100
 
     def __getitem__(self, index):
-        # TODO: image size range and target range settings in pyteaconfig.json
-
-        img = Image.Image()
-        height = random.randint(256, 1280)
-        width = random.randint(256, 1280)
-        img._setSize(1, height, width)
-        target = random.randint(0, 9)
+        img = Image.open("RANDOM_IMAGE").convert("RGB")
+        target = LibCall.builtins.randInt(0, 9, "ImageFolder_Class")
 
         if self.transform is not None:
             img = self.transform(img)

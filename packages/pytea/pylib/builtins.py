@@ -150,6 +150,12 @@ def _str_format(self, *args, **kwargs):
 str.format = _str_format
 
 
+def _str_replace(self, old, new, count=None):
+    # TODO: replace it.
+    return self
+
+str.replace = _str_replace
+
 def sum(values):
     a = 0
     for i in values:

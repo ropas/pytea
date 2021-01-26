@@ -1,5 +1,6 @@
 import LibCall
 from ..tensor import Tensor
+import torch
 
 
 def relu(input, inplace=False):
@@ -154,3 +155,6 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     # TODO: implement weight and bias
     norm_tensor = Tensor(*normalized_shape)
     return LibCall.torch.layer_norm(input, norm_tensor, weight, bias)
+    
+def interpolate(input, size=None, scale_factor=None, mode='nearest', align_corners=None, recompute_scale_factor=None):
+    return LibCall.torch.interpolate(input, size, scale_factor)
