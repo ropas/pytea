@@ -922,6 +922,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
                             const right = this.getCachedRange(rightExp as ExpNum);
                             if (!left || !right) return;
 
+                            if (left.isConst() && right.isConst() &&  left.start === right.start) return false;
                             if (left.ltRange(right) || right.ltRange(left)) return true;
                             return undefined;
                         }
