@@ -18,4 +18,6 @@ def empty(shape, dtype=float, order="C"):
 
 
 def concatenate(seq, axis=0, out=None):
-    return NotImplemented
+    array = LibCall.numpy.concatenate(seq, axis)
+    LibCall.numpy.copyOut(array, out)
+    return array

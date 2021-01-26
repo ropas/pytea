@@ -8,7 +8,9 @@ class ndarray:
         self.dtype = dtype
 
     def max(self, axis=None, out=None, keepdims=False, initial=None, where=True):
-        pass
+        maxVal = LibCall.numpy.max(self, axis, out, keepdims)
+        LibCall.numpy.copyOut(maxVal, out)
+        return maxVal
 
     def argmax(axis=None, out=None):
         pass
