@@ -122,6 +122,23 @@ class Tensor:
     
     def device(self):
         return "cuda"
+    
+    def permute(self, *args):
+        ndim = self.dim()
+        if ndim != len(args):
+            raise ValueError("permute shape mismatched")
+        visited = [False for _ in range(ndim)]
+        ret_shape = []
+        for arg in args:
+            # TODO: add duplicated indices assertion
+            # currently, __setitem__ for list is not supported
+            if arg < 0 or arg >= ndim:
+                raise ValueError("permute invalid index!")
+            ret_shape.append(self.shape[arg])
+        return self.view(*ret_shape)
+    
+    def contiguous(self):
+        return self
 
     def __len__(self):
         if len(self.shape) == 0:
