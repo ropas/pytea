@@ -1,5 +1,6 @@
 from .. import LibCall
 import torch
+import numpy
 
 class Tensor:
     def __init__(self, *args, **kwargs):
@@ -71,6 +72,9 @@ class Tensor:
 
     def argmax(self, dim=None, keepdim=False):
         return LibCall.torch.reduce(self, dim, keepdim)
+
+    def numpy(self):
+        return numpy.ndarray(self.shape)
 
     # TODO: dim can be tuple. LibCall.torch.reduce must cover it.
     def sum(self, dim=None, keepdim=False, dtype=None):

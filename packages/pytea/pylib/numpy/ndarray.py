@@ -9,12 +9,10 @@ class ndarray:
         self.dtype = dtype
 
     def max(self, axis=None, out=None, keepdims=False, initial=None, where=True):
-        maxVal = LibCall.numpy.max(self, axis, out, keepdims)
-        LibCall.numpy.copyOut(maxVal, out)
-        return maxVal
+        return numpy.max(self, axis, out, keepdims, initial, where)
 
-    def argmax(axis=None, out=None):
-        pass
+    def argmax(self, axis=None, out=None):
+        return numpy.argmax(self, axis, out)
 
     def __add__(self, other):
         return numpy._bop(self, other)

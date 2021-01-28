@@ -379,11 +379,11 @@ export namespace NumpyLCImpl {
             .return(SVNone.create(source));
     }
 
-    export function max(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function reduce(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 4) {
             return ctx.warnTensorWithMsg(
-                `from 'LibCall.numpy.max': got insufficient number of argument: ${params.length}`,
+                `from 'LibCall.numpy.reduce': got insufficient number of argument: ${params.length}`,
                 source
             );
         }
@@ -393,7 +393,7 @@ export namespace NumpyLCImpl {
 
         const selfSize = fetchSize(selfAddr, heap);
         if (typeof selfSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.numpy.max': ${selfSize}`, source);
+            return ctx.warnTensorWithMsg(`from 'LibCall.numpy.reduce': ${selfSize}`, source);
         }
         const selfShape = selfSize.shape;
         const selfRank = selfSize.rank();
@@ -415,10 +415,10 @@ export namespace NumpyLCImpl {
             axisSV === undefined ||
             (axisSV.type !== SVType.None && axisSV.type !== SVType.Int && axisSV.type !== SVType.Object)
         ) {
-            return ctx.failWithMsg(`from 'LibCall.numpy.max': invalid type of axis ${axisSV?.type}`, source).toSet();
+            return ctx.failWithMsg(`from 'LibCall.numpy.reduce': invalid type of axis ${axisSV?.type}`, source).toSet();
         } else if (keepdims === undefined || keepdims.type !== SVType.Bool) {
             return ctx
-                .failWithMsg(`from 'LibCall.numpy.max': invalid type of keepdims ${keepdims?.type}`, source)
+                .failWithMsg(`from 'LibCall.numpy.reduce': invalid type of keepdims ${keepdims?.type}`, source)
                 .toSet();
         }
 
@@ -429,7 +429,7 @@ export namespace NumpyLCImpl {
             const keepdims_: ExpBool = simplifyBool(ctx.ctrSet, keepdims.value);
             if (keepdims_.opType !== BoolOpType.Const) {
                 return ctx.warnTensorWithMsg(
-                    `from 'LibCall.numpy.max': cannot infer value of keepdims ${keepdims.value}`,
+                    `from 'LibCall.numpy.reduce': cannot infer value of keepdims ${keepdims.value}`,
                     source
                 );
             }
@@ -479,7 +479,7 @@ export namespace NumpyLCImpl {
             return ctx
                 .require(
                     [ctx.genLte(0, axis, source), ctx.genLt(axis, selfRank, source)],
-                    `from 'LibCall.numpy.max': axis must be within rank`,
+                    `from 'LibCall.numpy.reduce': axis must be within rank`,
                     source
                 )
                 .flatMap((ctx) => {
@@ -490,7 +490,7 @@ export namespace NumpyLCImpl {
         else {
             let axes = getExpNumTuple(axisSV, ctx.ctrSet);
             if (typeof axes === 'string') {
-                return ctx.failWithMsg(`from 'LibCall.numpy.max': ${axes}`, source).toSet();
+                return ctx.failWithMsg(`from 'LibCall.numpy.reduce': ${axes}`, source).toSet();
             }
 
             const constAxes: number[] = [];
@@ -568,7 +568,7 @@ export namespace NumpyLCImpl {
         fromImage,
         concatenate,
         copyOut,
-        max,
+        reduce,
     };
 }
 

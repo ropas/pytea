@@ -29,6 +29,19 @@ def concatenate(seq, axis=0, out=None):
     LibCall.numpy.copyOut(array, out)
     return array
 
+def max(a, axis=None, out=None, keepdims=False, initial=None, where=True):
+    maxArray = LibCall.numpy.reduce(a, axis, out, keepdims)
+    LibCall.numpy.copyOut(maxArray, out)
+    return maxArray
+
+# TODO: handle dtype(should be int).
+def argmax(a, axis=None, out=None):
+    if (axis is not None) and (not isinstance(axis, int)): # tuple axis is not allowed
+        raise TypeError("axis must be an int")
+    indexArray = LibCall.numpy.reduce(a, axis, out, False)
+    LibCall.numpy.copyOut(indexArray, out)
+    return indexArray
+
 # torch.Tensor (bop) numpy.ndarray -> allowed
 # numpyp.ndarray (bop) torch.Tensor -> not allowed
 def _bop(array, other):
