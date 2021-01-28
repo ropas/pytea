@@ -1,4 +1,5 @@
 import LibCall
+from .. import numpy as np
 from torch.tensor import Tensor
 
 
@@ -57,6 +58,8 @@ def diag(input, diagonal=0, out=None):
 
 
 def matmul(input, other, out=None):
+    if not (isinstance(input, Tensor) and isinstance(other, Tensor)):
+        raise TypeError("not a torch.Tensor object")
     tensor = LibCall.torch.matmul(input, other)
     LibCall.torch.copyOut(tensor, out)
     return tensor
@@ -104,7 +107,7 @@ def pow(input, exponent, out=None):
 
 
 def _bop(tensor, other):
-    if isinstance(other, Tensor):
+    if isinstance(other, Tensor) or isinstance(other, np.ndarray):
         return LibCall.torch.broadcast(tensor, other)
     elif isinstance(other, int) or isinstance(other, float):
         return LibCall.torch.identityShape(tensor)

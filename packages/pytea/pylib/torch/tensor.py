@@ -1,7 +1,6 @@
 from .. import LibCall
 import torch
 
-
 class Tensor:
     def __init__(self, *args, **kwargs):
         LibCall.torch.tensorInit(self, args, kwargs)
@@ -24,7 +23,7 @@ class Tensor:
             return self.shape[dim]
 
     def matmul(self, other):
-        return LibCall.torch.matmul(self, other)
+        return torch.matmul(self, other)
 
     def add(self, other):
         return torch._bop(self, other)

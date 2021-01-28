@@ -13,6 +13,9 @@ import { LCBase } from '../libcall';
 
 export namespace NumpyLCImpl {
     export function ndarrayInit(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        // A replica of torch.tensorInit() in torch/index.ts
+        // internally, numpy.ndarray shares structure with torch.Tensor.
+
         const params = ctx.retVal.params;
         if (params.length !== 7) {
             return ctx
@@ -31,13 +34,13 @@ export namespace NumpyLCImpl {
         // ndarrayInit is always used in ndarray.__init__ -> force casting
         const addr = selfAddr as SVAddr;
         const self = fetchAddr(selfAddr, heap)! as SVObject;
-        const shape = fetchAddr(shapeAddr as SVAddr, heap)! as SVObject;
+        const shapeSV = fetchAddr(shapeAddr as SVAddr, heap)! as SVObject;
 
         // if args is object that has 'shape'
-        if (shape?.type === SVType.Object) {
-            let size: ShValue | undefined = shape;
+        if (shapeSV?.type === SVType.Object) {
+            let size: ShValue | undefined = shapeSV;
             if (size.shape === undefined) {
-                size = fetchAddr(shape.getAttr('shape'), heap);
+                size = fetchAddr(shapeSV.getAttr('shape'), heap);
             }
 
             if (size && size.type === SVType.Object && size?.shape !== undefined) {
@@ -47,7 +50,7 @@ export namespace NumpyLCImpl {
         }
 
         // if args is list of integer
-        return ctx.parseSize(shape, source).map((ctx) => {
+        return ctx.parseSize(shapeSV, source).map((ctx) => {
             let shape: ExpShape;
             let newCtx: Context<any> = ctx;
             if (typeof ctx.retVal === 'string') {
@@ -62,6 +65,161 @@ export namespace NumpyLCImpl {
 
             return newCtx.setHeap(newHeap);
         });
+    }
+
+    // A replica of torch.identityShape() in torch/index.ts
+    export function identityShape(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 1) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.numpy.identityShape': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const inputAddr = params[0];
+
+        const inputSize = fetchSize(inputAddr, heap);
+
+        if (typeof inputSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.numpy.identityShape': ${inputSize}`, source);
+        }
+
+        const inputShape = inputSize.shape;
+
+        return genNdarray(ctx, inputShape, source);
+    }
+
+    // A replica of torch.broadcast() in torch/index.ts
+    export function broadcast(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.numpy.broadcast': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [leftAddr, rightAddr] = params;
+
+        const leftSize = fetchSize(leftAddr, heap);
+        const rightSize = fetchSize(rightAddr, heap);
+
+        if (typeof leftSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.numpy.broadcast': ${leftSize}`, source);
+        } else if (typeof rightSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.numpy.broadcast': ${rightSize}`, source);
+        }
+
+        const leftShape = leftSize.shape;
+        const rightShape = rightSize.shape;
+
+        return ctx.shBroadcast(leftShape, rightShape, source).flatMap((ctx) => genNdarray(ctx, ctx.retVal, source));
+    }
+
+    // A replica of torch.matmul() in torch/index.ts
+    export function matmul(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.numpy.matmul': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [leftAddr, rightAddr] = params;
+
+        const leftSize = fetchSize(leftAddr, heap);
+        const rightSize = fetchSize(rightAddr, heap);
+
+        if (typeof leftSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.numpy.matmul': ${leftSize}`, source);
+        } else if (typeof rightSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.numpy.matmul': ${rightSize}`, source);
+        }
+
+        const leftShape = leftSize.shape;
+        const rightShape = rightSize.shape;
+        const leftRank = leftSize.rank();
+        const rightRank = rightSize.rank();
+
+        return ctx
+            .require(
+                [ctx.genLte(1, leftRank, source), ctx.genLte(1, rightRank, source)],
+                `from 'LibCall.numpy.matmul': cannot do matmul with scalar tensor`,
+                source
+            )
+            .flatMap((ctx) => {
+                const isLeftRankOne = ctx.genEq(1, leftRank, source);
+                const [leftOnePath, leftTwoPath] = ctx.ifThenElse(isLeftRankOne, source);
+
+                const leftPath = leftOnePath.flatMap((ctx) => {
+                    const isRightRankOne = ctx.genEq(1, rightRank, source);
+                    const [rightOnePath, rightTwoPath] = ctx.ifThenElse(isRightRankOne, source);
+
+                    const lr11 = rightOnePath
+                        .flatMap((ctx) => {
+                            const sameDim = ctx.genEq(ExpNum.index(leftShape, 0), ExpNum.index(rightShape, 0), source);
+                            return ctx.require(
+                                [sameDim],
+                                `from 'LibCall.numpy.matmul': dimension mismatch between rank-1 tensors`,
+                                source
+                            );
+                        })
+                        .flatMap((ctx) => genNdarray(ctx, ExpShape.fromConst(0, [], source), source));
+
+                    const rightAxis = ExpNum.bop(NumBopType.Sub, rightRank, 2);
+                    const lr12 = rightTwoPath
+                        .flatMap((ctx) => {
+                            const sameDim = ctx.genEq(
+                                ExpNum.index(leftShape, 0),
+                                ExpNum.index(rightShape, rightAxis),
+                                source
+                            );
+                            return ctx.require(
+                                [sameDim],
+                                `from 'LibCall.numpy.matmul: dimension mismatch between rank-1 @ rank-n`
+                            );
+                        })
+                        .flatMap((ctx) => ctx.shReduce(rightShape, rightAxis, source))
+                        .flatMap((ctx) => genNdarray(ctx, ctx.retVal, source));
+
+                    return lr11.join(lr12);
+                });
+
+                const rightPath = leftTwoPath.flatMap((ctx) => {
+                    const isRightRankOne = ctx.genEq(1, rightRank, source);
+                    const [rightOnePath, rightTwoPath] = ctx.ifThenElse(isRightRankOne, source);
+
+                    const leftAxis = ExpNum.bop(NumBopType.Sub, leftRank, 1, source);
+                    const lr21 = rightOnePath
+                        .flatMap((ctx) => {
+                            const sameDim = ctx.genEq(
+                                ExpNum.index(leftShape, leftAxis),
+                                ExpNum.index(rightShape, 0),
+                                source
+                            );
+                            return ctx.require(
+                                [sameDim],
+                                `from 'LibCall.numpy.matmul': dimension mismatch between rank-n @ rank-1`,
+                                source
+                            );
+                        })
+                        .flatMap((ctx) => ctx.shReduce(leftShape, leftAxis, source))
+                        .flatMap((ctx) => genNdarray(ctx, ctx.retVal, source));
+
+                    const lr22 = rightTwoPath
+                        .flatMap((ctx) => ctx.shMatmul(leftShape, rightShape, source))
+                        .flatMap((ctx) => genNdarray(ctx, ctx.retVal, source));
+
+                    return lr21.join(lr22);
+                });
+
+                return leftPath.join(rightPath);
+            });
     }
 
     // get `(arrAddr: ndarray, imgAddr: PIL Image)`, set shape of `arr` to SVSize with shape of `img`
@@ -123,11 +281,11 @@ export namespace NumpyLCImpl {
         const [seqAddr, axisAddr] = params;
 
         const seq = fetchAddr(seqAddr, heap);
-        const axis = fetchAddr(axisAddr, heap);
+        const axisSV = fetchAddr(axisAddr, heap);
 
         if (seq?.type !== SVType.Object) {
             return ctx.warnWithMsg(`from 'LibCall.numpy.concatenate': array sequence is not iterable`, source).toSet();
-        } else if (axis?.type !== SVType.Int) {
+        } else if (axisSV?.type !== SVType.Int) {
             return ctx.warnWithMsg(`from 'LibCall.numpy.concatenate': axis is not an integer`, source).toSet();
         }
 
@@ -153,12 +311,13 @@ export namespace NumpyLCImpl {
         }
         const size0shape = size0.shape;
         const size0rank = size0.rank();
-        const shape0Front = ExpShape.slice(size0shape, 0, axis.value, source);
-        const shape0Back = ExpShape.slice(size0shape, ExpNum.bop(NumBopType.Add, axis.value, 1), size0rank, source);
+        const axis = absExpIndexByLen(axisSV.value, size0rank, source);
+        const shape0Front = ExpShape.slice(size0shape, 0, axis, source);
+        const shape0Back = ExpShape.slice(size0shape, ExpNum.bop(NumBopType.Add, axis, 1), size0rank, source);
 
         // TODO: handle negative index.
-        const ctrs: Constraint[] = [ctx.genLte(0, axis.value, source), ctx.genLt(axis.value, size0rank)];
-        let thickness: ExpNum = ExpNum.index(size0shape, axis.value, source);
+        const ctrs: Constraint[] = [ctx.genLte(0, axis, source), ctx.genLt(axis, size0rank)];
+        let thickness: ExpNum = ExpNum.index(size0shape, axis, source);
 
         for (let i = 1; i < seqLen; i++) {
             const sizeI = fetchSize(seq.getIndice(i), heap);
@@ -166,12 +325,12 @@ export namespace NumpyLCImpl {
                 return ctx.warnTensorWithMsg(`from 'LibCall.numpy.concatenate': ${sizeI}`, source);
             }
             const sizeIshape = sizeI.shape;
-            const shapeIFront = ExpShape.slice(sizeIshape, 0, axis.value, source);
-            const shapeIBack = ExpShape.slice(sizeIshape, ExpNum.bop(NumBopType.Add, axis.value, 1), size0rank, source);
+            const shapeIFront = ExpShape.slice(sizeIshape, 0, axis, source);
+            const shapeIBack = ExpShape.slice(sizeIshape, ExpNum.bop(NumBopType.Add, axis, 1), size0rank, source);
 
             ctrs.push(ctx.genEq(shape0Front, shapeIFront, source));
             ctrs.push(ctx.genEq(shape0Back, shapeIBack, source));
-            thickness = ExpNum.bop(NumBopType.Add, thickness, ExpNum.index(sizeIshape, axis.value, source));
+            thickness = ExpNum.bop(NumBopType.Add, thickness, ExpNum.index(sizeIshape, axis, source));
         }
 
         const shapeThick = ExpShape.fromConst(1, [thickness], source);
@@ -249,14 +408,14 @@ export namespace NumpyLCImpl {
             }
         }
 
-        const axis = fetchAddr(axisAddr, heap);
+        const axisSV = fetchAddr(axisAddr, heap);
         const keepdims = fetchAddr(keepdimsAddr, heap);
 
         if (
-            axis === undefined ||
-            (axis.type !== SVType.None && axis.type !== SVType.Int && axis.type !== SVType.Object)
+            axisSV === undefined ||
+            (axisSV.type !== SVType.None && axisSV.type !== SVType.Int && axisSV.type !== SVType.Object)
         ) {
-            return ctx.failWithMsg(`from 'LibCall.numpy.max': invalid type of axis ${axis?.type}`, source).toSet();
+            return ctx.failWithMsg(`from 'LibCall.numpy.max': invalid type of axis ${axisSV?.type}`, source).toSet();
         } else if (keepdims === undefined || keepdims.type !== SVType.Bool) {
             return ctx
                 .failWithMsg(`from 'LibCall.numpy.max': invalid type of keepdims ${keepdims?.type}`, source)
@@ -278,7 +437,7 @@ export namespace NumpyLCImpl {
         }
 
         // 1) axis is None. return a scalar value.
-        if (axis.type === SVType.None) {
+        if (axisSV.type === SVType.None) {
             if (keepdimsVal) {
                 if (rankValue !== undefined) {
                     let dims: number[] = [];
@@ -303,16 +462,11 @@ export namespace NumpyLCImpl {
             }
         }
         // 2) axis is an integer.
-        else if (axis.type === SVType.Int) {
-            const axisVal = absExpIndexByLen(axis.value, selfRank, source, ctx.ctrSet);
+        else if (axisSV.type === SVType.Int) {
+            const axis = absExpIndexByLen(axisSV.value, selfRank, source, ctx.ctrSet);
 
-            const shapeFront = ExpShape.slice(selfShape, 0, axisVal, source);
-            const shapeBack = ExpShape.slice(
-                selfShape,
-                ExpNum.bop(NumBopType.Add, axisVal, 1, source),
-                selfRank,
-                source
-            );
+            const shapeFront = ExpShape.slice(selfShape, 0, axis, source);
+            const shapeBack = ExpShape.slice(selfShape, ExpNum.bop(NumBopType.Add, axis, 1, source), selfRank, source);
 
             let newShape: ExpShape;
             if (keepdimsVal) {
@@ -324,7 +478,7 @@ export namespace NumpyLCImpl {
             }
             return ctx
                 .require(
-                    [ctx.genLte(0, axisVal, source), ctx.genLt(axisVal, selfRank, source)],
+                    [ctx.genLte(0, axis, source), ctx.genLt(axis, selfRank, source)],
                     `from 'LibCall.numpy.max': axis must be within rank`,
                     source
                 )
@@ -334,7 +488,7 @@ export namespace NumpyLCImpl {
         }
         // 3) axis is a tuple of ints.
         else {
-            let axes = getExpNumTuple(axis, ctx.ctrSet);
+            let axes = getExpNumTuple(axisSV, ctx.ctrSet);
             if (typeof axes === 'string') {
                 return ctx.failWithMsg(`from 'LibCall.numpy.max': ${axes}`, source).toSet();
             }
@@ -408,6 +562,9 @@ export namespace NumpyLCImpl {
 
     export const libCallImpls: { [key: string]: LCImpl } = {
         ndarrayInit,
+        identityShape,
+        broadcast,
+        matmul,
         fromImage,
         concatenate,
         copyOut,
