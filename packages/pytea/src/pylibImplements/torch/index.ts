@@ -76,6 +76,9 @@ export namespace TorchLCImpl {
             }
 
             const size = SVSize.createSize(ctx, shape, source);
+            // const [sizeAddr, heap_] = heap.allocNew(size, source);
+            // const newHeap = heap_.setVal(addr, self.setAttr('shape',
+            // sizeAddr));
             const newHeap = heap.setVal(addr, self.setAttr('shape', size));
 
             return newCtx.setHeap(newHeap);

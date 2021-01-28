@@ -140,7 +140,8 @@ class PreTrainedModel(nn.Module):
 
                 extended_attention_mask = causal_mask[:, None, :, :] * attention_mask[:, None, None, :]
             else:
-                extended_attention_mask = attention_mask[:, None, None, :]
+                #extended_attention_mask = attention_mask[:, None, None, :]
+                extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
         else:
             raise ValueError(
                 "Wrong shape for input_ids (shape {}) or attention_mask (shape {})".format(
@@ -180,7 +181,8 @@ class PreTrainedModel(nn.Module):
             if is_attention_chunked is True:
                 head_mask = head_mask.unsqueeze(-1)
         else:
-            head_mask = [None] * num_hidden_layers
+            #head_mask = [None] * num_hidden_layers
+            head_mask = [None for _ in range(num_hidden_layers)]
 
         return head_mask    
 
@@ -228,11 +230,7 @@ class PreTrainedModel(nn.Module):
         Initializes and prunes weights if needed.
         """
         # Initialize weights
-        self.apply(self._init_weights)
-
-        # Prune heads if needed
-        if self.config.pruned_heads:
-            self.prune_heads(self.config.pruned_heads)
+        #self.apply(self._init_weights)
 
         # Tie weights if needed
         self.tie_weights()

@@ -19,7 +19,6 @@
 import math
 
 import torch
-import torch.utils.checkpoint
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss, MSELoss
 
@@ -75,8 +74,10 @@ class BertEmbeddings(nn.Module):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
         # position_ids (1, len position emb) is contiguous in memory and exported when serialized
-        self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
-
+        #self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
+        #self.position_ids = torch.arange(config.max_position_embeddings).expand((1, -1))  # TODO: change into this
+        self.position_ids = torch.arange(config.max_position_embeddings).unsqueeze(0).cuda()
+        
     def forward(self, input_ids=None, token_type_ids=None, position_ids=None, inputs_embeds=None):
         if input_ids is not None:
             input_shape = input_ids.size()
@@ -122,7 +123,9 @@ class BertSelfAttention(nn.Module):
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
 
     def transpose_for_scores(self, x):
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+        #new_x_shape = x.size()[:-1] + (self.num_attention_heads,
+        #self.attention_head_size)
+        new_x_shape = (x.shape[0], x.shape[1]) + (self.num_attention_heads, self.attention_head_size)
         x = x.view(*new_x_shape)
         return x.permute(0, 2, 1, 3)
 
@@ -173,8 +176,10 @@ class BertSelfAttention(nn.Module):
         context_layer = torch.matmul(attention_probs, value_layer)
 
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
-        #new_context_layer_shape = context_layer.size()[:-2]
-        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+        ### new_context_layer_shape = context_layer.size()[:-2]  # error
+        # new_context_layer_shape = (context_layer.shape[0], context_layer.shape[1])  # error
+        ### new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)  # correct
+        new_context_layer_shape = (context_layer.shape[0], context_layer.shape[1]) + (self.all_head_size,)  # correct
         context_layer = context_layer.view(*new_context_layer_shape)
 
         outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
@@ -261,7 +266,7 @@ class BertLayer(nn.Module):
         self.is_decoder = config.is_decoder
         self.add_cross_attention = config.add_cross_attention
         if self.add_cross_attention:
-            assert self.is_decoder, f"{self} should be used as a decoder model if cross attention is added"
+            '''assert self.is_decoder, f"{self} should be used as a decoder model if cross attention is added"'''
             self.crossattention = BertAttention(config)
         self.intermediate = BertIntermediate(config)
         self.output = BertOutput(config)
@@ -285,9 +290,9 @@ class BertLayer(nn.Module):
         outputs = self_attention_outputs[1:]  # add self attentions if we output attention weights
 
         if self.is_decoder and encoder_hidden_states is not None:
-            assert hasattr(
+            '''assert hasattr(
                 self, "crossattention"
-            ), f"If `encoder_hidden_states` are passed, {self} has to be instantiated with cross-attention layers by setting `config.add_cross_attention=True`"
+            ), f"If `encoder_hidden_states` are passed, {self} has to be instantiated with cross-attention layers by setting `config.add_cross_attention=True`"'''
             cross_attention_outputs = self.crossattention(
                 attention_output,
                 attention_mask,
@@ -336,19 +341,15 @@ class BertEncoder(nn.Module):
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             layer_head_mask = head_mask[i] if head_mask is not None else None
-
-            if getattr(self.config, "gradient_checkpointing", False):
-                # deleted
-                pass
-            else:
-                layer_outputs = layer_module(
-                    hidden_states,
-                    attention_mask,
-                    layer_head_mask,
-                    encoder_hidden_states,
-                    encoder_attention_mask,
-                    output_attentions,
-                )
+            
+            layer_outputs = layer_module(
+                hidden_states,
+                attention_mask,
+                layer_head_mask,
+                encoder_hidden_states,
+                encoder_attention_mask,
+                output_attentions,
+            )
             hidden_states = layer_outputs[0]
             if output_attentions:
                 all_self_attentions = all_self_attentions + (layer_outputs[1],)
@@ -375,7 +376,7 @@ class BertPooler(nn.Module):
     def forward(self, hidden_states):
         # We "pool" the model by simply taking the hidden state corresponding
         # to the first token.
-        first_token_tensor = hidden_states[:, 0]
+        first_token_tensor = hidden_states[:, 0, :]
         pooled_output = self.dense(first_token_tensor)
         pooled_output = self.activation(pooled_output)
         return pooled_output

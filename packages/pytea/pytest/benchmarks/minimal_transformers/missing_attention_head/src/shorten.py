@@ -69,6 +69,7 @@ input_ids = np.array(input_ids, dtype=np.long)  ## (data_size, args.max_len)
 input_ids = torch.randint(low=0, high=10000, size=(150, 128)).numpy()
 labels = torch.randint(low=0, high=2, size=(150,)).numpy()
 
+
 ### Attention masks
 '''
 attention_masks = []
@@ -127,7 +128,7 @@ if device == "cuda":
 
 ### Training settings
 optimizer = transformers.AdamW(model.parameters(), lr=args.lr, eps=1e-8)
-total_steps = len(train_dataloader) * args.epochs
+total_steps = len(train_data) * args.epochs
 scheduler = transformers.get_linear_schedule_with_warmup(
     optimizer, num_warmup_steps=0, num_training_steps=total_steps
 )

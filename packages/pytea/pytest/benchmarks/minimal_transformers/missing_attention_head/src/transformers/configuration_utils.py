@@ -221,12 +221,14 @@ class PretrainedConfig(object):
         self._name_or_path = str("") #kwargs.pop("name_or_path", ""))
 
         # Additional attributes without default values
+        '''
         for key, value in kwargs.items():
             try:
                 setattr(self, key, value)
             except AttributeError as err:
                 #logger.error("Can't set {} with value {} for {}".format(key, value, self))
                 raise err
+        '''
 
     @property
     def name_or_path(self) -> str:
@@ -235,14 +237,6 @@ class PretrainedConfig(object):
     @name_or_path.setter
     def name_or_path(self, value):
         self._name_or_path = str(value)  # Make sure that name_or_path is a string (for JSON encoding)
-
-    @property
-    def use_return_dict(self) -> bool:
-        """
-        :obj:`bool`: Whether or not return :class:`~transformers.file_utils.ModelOutput` instead of tuples.
-        """
-        # If torchscript is set, force `return_dict=False` to avoid jit errors
-        return self.return_dict and not self.torchscript
 
     @property
     def num_labels(self) -> int:

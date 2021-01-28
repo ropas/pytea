@@ -148,6 +148,10 @@ def mse_loss(input, target, size_average=None, reduce=None, reduction='mean'):
 def gelu(input):
     return LibCall.torch.identityShape(input)
 
+def tanh(input, out=None):
+    LibCall.torch.copyOut(input, out)
+    return input
+
 def embedding(input, weight, offsets=None, max_norm=None, norm_type=2, scale_grad_by_freq=False, mode='mean', sparse=False, per_sample_weights=None):
     return LibCall.torch.embedding(input, weight)
 

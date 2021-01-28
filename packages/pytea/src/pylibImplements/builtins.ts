@@ -23,6 +23,7 @@ import { ExpNum, ExpNumSymbol, NumBopType, NumUopType } from '../backend/symExpr
 import { TorchBackend } from '../backend/torchBackend';
 import { LCImpl } from '.';
 import { LCBase } from './libcall';
+import { Console } from 'console';
 
 export namespace BuiltinsLCImpl {
     export function superGetAttr(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
@@ -227,6 +228,8 @@ export namespace BuiltinsLCImpl {
         const value = sanitizeAddr(params[1], heap);
 
         if (list?.type !== SVType.Object || !value) {
+            if (list?.type !== SVType.Object) { console.log(params[0]?.type); console.log(list?.type); console.log(SVType.Object); }
+            if (!value) console.log("two");
             return ctx.warnWithMsg(`from 'LibCall.builtins.list_append': invalid value type`, source).toSet();
         }
 

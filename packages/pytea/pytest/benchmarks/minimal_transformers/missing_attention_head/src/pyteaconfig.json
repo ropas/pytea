@@ -1,6 +1,6 @@
 {
     "pythonCmdArgs": { "batch-size": 32 },
-    "logLevel": "full",
+    "logLevel": "reduced",
     "printIR": true,
     "immediateConstraintCheck": true
 }

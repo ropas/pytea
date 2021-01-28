@@ -100,19 +100,68 @@ Ellipsis.__mro__ = (Ellipsis, object)
 Ellipsis.__name__ = "Ellipsis"
 
 
+
+def _tuple__getitem__(self, index):
+    if isinstance(index, int):
+        return self[index]
+    elif isinstance(index, slice):
+        if index.start is not None:
+            start = index.start if index.start >= 0 else len(self) + index.start
+        else:
+            start = None
+        if index.stop is not None:
+            stop = index.stop if index.stop >= 0 else len(self) + index.stop
+        else:
+            stop = None
+        return (self[i] for i in range(start, stop, index.step))
+
+tuple.__getitem__ = _tuple__getitem__
+
+
 def _list_append(self, item):
     LibCall.builtins.list_append(self, item)
-
 
 list.append = _list_append
 
 
+def _list__getitem__(self, index):
+    if isinstance(index, int):
+        return self[index]
+    elif isinstance(index, slice):
+        if index.start is not None:
+            start = index.start if index.start >= 0 else len(self) + index.start
+        else:
+            start = None
+            
+        if index.stop is not None:
+            stop = index.stop if index.stop >= 0 else len(self) + index.stop
+        else:
+            stop = None
+        return [self[i] for i in range(start, stop, index.step)]
+
+list.__getitem__ = _list__getitem__
+
+
 def _list__add__(self, items):
+    ret = []
+    for item in self:
+        LibCall.builtins.list_append(ret, item)
     for item in items:
-        LibCall.builtins.list_append(self, item)
-    return self
+        LibCall.builtins.list_append(ret, item)
+    return ret
 
 list.__add__ = _list__add__
+
+
+def _tuple__add__(self, items):
+    ret = ()
+    for item in self:
+        LibCall.builtins.list_append(ret, item)
+    for item in items:
+        LibCall.builtins.list_append(ret, item)
+    return ret
+
+tuple.__add__ = _tuple__add__
 
 def _dict_items(self):
     return LibCall.builtins.dict_items(self)
@@ -121,18 +170,18 @@ def _dict_items(self):
 dict.items = _dict_items
 
 
-def _dict_setitem(self, key, value):
+def _dict__setitem__(self, key, value):
     return LibCall.builtins.dict_setitem(self, key, value)
 
 
-dict.__setitem__ = _dict_setitem
+dict.__setitem__ = _dict__setitem__
 
 
-def _dict_getitem(self, key):
+def _dict__getitem__(self, key):
     return LibCall.builtins.dict_getitem(self, key)
 
 
-dict.__getitem__ = _dict_getitem
+dict.__getitem__ = _dict__getitem__
 
 
 def _dict_pop(self, key, defaultVal):

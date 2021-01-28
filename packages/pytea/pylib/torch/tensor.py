@@ -118,9 +118,19 @@ class Tensor:
 
     def long(self, **kwargs):
         return self.to(self, kwargs)
+    
+    def detach(self):
+        return LibCall.torch.identityShape(self)
+    
+    def cpu(self):
+        return LibCall.torch.identityShape(self)
 
     def numpy(self):
+        # TODO: change torch -> numpy
         return LibCall.torch.identityShape(self)
+    
+    def flatten(self, start_dim=0, end_dim=-1):
+        return LibCall.torch.flatten(self, start_dim, end_dim)
 
     def expand(self, shape):
         # TODO: implement this
@@ -205,6 +215,9 @@ class Tensor:
 
     def __rmatmul__(self, other):
         return LibCall.torch.matmul(other, self)
+
+    def __eq__(self, other):
+        return torch._bop(self, other)
 
 
 class tensor(Tensor):

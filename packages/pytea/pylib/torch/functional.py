@@ -142,7 +142,10 @@ def sigmoid(input, out=None):
     LibCall.torch.copyOut(input, out)
     return input
 
-def arange(start=0, end, step=1, out=None, **kwargs):
+def arange(start, end=None, step=1, out=None, **kwargs):
+    if end is None:  # arange(N)
+        end = start
+        start = 0
     tensor = Tensor(int((end - start) / step))
     LibCall.torch.copyOut(tensor, out)
     return tensor

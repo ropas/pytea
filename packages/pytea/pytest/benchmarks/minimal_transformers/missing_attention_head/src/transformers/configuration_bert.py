@@ -137,3 +137,6 @@ class BertConfig(PretrainedConfig):
         self.initializer_range = initializer_range
         self.layer_norm_eps = layer_norm_eps
         self.gradient_checkpointing = gradient_checkpointing
+        
+        self.use_return_dict = False
+        self.pad_token_id = pad_token_id
