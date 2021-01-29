@@ -1,4 +1,5 @@
 import LibCall
+from builtins import *
 
 
 class Dataset:
@@ -28,6 +29,17 @@ class _SeqSubset(Dataset):
 
     def __len__(self):
         return self.length
+
+
+class TensorDataset(Dataset):
+    def __init__(self, *tensors):
+        self.tensors = tensors
+    
+    def __getitem__(self, index):
+        return [tensor[index] for tensor in self.tensors]
+    
+    def __len__(self):
+        return self.tensors[0].shape[0]
 
 
 def random_split(dataset, lengths):

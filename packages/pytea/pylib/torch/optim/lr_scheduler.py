@@ -19,3 +19,7 @@ class StepLR(_LRScheduler):
 
 class MultiStepLR(_LRScheduler):
     pass
+
+
+class LambdaLR(_LRScheduler):
+    pass
