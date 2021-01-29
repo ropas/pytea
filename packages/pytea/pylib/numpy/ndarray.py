@@ -1,3 +1,6 @@
+from .. import torch
+
+
 class ndarray:
     def __init__(
         self, shape, dtype=float, buffer=None, offset=0, strides=None, order=None

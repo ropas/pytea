@@ -21,8 +21,8 @@ class ImageFolder(data.Dataset):
         self.len = 100
 
     def __getitem__(self, index):
-        img = Image.open('RANDOM_IMAGE')
-        target = LibCall.builtins.randInt(0, 9, 'ImageFolder_Class')
+        img = Image.open("RANDOM_IMAGE").convert("RGB")
+        target = LibCall.builtins.randInt(0, 9, "ImageFolder_Class")
 
         if self.transform is not None:
             img = self.transform(img)

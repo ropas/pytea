@@ -10,3 +10,6 @@ from .loss import CrossEntropyLoss, MSELoss
 from .pooling import AdaptiveAvgPool2d, AvgPool2d, MaxPool2d
 from .instancenorm import InstanceNorm2d
 from .padding import ReflectionPad2d
+from .tanh import Tanh
+from .embedding import Embedding
+from .layernorm import LayerNorm

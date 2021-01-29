@@ -39,7 +39,7 @@ class DataLoader:
         return self._len
 
     def __getitem__(self, index):
-        item, target = self.dataset[index]
+        item_tuple = self.dataset[index]
         _len = len(self)
 
         if self.drop_last == False and self._last_batch > 0 and index == _len - 1:
@@ -47,16 +47,23 @@ class DataLoader:
         else:
             batch_size = self.batch_size
 
-        if isinstance(item, list) or isinstance(item, tuple):
-            ret_list = []
-            for list_item in item:
-                if isinstance(list_item, Tensor):
-                    ret_list.append(LibCall.shape.repeat(list_item, 0, batch_size))
+        ret_list = []
+        for item in item_tuple:
+            if isinstance(item, list) or isinstance(item, tuple):
+                ret_item = []
+                for list_item in item:
+                    if isinstance(list_item, Tensor) and item.dim() > 0:
+                        ret_item.append(LibCall.shape.repeat(list_item, 0, batch_size))
+                    else:
+                        ret_item.append(Tensor(batch_size))
+                ret_list.append(ret_item)
+            else:
+                if isinstance(item, Tensor) and item.dim() > 0:
+                    ret_list.append(LibCall.shape.repeat(item, 0, batch_size))
                 else:
                     ret_list.append(Tensor(batch_size))
-            return ret_list, Tensor([batch_size])
+        
+        if len(ret_list) == 1:
+            return ret_list[0]
         else:
-            if isinstance(item, Tensor):
-                return LibCall.shape.repeat(item, 0, batch_size), Tensor([batch_size])
-            else:
-                return Tensor(batch_size)), Tensor([batch_size])
+            return ret_list

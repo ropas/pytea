@@ -1639,6 +1639,67 @@ export namespace TorchLCImpl {
             .flatMap((ctx) => genTensor(ctx, returnShape, source));
     }
 
+    export function embedding(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length < 2) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.embedding': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [inputAddr, weightAddr] = params;
+
+        const inputSize = fetchSize(inputAddr, heap);
+        if (typeof inputSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.embedding': ${inputSize}`, source);
+        }
+        const inputShape = inputSize.shape;
+
+        const weightSize = fetchSize(weightAddr, heap);
+        if (typeof weightSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.embedding': ${weightSize}`, source);
+        }
+        const weightShape = weightSize.shape;
+        const weightRank = weightSize.rank();
+
+        const weightLastShape = ExpShape.slice(weightShape, 1, undefined, source);
+        const returnShape = ExpShape.concat(inputShape, weightLastShape, source);
+
+        return ctx
+            .require([ctx.genEq(2, weightRank, source)])
+            .flatMap((ctx) => genTensor(ctx, returnShape, source));
+    }
+
+    // TODO: `broadcastable` is not the sufficient condition for this code
+    export function layer_norm(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length < 4) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.layer_norm': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [inputAddr, normAddr, weightAddr, biasAddr] = params;
+
+        const inputSize = fetchSize(inputAddr, heap);
+        if (typeof inputSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.embedding': ${inputSize}`, source);
+        }
+        const inputShape = inputSize.shape;
+
+        const normSize = fetchSize(normAddr, heap);
+        if (typeof normSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.embedding': ${normSize}`, source);
+        }
+        const normShape = normSize.shape;
+
+        return ctx.shBroadcast(inputShape, normShape, source).flatMap((ctx) => genTensor(ctx, ctx.retVal, source));
+    }
+
     export function pad(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
@@ -2002,6 +2063,8 @@ export namespace TorchLCImpl {
         unsqueeze,
         diag,
         flatten,
+        embedding,
+        layer_norm,
         pad,
         adaptive,
         genDatasetLen,

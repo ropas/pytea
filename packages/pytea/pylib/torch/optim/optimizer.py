@@ -1,5 +1,6 @@
 class Optimizer:
     def __init__(self, params, *args, **kwargs):
+        self.param_groups = []
         pass
 
     def state_dict(self):

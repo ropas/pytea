@@ -1,7 +1,7 @@
 import LibCall
 
 # from .functional import *
-from .tensor import Tensor
+from .tensor import Tensor, tensor
 from .functional import *
 from . import nn as nn
 from . import optim as optim
@@ -10,6 +10,7 @@ from . import distributions as distributions
 from . import cuda as cuda
 from . import onnx as onnx
 from .autograd import no_grad, enable_grad
+from .dtype import *
 
 
 class bool:
