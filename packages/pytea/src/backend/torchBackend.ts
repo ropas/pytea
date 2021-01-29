@@ -315,8 +315,7 @@ export namespace TorchBackend {
             const dictMro = (BackUtils.fetchAddr(heap.getVal(env.getId('dict')!)!, heap) as SVObject).getAttr(
                 '__mro__'
             )!;
-
-            kwargDict.setAttr('__mro__', dictMro).setAttr('$length', SVInt.create(kwargLen, source));
+            kwargDict = kwargDict.setAttr('__mro__', dictMro).setAttr('$length', SVInt.create(kwargLen, source));
             newHeap = newHeap.setVal(paramAddrs.get(f.kwargsParam!)!, kwargDict);
         }
 

@@ -66,6 +66,8 @@ input_ids = np.array(input_ids, dtype=np.long)  ## (data_size, args.max_len)
 '''
 
 # Without tokenizer preprocessing..
+DATA_SIZE = 150  # TODO: change this into 150000
+
 input_ids = torch.randint(low=0, high=10000, size=(150, 128)).numpy()
 labels = torch.randint(low=0, high=2, size=(150,)).numpy()
 
