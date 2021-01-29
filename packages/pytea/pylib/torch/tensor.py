@@ -127,10 +127,6 @@ class Tensor:
     
     def cpu(self):
         return LibCall.torch.identityShape(self)
-
-    def numpy(self):
-        # TODO: change torch -> numpy
-        return LibCall.torch.identityShape(self)
     
     def flatten(self, start_dim=0, end_dim=-1):
         return LibCall.torch.flatten(self, start_dim, end_dim)
