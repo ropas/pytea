@@ -8,20 +8,20 @@ class _Enhance:
 
 
 class Color(_Enhance):
-    def __init(self, image):
+    def __init__(self, image):
         self.image = image
 
 
 class Contrast(_Enhance):
-    def __init(self, image):
+    def __init__(self, image):
         self.image = image
 
 
 class Brightness(_Enhance):
-    def __init(self, image):
+    def __init__(self, image):
         self.image = image
 
 
 class Sharpness(_Enhance):
-    def __init(self, image):
+    def __init__(self, image):
         self.image = image

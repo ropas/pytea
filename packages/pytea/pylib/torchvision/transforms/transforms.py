@@ -1,6 +1,8 @@
 import LibCall
+import torch
 from torch import Tensor
 from PIL import Image
+import numpy as np
 from . import functional as F
 
 
@@ -33,6 +35,13 @@ class ToTensor:
         else:
             return LibCall.torch.warnTensorWithMsg("pic should be PIL Image or ndarray")
 
+class ToPILImage:
+    def __init__(self, mode=None):
+        self.mode = mode
+
+    def __call__(self, pic):
+        return F.to_pil_image(pic, self.mode)
+
 
 class Normalize:
     def __init__(self, mean, std, inplace=False):
@@ -61,7 +70,6 @@ class RandomCrop:
     def __call__(self, img):
         if isinstance(img, Image.Image):
             image = Image.Image()
-            image.mode = img.mode
             image._setSize(img._channel, self.size[0], self.size[1])
             return image
         else:
@@ -84,7 +92,6 @@ class RandomResizedCrop:
     def __call__(self, img):
         if isinstance(img, Image.Image):
             image = Image.Image()
-            image.mode = img.mode
             image._setSize(img._channel, self.size[0], self.size[1])
             return image
         else:
@@ -101,7 +108,6 @@ class CenterCrop:
     def __call__(self, img):
         if isinstance(img, Image.Image):
             image = Image.Image()
-            image.mode = img.mode
             image._setSize(img._channel, self.size[0], self.size[1])
             return image
         else:
@@ -120,7 +126,6 @@ class Resize:
     def __call__(self, img):
         if isinstance(img, Image.Image):
             image = Image.Image()
-            image.mode = img.mode
             image._setSize(img._channel, self.size[0], self.size[1])
             return image
         else:
@@ -133,3 +138,12 @@ class Lambda:
 
     def __call__(self, img):
         return self.lambd(img)
+
+class RandomHorizontalFlip(torch.nn.Module):
+    def __init__(self, p=0.5):
+        pass
+
+    def forward(self, img):
+        if isinstance(img, Image.Image) or isinstance(img, Tensor)
+            return img
+        raise TypeError('img should be PIL Image or Tensor')

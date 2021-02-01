@@ -1,5 +1,6 @@
 import LibCall
 from ...tensor import Tensor
+from PIL import Image
 
 
 class DataLoader:
@@ -39,7 +40,7 @@ class DataLoader:
         return self._len
 
     def __getitem__(self, index):
-        item_tuple = self.dataset[index]
+        item_tuple = self.dataset[index * self.batch_size]
         _len = len(self)
 
         if self.drop_last == False and self._last_batch > 0 and index == _len - 1:
@@ -52,7 +53,7 @@ class DataLoader:
             if isinstance(item, list) or isinstance(item, tuple):
                 ret_item = []
                 for list_item in item:
-                    if isinstance(list_item, Tensor) and item.dim() > 0:
+                    if isinstance(list_item, Tensor) and list_item.dim() > 0:
                         ret_item.append(LibCall.shape.repeat(list_item, 0, batch_size))
                     else:
                         ret_item.append(Tensor(batch_size))
