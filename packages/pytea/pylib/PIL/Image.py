@@ -1,5 +1,6 @@
 import LibCall
 import random
+import numpy as np
 
 
 class Image:
@@ -8,7 +9,6 @@ class Image:
         self.size = (0, 0)
         self.height = 0
         self.width = 0
-        self.mode = "L"
 
     def _setSize(self, channel, width, height):
         self._channel = channel
@@ -20,7 +20,6 @@ class Image:
     def copy(self):
         im = Image()
         im._setSize(self._channel, self.width, self.height)
-        im.mode = self.mode
         return im
 
     def convert(self, mode=None, *args, **kwargs):
@@ -29,17 +28,14 @@ class Image:
         elif len(mode) == 1:
             im = Image()
             im._setSize(1, self.width, self.height)
-            im.mode = mode
             return im
         elif mode == "RGBA" or mode == "CMYK":
             im = Image()
             im._setSize(4, self.width, self.height)
-            im.mode = mode
             return im
         else:
             im = Image()
             im._setSize(3, self.width, self.height)
-            im.mode = mode
             return im
 
     def transform(self, size, method, data=None, resample=0, fill=1, fillcolor=None):
@@ -56,13 +52,11 @@ class Image:
 
         im = Image()
         im._setSize(self._channel, size[0], size[1])
-        im.mode = self.mode
         return im
 
     def resize(self, size, resample=3, box=None, reducing_gap=None):
         im = Image()
         im._setSize(im._channel, size[0], size[1])
-        im.mode = self.mode
         return im
 
 
@@ -70,17 +64,14 @@ def new(mode, size, color=0):
     if len(mode) == 1:
         im = Image()
         im._setSize(1, size[0], size[1])
-        im.mode = mode
         return im
     elif mode == "RGBA" or mode == "CMYK":
         im = Image()
         im._setSize(4, size[0], size[1])
-        im.mode = mode
         return im
     else:
         im = Image()
         im._setSize(3, size[0], size[1])
-        im.mode = mode
         return im
 
 
@@ -104,6 +95,14 @@ def blend(im1, im2, alpha):
     LibCall.PIL.blend(im1, im2, alpha)  # just adds constraints, doesn't return obj.
     im = im1.copy()
     return im
+
+
+def fromarray(obj, mode=None):
+    if isinstance(obj, np.ndarray):
+        im = Image()
+        return LibCall.PIL.fromarray(im, obj, mode)
+
+    return NotImplemented
 
 
 NEAREST = 0

@@ -454,9 +454,9 @@ export class SVSize extends SVObject {
         // )!;
         const value: SVSize = new SVSize({
             id: obj.id,
-            attrs: obj.attrs,
-            // .set('__mro__', sizeMro)
-            // .set('$length', SVInt.create(ExpShape.getRank(shape), shape.source)),
+            attrs: obj.attrs
+                //    .set('__mro__', sizeMro)
+                .set('$length', SVInt.create(ExpShape.getRank(shape), shape.source)),
             indices: obj.indices,
             keyValues: obj.keyValues,
             addr: obj.addr,

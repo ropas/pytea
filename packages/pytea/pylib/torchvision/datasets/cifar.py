@@ -20,6 +20,8 @@ class CIFAR10(data.Dataset):
             self.len = 100
 
     def __getitem__(self, index):
+        if index < 0 or len(self) <= index:
+            raise IndexError('index {} is out of bounds for length {}'.format(index, len(self)))
         img = Image.Image()
         img._setSize(3, 28, 28)
         target = LibCall.builtins.randInt(0, 9, 'CIFAR10_Class')
@@ -51,6 +53,8 @@ class CIFAR100(data.Dataset):
             self.len = 100
 
     def __getitem__(self, index):
+        if index < 0 or len(self) <= index:
+            raise IndexError('index {} is out of bounds for length {}'.format(index, len(self)))
         img = Image.Image()
         img._setSize(3, 28, 28)
         target = LibCall.builtins.randInt(0, 99, 'CIFAR100_Class')

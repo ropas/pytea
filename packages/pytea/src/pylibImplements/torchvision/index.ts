@@ -3,8 +3,8 @@ import { ParseNode } from 'pyright-internal/parser/parseNodes';
 import { LCImpl } from '..';
 import { fetchAddr } from '../../backend/backUtils';
 import { Context, ContextSet } from '../../backend/context';
-import { fetchSize, genTensor } from '../../backend/expUtils';
-import { ShValue, SVType } from '../../backend/sharpValues';
+import { fetchSize, genTensor, simplifyShape } from '../../backend/expUtils';
+import { ShValue, SVSize, SVType } from '../../backend/sharpValues';
 import { ExpNum, ExpShape, NumBopType } from '../../backend/symExpressions';
 import { LCBase } from '../libcall';
 
@@ -76,8 +76,80 @@ export namespace TorchvisionLCImpl {
             });
     }
 
+    export function to_pil_image(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 3) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torchvision.to_pil_image': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [imageAddr, objAddr, modeAddr] = params;
+
+        const image = fetchAddr(imageAddr, heap);
+        const objSize = fetchSize(objAddr, heap);
+
+        if (imageAddr.type !== SVType.Addr || image?.type !== SVType.Object) {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.torchvision.to_pil_image': not an object type:\n\t${imageAddr.toString()} -> ${image?.toString()}`,
+                    source
+                )
+                .toSet();
+        }
+        if (typeof objSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torchvision.to_pil_image: ${objSize}`, source);
+        }
+
+        const shape = objSize.shape;
+        const rank = ExpShape.getRank(shape);
+        const channel = ExpNum.index(shape, 0, source);
+
+        const isRankTwo = ctx.genEq(2, rank, source);
+        const [rankTwoPath, rankThreePath] = ctx.ifThenElse(isRankTwo, source);
+
+        const leftPath = rankTwoPath.flatMap((ctx) => {
+            // [H, W] -> [1, H, W]
+            const newShape = simplifyShape(
+                ctx.ctrSet,
+                ExpShape.concat(ExpShape.fromConst(1, [1], source), shape, source)
+            );
+
+            const newImage = SVSize.fromObject(ctx, image, newShape);
+            return ctx.setHeap(ctx.heap.setVal(imageAddr, newImage)).toSetWith(newImage);
+        });
+
+        const rightPath = rankThreePath.flatMap((ctx) => {
+            // [C, H, W] -> [C, H, W]
+            return ctx
+                .require(
+                    [ctx.genEq(3, rank, source)],
+                    `from 'LibCall.torchvision.to_pil_image: rank must be 2 or 3. got ${
+                        typeof rank === 'number' ? rank : ExpNum.toString(rank)
+                    }`,
+                    source
+                )
+                .require(
+                    [ctx.genLte(1, channel, source), ctx.genLte(channel, 4, source)],
+                    `from 'LibCall.torchvision.to_pil_image: channel must be 1 ~ 4. got ${
+                        typeof channel === 'number' ? channel : ExpNum.toString(channel)
+                    }`,
+                    source
+                )
+                .map((ctx) => {
+                    const newImage = SVSize.fromObject(ctx, image, shape);
+                    return ctx.setHeap(ctx.heap.setVal(imageAddr, newImage)).setRetVal(newImage);
+                });
+        });
+
+        return leftPath.join(rightPath);
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         crop,
+        to_pil_image,
     };
 }
 
