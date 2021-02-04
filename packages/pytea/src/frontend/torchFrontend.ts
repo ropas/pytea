@@ -851,8 +851,15 @@ export class TorchIRFrontend {
 
         left.entries.forEach((e, i) => {
             let next: ThStmt | undefined;
-            if (e.nodeType === ParseNodeType.Name) {
-                next = TSAssign.create(TEName.create(e.value, e), TESubscr.create(tempVar, TEConst.genInt(i), e));
+            if (
+                e.nodeType === ParseNodeType.Name ||
+                e.nodeType === ParseNodeType.MemberAccess ||
+                e.nodeType === ParseNodeType.Index
+            ) {
+                next = TSAssign.create(
+                    this.visitExprNode(e) as ThLeftExpr,
+                    TESubscr.create(tempVar, TEConst.genInt(i), e)
+                );
             } else if (e.nodeType === ParseNodeType.List) {
                 next = this._assignList(e, TESubscr.create(right, TEConst.genInt(i), e));
             } else if (e.nodeType === ParseNodeType.Tuple) {
