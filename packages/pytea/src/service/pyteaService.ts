@@ -11,6 +11,7 @@ import chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
+import { IRWriter } from 'src/frontend/IRReaderWriter';
 
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { CommandLineOptions as PyrightCommandLineOptions } from 'pyright-internal/common/commandLineOptions';
@@ -140,7 +141,7 @@ export class PyteaService {
             valid = false;
         }
 
-        if (!this._options?.pyteaLibPath || this._libStmt.size === 0) {
+        if (!this._options?.extractIR && (!this._options?.pyteaLibPath || this._libStmt.size === 0)) {
             this._console.error('Invalid PyTea library path. Please check library path correctly.');
             valid = false;
         }
@@ -172,7 +173,12 @@ export class PyteaService {
         this._entryName = path.basename(entryPath, path.extname(entryPath));
 
         // translate pytea library implementations
-        if (this._libStmt.size === 0 && this._service && this._options?.pyteaLibPath) {
+        if (
+            this._libStmt.size === 0 &&
+            this._service &&
+            this._options?.pyteaLibPath &&
+            !(this._options?.extractIR === true)
+        ) {
             this._libStmt = PyteaUtils.getStmtsFromDir(this._service, this._options.pyteaLibPath);
             this._pushTimeLog('Translate library scripts');
         }
@@ -260,6 +266,33 @@ export class PyteaService {
         return this._unittestLog(passOrFail, result);
     }
 
+    printLog(result: ContextSet<ShValue | ShContFlag>): void {
+        const logLevel = this._options!.logLevel;
+        switch (logLevel) {
+            case 'none':
+                this._noneLog(result);
+                break;
+            case 'result-only':
+                this._resultOnlyLog(result);
+                break;
+            case 'reduced':
+                this._reducedLog(result);
+                break;
+
+            case 'full':
+                this._fullLog(result);
+                break;
+        }
+    }
+
+    extractIR(resultPath: string): void {
+        let sourceMap = '';
+        this._projectStmt?.forEach((stmt, path) => {
+            sourceMap = sourceMap + (sourceMap ? '\n' : '') + IRWriter.makeIRString(stmt, path);
+        });
+        fs.writeFileSync(resultPath, sourceMap);
+    }
+
     // Dynamic communications with Backend
     // import resolution order: (e.g. from A.B import C)
     //      1. project script   (A/B.py)
@@ -281,25 +314,6 @@ export class PyteaService {
         }
 
         return [undefined, false];
-    }
-
-    printLog(result: ContextSet<ShValue | ShContFlag>): void {
-        const logLevel = this._options!.logLevel;
-        switch (logLevel) {
-            case 'none':
-                this._noneLog(result);
-                break;
-            case 'result-only':
-                this._resultOnlyLog(result);
-                break;
-            case 'reduced':
-                this._reducedLog(result);
-                break;
-
-            case 'full':
-                this._fullLog(result);
-                break;
-        }
     }
 
     addFilesToTrack(files: string[]) {

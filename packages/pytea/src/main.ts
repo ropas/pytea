@@ -40,7 +40,7 @@ function parsePyrightArgs(): CommandLineOptions | undefined {
         { name: 'extractIR', alias: 'e', type: Boolean },
         { name: 'libPath', alias: 'l', type: String },
         { name: 'configPath', type: String, defaultValue: '' },
-        { name: 'resultPath', type: String, defaultValue: './constraint.json' },
+        { name: 'resultPath', type: String },
         { name: 'pythonArgs', alias: 'a', type: String },
         { name: 'logLevel', type: String },
         { name: 'verbose', type: Boolean, defaultValue: false },
@@ -71,6 +71,14 @@ function parsePyrightArgs(): CommandLineOptions | undefined {
     if (args.version !== undefined) {
         printVersion();
         return;
+    }
+
+    if (args.resultPath === undefined) {
+        if (args.extractIR) {
+            args.resultPath = 'out_ir.lisp';
+        } else {
+            args.resultPath = 'constraint.json';
+        }
     }
 
     return args;
@@ -152,6 +160,12 @@ function runMain(args: CommandLineOptions) {
                 process.exit(ExitStatus.FatalError);
             } else {
                 // do pytea job
+                if (pyteaService.options.extractIR) {
+                    pyteaService.extractIR(resultPath);
+                    console.log(`IR has extracted to ${resultPath}`);
+                    process.exit(ExitStatus.NoErrors);
+                }
+
                 try {
                     const result = pyteaService.analyze();
                     if (result) {
@@ -195,12 +209,12 @@ function printUsage() {
             ' [options] file\n' +
             '  Options:\n' +
             '  -h,--help                        Show this help message\n' +
-            '  -e,--extractIR                  Run only Frontend and Extract\n' +
-            '                                       internal representations of Python scripts\n' +
+            '  -e,--extractIR                  Run the parser only and extract\n' +
+            '                                      internal representations of Python scripts\n' +
             '  -a,--pythonArgs                 command line arguments for main Python script\n' +
-            '  -l,--libPath                    Path to PyTea Python library implementations\n' +
+            '  -l,--libPath                    Path to the PyTea Python library implementations\n' +
             '  --configPath                    Path to pyteaconfig.json\n' +
-            '  --resultPath                    Path to save result constraint json\n' +
+            '  --resultPath                    Path to save the result (constraint json or extracted IR)\n' +
             '  --logLevel                      Verbosity of log (none, result-only, reduced, full)\n' +
             '  --verbose                       Emit Pyright verbose diagnostics\n' +
             '  --version                       Print PyTea version\n' +

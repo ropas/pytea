@@ -1,6 +1,7 @@
-from collections import namedtuple
+class A:
+    pass
 
-TT = namedtuple('TT', ['x', 'y'])
-a = TT(3, 5)
-b = a[0]
-c = a.y
+
+a = A()
+
+[a.x, a.y] = [1, 2]

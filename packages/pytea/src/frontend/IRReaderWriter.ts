@@ -5,101 +5,16 @@
  * Author: Ho Young Jhoo (mersshs@gmail.com)
  *
  * String formatter for PyTea internal representation
- * See
+ * See doc/IR-format.md for more information
  */
-
-import { PyteaService } from 'src/service/pyteaService';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import { TEBinOp, TEConst, TEType, TEUopType, ThExpr, ThStmt, TSSeq, TSType } from './torchStatements';
+import { TEBinOp, TEConst, TEConstType, TEType, TEUopType, ThExpr, ThStmt, TSSeq, TSType } from './torchStatements';
 
 export namespace IRWriter {
-    export function makeIRString(stmt: ThStmt | ThExpr, service: PyteaService): string {
+    export function makeIRString(stmt: ThStmt | ThExpr, path: string): string {
         let code: string;
-        const sourceMap: string[] = [];
-
-        function showStmt(stmt: ThStmt): string {
-            let source = showSourcePos(service, sourceMap, stmt.source);
-            if (!source) source = ' ' + source;
-            switch (stmt.stype) {
-                case TSType.Pass:
-                    return `(pass${source})`;
-                case TSType.Expr:
-                    return showExpr(stmt.expr);
-                case TSType.Seq: {
-                    const flatten: ThStmt[] = [];
-                    function push(subStmt: TSSeq): void {
-                        if (subStmt.left.stype === TSType.Seq) {
-                            push(subStmt.left);
-                        } else {
-                            flatten.push(subStmt.left);
-                        }
-                        if (subStmt.right.stype === TSType.Seq) {
-                            push(subStmt.right);
-                        } else {
-                            flatten.push(subStmt.right);
-                        }
-                    }
-                    push(stmt);
-                    return `(${flatten.map(showStmt).join(' ')})`;
-                }
-                case TSType.Assign:
-                    return `(assign${source} ${showExpr(stmt.left)} ${stmt.right})`;
-                case TSType.If:
-                    return `(if${source} ${showExpr(stmt.cond)} ${showStmt(stmt.thenStmt)} ${showStmt(stmt.elseStmt)})`;
-                case TSType.ForIn:
-                    return `(for${source} ${showStr(stmt.ident)} ${showExpr(stmt.loopVal)} ${showStmt(stmt.loopBody)})`;
-                case TSType.Return:
-                    return `(return${source})`;
-                case TSType.Continue:
-                    return `(continue${source})`;
-                case TSType.Break:
-                    return `(break${source})`;
-                case TSType.Let:
-                    return `(let${source} (${showStr(stmt.name)} ${stmt.expr ? showExpr(stmt.expr) : ''}) ${showStmt(
-                        stmt.scope
-                    )})`;
-                case TSType.FunDef:
-                    return `(fundef${source} ${showStr(stmt.name)} (${stmt.params.map(showStr).join(' ')}) ${showStmt(
-                        stmt.body
-                    )} ${showStmt(stmt.scope)})`;
-            }
-        }
-
-        function showExpr(expr: ThExpr): string {
-            // TODO
-            let source = showSourcePos(service, sourceMap, stmt.source);
-            if (!source) source = ' ' + source;
-            switch (expr.etype) {
-                case TEType.Object:
-                    return `(object${source})`;
-                case TEType.Tuple:
-                    return `(tuple${source} ${expr.values.map(showExpr).join(' ')})`;
-                case TEType.Call:
-                    return `(call${source} ${showExpr(expr.func)} ${expr.params.map(showExpr).join(' ')})`;
-                case TEType.LibCall:
-                    return `(libcall${source} ${showStr(expr.type)} ${expr.params
-                        .map((p) => `(${showStr(p[0])} ${showExpr(p[1])})`)
-                        .join(' ')})`;
-                case TEType.BinOp:
-                    return `(bop${source} ${TEBinOp.toStringBop(expr.bopType)} ${showExpr(expr.left)} ${showExpr(
-                        expr.right
-                    )})`;
-                case TEType.UnaryOp: {
-                    const uop = expr.uopType === TEUopType.Neg ? '-' : 'not';
-                    return `(uop${source} ${uop} ${showExpr(expr.base)})`;
-                }
-                case TEType.Name:
-                    return `(var${source} ${showStr(expr.ident)})`;
-                case TEType.Attr:
-                    return `(attr${source} ${showExpr(expr.left)} ${showStr(expr.right)})`;
-                case TEType.Subscr:
-                    return `(subs${source} ${showExpr(expr.left)} ${showExpr(expr.right)})`;
-                case TEType.Const:
-                    return showConst(expr);
-            }
-        }
 
         if ('stype' in stmt) {
             code = showStmt(stmt);
@@ -107,32 +22,155 @@ export namespace IRWriter {
             code = showExpr(stmt);
         }
 
-        const sourceMapStr = `(source-map \n${sourceMap.map((path) => `(${path})`).join('\n')})`;
+        return `(source-map ${showStr(path)} ${code})`;
+    }
 
-        return `${code}\n${sourceMapStr}`;
+    export function showStmt(stmt: ThStmt): string {
+        const source = ' ' + showSourcePos(stmt.source);
+        switch (stmt.stype) {
+            case TSType.Pass:
+                return `(pass${source})`;
+            case TSType.Expr:
+                return showExpr(stmt.expr);
+            case TSType.Seq: {
+                const flatten: ThStmt[] = [];
+                function push(subStmt: TSSeq): void {
+                    if (subStmt.left.stype === TSType.Seq) {
+                        push(subStmt.left);
+                    } else {
+                        flatten.push(subStmt.left);
+                    }
+                    if (subStmt.right.stype === TSType.Seq) {
+                        push(subStmt.right);
+                    } else {
+                        flatten.push(subStmt.right);
+                    }
+                }
+                push(stmt);
+                return `(${flatten.map(showStmt).join(' ')})`;
+            }
+            case TSType.Assign:
+                return `(assign${source} ${showExpr(stmt.left)} ${showExpr(stmt.right)})`;
+            case TSType.If:
+                return `(if${source} ${showExpr(stmt.cond)} ${showStmt(stmt.thenStmt)} ${showStmt(stmt.elseStmt)})`;
+            case TSType.ForIn:
+                return `(for${source} ${showStr(stmt.ident)} ${showExpr(stmt.loopVal)} ${showStmt(stmt.loopBody)})`;
+            case TSType.Return:
+                return `(return${source})`;
+            case TSType.Continue:
+                return `(continue${source})`;
+            case TSType.Break:
+                return `(break${source})`;
+            case TSType.Let:
+                return `(let${source} (${showStr(stmt.name)} ${stmt.expr ? showExpr(stmt.expr) : ''}) ${showStmt(
+                    stmt.scope
+                )})`;
+            case TSType.FunDef:
+                return `(fundef${source} ${showStr(stmt.name)} (${stmt.params.map(showStr).join(' ')}) ${showStmt(
+                    stmt.body
+                )} ${showStmt(stmt.scope)})`;
+        }
+    }
+
+    export function showExpr(expr: ThExpr): string {
+        const source = ' ' + showSourcePos(expr.source);
+        switch (expr.etype) {
+            case TEType.Object:
+                return `(object${source})`;
+            case TEType.Tuple:
+                return `(tuple${source} ${expr.values.map(showExpr).join(' ')})`;
+            case TEType.Call:
+                return `(call${source} ${showExpr(expr.func)} ${expr.params.map(showExpr).join(' ')})`;
+            case TEType.LibCall:
+                return `(libcall${source} ${showStr(expr.type)} ${expr.params
+                    .map((p) => `(${showStr(p[0])} ${showExpr(p[1])})`)
+                    .join(' ')})`;
+            case TEType.BinOp:
+                return `(bop${source} ${TEBinOp.toStringBop(expr.bopType)} ${showExpr(expr.left)} ${showExpr(
+                    expr.right
+                )})`;
+            case TEType.UnaryOp: {
+                const uop = expr.uopType === TEUopType.Neg ? '-' : 'not';
+                return `(uop${source} ${uop} ${showExpr(expr.base)})`;
+            }
+            case TEType.Name:
+                return `(var${source} ${showStr(expr.ident)})`;
+            case TEType.Attr:
+                return `(attr${source} ${showExpr(expr.left)} ${showStr(expr.right)})`;
+            case TEType.Subscr:
+                return `(subs${source} ${showExpr(expr.left)} ${showExpr(expr.right)})`;
+            case TEType.Const:
+                return showConst(expr);
+        }
     }
 
     export function showConst(expr: TEConst): string {
-        //TODO
-        return ``;
+        const source = ' ' + showSourcePos(expr.source);
+        switch (expr.constType) {
+            case TEConstType.Bool:
+                return `(bool${source} ${(expr.value as boolean) ? 'True' : 'False'})`;
+            case TEConstType.Int:
+                return `(int${source} ${expr.value as number})`;
+            case TEConstType.Float:
+                return `(float${source} ${expr.value as number})`;
+            case TEConstType.String:
+                return `(str${source} ${showStr(expr.value as string)})`;
+            case TEConstType.None:
+                return `(none${source})`;
+        }
     }
 
-    export function showSourcePos(service: PyteaService, sourceMap: string[], node?: ParseNode): string {
-        if (!node) return ' ';
-        // TODO
-        return ' ';
+    export function showSourcePos(node?: ParseNode): string {
+        if (!node) return '';
+        return `[${node.start}:${node.start + node.length}]`;
     }
 
     export function showStr(str: string): string {
-        // TODO: escape
-        return `"${str}"`;
+        const escaped = str
+            .replace(/[\\"']/g, '\\$&')
+            .replace(/\n/g, '\\n')
+            .replace(/\r/g, '\\r')
+            .replace(/\t/g, '\\t');
+        return `"${escaped}"`;
     }
 }
 
 export namespace IRReader {
-    export function parseIRString(code: string): ThStmt | undefined {
-        // TODO
-        return;
+    // returns [sourceMap, top-level statements]
+    // or returns error message
+    export function parseIRString(code: string): [Map<string, ThStmt>, ThStmt[]] | string {
+        const sourceMap: Map<string, ThStmt> = new Map();
+        const stmts: ThStmt[] = [];
+
+        const tokens = tokenize(code);
+        const len = tokens.length;
+        let pos = 0;
+        while (pos < len) {
+            const parsedMap = parseSourceMap(tokens, pos);
+            if (typeof parsedMap === 'string') {
+                const stmt = parseStmt(tokens, pos);
+                if (typeof stmt === 'string') {
+                    return formatErrorMessage(stmt, tokens, pos);
+                }
+
+                stmts.push(stmt[0]);
+                pos = stmt[1];
+            } else {
+                sourceMap.set(parsedMap[0], parsedMap[1]);
+                pos = parsedMap[2];
+            }
+        }
+
+        return [sourceMap, stmts];
+    }
+
+    function formatErrorMessage(message: string, tokens: Token[], pos: number): string {
+        const start = pos - 5 < 0 ? 0 : pos - 5;
+        const surround = tokens
+            .slice(start, pos + 5)
+            .map(showToken)
+            .join(' ');
+        return `${message}\n  PARSE ERROR at token #${pos + 1}:\n  ... ${surround} ...`;
     }
 
     export function tokenize(code: string): Token[] {
@@ -169,6 +207,11 @@ export namespace IRReader {
                     case ':':
                         tokenAfter = { type: TokenType.Colon };
                         break;
+                    case ' ':
+                    case '\n':
+                    case '\r':
+                    case '\t':
+                        break;
                     case '0':
                     case '1':
                     case '2':
@@ -181,9 +224,7 @@ export namespace IRReader {
                     case '9':
                     case '.':
                         currType = 2;
-                        break;
-                    case ' ':
-                        break;
+                    // eslint-disable-next-line no-fallthrough
                     default:
                         shouldPush = false;
                         charStack.push(char);
@@ -191,7 +232,7 @@ export namespace IRReader {
                 }
 
                 if (shouldPush && charStack.length > 0) {
-                    const value = charStack.join();
+                    const value = charStack.join('');
                     if (currType === 2) {
                         tokens.push({ type: TokenType.Number, value: Number.parseFloat(value) });
                         currType = 0;
@@ -211,7 +252,7 @@ export namespace IRReader {
                     case '"':
                         tokens.push({
                             type: TokenType.String,
-                            value: charStack.join(),
+                            value: charStack.join(''),
                         });
                         charStack = [];
                         currType = 0;
@@ -231,6 +272,41 @@ export namespace IRReader {
         }
 
         return tokens;
+    }
+
+    export function showToken(tk: Token): string {
+        switch (tk.type) {
+            case TokenType.LPar:
+                return '(';
+            case TokenType.RPar:
+                return ')';
+            case TokenType.LBrak:
+                return '[';
+            case TokenType.RBrak:
+                return ']';
+            case TokenType.Colon:
+                return ':';
+            case TokenType.Command:
+                return tk.value;
+            case TokenType.Number:
+                return tk.value.toString();
+            case TokenType.String:
+                return `"${tk.value}"`;
+        }
+    }
+
+    // returns parsed sourceMap and next positoin / or return error message
+    function parseSourceMap(tokens: Token[], pos: number): [string, ThStmt, number] | string {
+        return 'not-implemented';
+    }
+    // returns parsed stmt and next position / or return error message
+    function parseStmt(tokens: Token[], pos: number): [ThStmt, number] | string {
+        return 'not-implemented';
+    }
+
+    // returns parsed expr and next position / or return error message
+    function parseExpr(tokens: Token[], pos: number): [ThExpr, number] | string {
+        return 'not-implemented';
     }
 
     const enum TokenType {
