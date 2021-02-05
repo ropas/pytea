@@ -1,0 +1,70 @@
+output := sourceMap*
+sourceMap := '\(' WS 'source-map' WS path=_str? WS stmt=_stmt WS '\)' WS
+
+_stmt := stmtAssign
+       | stmtLet
+       | stmtFundef
+       | stmtIf
+       | stmtForin
+       | stmtPass
+       | stmtReturn
+       | stmtContinue
+       | stmtBreak
+       | stmtSeq
+       | stmtExpr
+
+_expr := exprAttr
+       | exprSubscr
+       | exprCall
+       | exprLibCall
+       | exprObject
+       | exprTuple
+       | exprBinop
+       | exprUnaryop
+       | exprName
+       | exprConst
+
+stmtAssign := '\(' WS 'assign' WS source? WS left=_expr WS right=_expr WS '\)'
+stmtLet := '\(' WS 'let' WS source? WS '\(' WS name=_str WS expr=_expr? WS '\)' WS stmt=_stmt WS '\)'
+stmtFundef := '\( WS 'fundef' WS source? WS  WS '\)
+stmtIf := '\( WS 'if' WS source? WS  WS '\)
+stmtForin := '\( WS 'for' WS source? WS  WS '\)
+stmtPass := '\( WS 'pass' WS source? WS  WS '\)
+stmtReturn := '\( WS 'return' WS source? WS  WS '\)
+stmtContinue := '\( WS 'continue' WS source? WS '\)
+stmtBreak := '\( WS 'break' WS source? WS  WS '\)
+stmtSeq := '\( WS left=_stmt WS right=_stmt WS '\)
+stmtExpr := expr:_expr
+
+exprAttr := '\(' WS 'attr' WS source? WS WS '\)'
+exprSubscr := '\(' WS 'subs' WS source? WS WS '\)'
+exprCall := '\(' WS 'call' WS source? WS WS '\)'
+exprLibCall := '\(' WS 'libcall' WS source? WS WS '\)'
+exprObject := '\(' WS 'object' WS source? WS WS '\)'
+exprTuple := '\(' WS 'tuple' WS source? WS WS '\)'
+exprBinop := '\(' WS 'bop' WS source? WS WS '\)'
+exprUnaryop := '\(' WS 'uop' WS source? WS WS '\)'
+exprName := '\(' WS 'var' WS source? WS WS '\)'
+
+exprConst := constInt
+           | constFloat
+           | constString
+           | constBool
+           | constNone
+
+constInt := '\(' WS 'int' WS source? WS '' WS '\)'
+constFloat := '\(' WS 'float' WS source? WS '' WS '\)'
+constString := '\(' WS 'string' WS source? WS '' WS '\)'
+constBool := '\(' WS 'bool' WS source? WS '' WS '\)'
+constNone := '\(' WS 'none' WS source? WS '\)'
+
+source := '\[' start=_int ':' end=_int '\]'
+
+bopType := '[<(<=)=(!=)(and)(or)(is^n)(isnot)(in)(notin)\+-(\*^\*)\%(\*\*)(\/^\/)(\/\/)]'
+
+_int := '[+-]?[0-9]+'
+_float := '[+-]?([0-9]*[.])?[0-9]+'
+_str := literal='"(?:[^"\\]|\\.)*"'
+       .value = string { return this.literal.slice(1, -1) }
+
+WS := '[\n\r\t ]*'
