@@ -10,7 +10,20 @@
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import { TEBinOp, TEConst, TEConstType, TEType, TEUopType, ThExpr, ThStmt, TSSeq, TSType } from './torchStatements';
+import {
+    TEBinOp,
+    TEConst,
+    TEConstType,
+    TEType,
+    TEUopType,
+    ThExpr,
+    ThLeftExpr,
+    ThStmt,
+    TSAssign,
+    TSExpr,
+    TSSeq,
+    TSType,
+} from './torchStatements';
 
 export namespace IRWriter {
     export function makeIRString(stmt: ThStmt | ThExpr, path: string): string {
@@ -146,18 +159,27 @@ export namespace IRReader {
         const len = tokens.length;
         let pos = 0;
         while (pos < len) {
-            const parsedMap = parseSourceMap(tokens, pos);
-            if (typeof parsedMap === 'string') {
-                const stmt = parseStmt(tokens, pos);
-                if (typeof stmt === 'string') {
-                    return formatErrorMessage(stmt, tokens, pos);
-                }
-
-                stmts.push(stmt[0]);
-                pos = stmt[1];
-            } else {
+            try {
+                const parsedMap = parseSourceMap(tokens, pos);
                 sourceMap.set(parsedMap[0], parsedMap[1]);
                 pos = parsedMap[2];
+            } catch (msgPos) {
+                // if the error is occured from the stmt in source-map, return it.
+                if (pos + 1 >= len) {
+                    const cmd = tokens[pos + 1];
+                    if (cmd.type === TokenType.Command && cmd.value === 'source-map') {
+                        return formatErrorMessage(msgPos[0] as string, tokens, msgPos[1]);
+                    }
+                }
+
+                // else, fall back to stmt parser
+                try {
+                    const stmt = parseStmt(tokens, pos);
+                    stmts.push(stmt[0]);
+                    pos = stmt[1];
+                } catch (msgPos) {
+                    return formatErrorMessage(msgPos[0] as string, tokens, msgPos[1]);
+                }
             }
         }
 
@@ -170,7 +192,7 @@ export namespace IRReader {
             .slice(start, pos + 5)
             .map(showToken)
             .join(' ');
-        return `${message}\n  PARSE ERROR at token #${pos + 1}:\n  ... ${surround} ...`;
+        return `${message}\n  PARSE ERROR at ... ${surround} ...`;
     }
 
     export function tokenize(code: string): Token[] {
@@ -193,19 +215,19 @@ export namespace IRReader {
                         currType = 1;
                         break;
                     case '(':
-                        tokenAfter = { type: TokenType.LPar };
+                        tokenAfter = tkLPar;
                         break;
                     case ')':
-                        tokenAfter = { type: TokenType.RPar };
+                        tokenAfter = tkRPar;
                         break;
                     case '[':
-                        tokenAfter = { type: TokenType.LBrak };
+                        tokenAfter = tkLBrak;
                         break;
                     case ']':
-                        tokenAfter = { type: TokenType.RBrak };
+                        tokenAfter = tkRBrak;
                         break;
                     case ':':
-                        tokenAfter = { type: TokenType.Colon };
+                        tokenAfter = tkColon;
                         break;
                     case ' ':
                     case '\n':
@@ -296,17 +318,130 @@ export namespace IRReader {
     }
 
     // returns parsed sourceMap and next positoin / or return error message
-    function parseSourceMap(tokens: Token[], pos: number): [string, ThStmt, number] | string {
-        return 'not-implemented';
+    function parseSourceMap(tokens: Token[], pos: number): [string, ThStmt, number] {
+        const next = consume(tokens, pos, [tkLPar, tkSourceMap]);
+        if (next < 0) throw ['not a source map', pos];
+
+        const path = parseStr(tokens, next);
+        const [stmt, next2] = parseStmt(tokens, next);
+
+        const next3 = consume(tokens, next2, [tkRPar]);
+        if (next3 < 0) throw ['source-map is not closed by )', next2 + 1];
+
+        return [path, stmt, next2];
     }
     // returns parsed stmt and next position / or return error message
-    function parseStmt(tokens: Token[], pos: number): [ThStmt, number] | string {
-        return 'not-implemented';
+    function parseStmt(tokens: Token[], pos: number): [ThStmt, number] {
+        let next = pos;
+        let stmt: ThStmt;
+        if (tokens.length <= pos + 2) {
+            throw ['stmt is too short', pos];
+        }
+        if (tokens[pos]?.type !== TokenType.LPar) {
+            throw ['stmt is not started with (', pos];
+        }
+
+        const cmd = tokens[pos + 1];
+        if (cmd.type === TokenType.Command) {
+            next = skipSource(tokens, pos + 2);
+            switch (cmd.value) {
+                case 'assign': {
+                    const [left, next2] = parseExpr(tokens, next);
+                    const [right, next3] = parseExpr(tokens, next2);
+                    next = next3;
+                    stmt = TSAssign.create(left as ThLeftExpr, right);
+                    break;
+                }
+                case 'let':
+                case 'fundef':
+                case 'if':
+                case 'for':
+                case 'pass':
+                case 'return':
+                case 'continue':
+                case 'break':
+                default: {
+                    const [expr, next] = parseExpr(tokens, pos);
+                    return [TSExpr.create(expr), next];
+                }
+            }
+        } else {
+            // seq
+            const seq: ThStmt[] = [];
+            next = pos + 1;
+            try {
+                const [seqStmt, seqNext] = parseStmt(tokens, next);
+                seq.push(seqStmt);
+                next = seqNext;
+            } catch (e) {
+                // parse stmt until it reaches end
+            }
+
+            if (seq.length === 0) {
+                throw ['stmt-seq is empty', next];
+            }
+            let last: ThStmt = seq[seq.length - 1];
+            for (let i = seq.length - 2; i >= 0; i--) {
+                last = TSSeq.create(seq[i], last);
+            }
+            stmt = last;
+        }
+
+        const next2 = consume(tokens, next, [tkRPar]);
+        if (next2 < 0) throw ['source-map is not closed by )', next + 1];
+
+        return [stmt, next];
     }
 
     // returns parsed expr and next position / or return error message
-    function parseExpr(tokens: Token[], pos: number): [ThExpr, number] | string {
-        return 'not-implemented';
+    function parseExpr(tokens: Token[], pos: number): [ThExpr, number] {
+        if (tokens.length <= pos + 2) {
+            throw ['expr is too short', pos];
+        }
+        if (tokens[pos]?.type !== TokenType.LPar) {
+            throw ['expr is not started with (', pos];
+        }
+    }
+
+    // match tokens with matcher. if failed, return -1, or next position
+    function consume(tokens: Token[], pos: number, matcher: Token[]): number {
+        if (tokens.length < matcher.length + pos) {
+            return -1;
+        }
+
+        for (let i = pos; i < pos + matcher.length; i++) {
+            const [left, right] = [tokens[pos + i], matcher[pos + i]];
+            if (left.type !== right.type) {
+                return -1;
+            }
+            if (left.type === TokenType.Command && right.type === TokenType.Command && left.value !== right.value) {
+                return -1;
+            }
+        }
+
+        return pos + matcher.length;
+    }
+
+    function skipSource(tokens: Token[], pos: number): number {
+        const next = consume(tokens, pos, [tkLBrak, tkDummyNum, tkColon, tkDummyNum, tkRBrak]);
+        return next < 0 ? pos : next + pos;
+    }
+
+    // throwable
+    function parseStr(tokens: Token[], pos: number): string {
+        const token: Token | undefined = tokens[pos];
+        if (token?.type !== TokenType.String) {
+            throw [`expected string, got ${token ? showToken(token) : undefined}`, pos];
+        }
+        return token.value;
+    }
+
+    function parseNum(tokens: Token[], pos: number): number {
+        const token: Token | undefined = tokens[pos];
+        if (token?.type !== TokenType.Number) {
+            throw [`expected number, got ${token ? showToken(token) : undefined}`, pos];
+        }
+        return token.value;
     }
 
     const enum TokenType {
@@ -343,4 +478,12 @@ export namespace IRReader {
         type: TokenType.String;
         value: string;
     }
+
+    const tkLPar: TkPar = { type: TokenType.LPar };
+    const tkRPar: TkPar = { type: TokenType.RPar };
+    const tkLBrak: TkPar = { type: TokenType.LBrak };
+    const tkRBrak: TkPar = { type: TokenType.RBrak };
+    const tkColon: TkPar = { type: TokenType.Colon };
+    const tkSourceMap: TkCmd = { type: TokenType.Command, value: 'source-map' };
+    const tkDummyNum: TkNum = { type: TokenType.Number, value: 0 };
 }
