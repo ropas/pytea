@@ -155,3 +155,16 @@ def arange(start, end=None, step=1, out=None, **kwargs):
 
 def save(obj, f, pickle_module=None, pickle_protocol=2, _use_new_zipfile_serialization=True):
     pass
+
+###
+def max(input, dim=None, keepdim=False, out=None):
+    tensor = LibCall.torch.reduce(input, dim, keepdim)
+    if dim is None:
+        LibCall.torch.copyOut(tensor, out)
+        return tensor
+    else:
+        # TODO: second tensor should be LongTensor
+        LibCall.torch.copyOut(tensor, out[0])
+        LibCall.torch.copyOut(tensor, out[1])
+        return tensor, tensor
+        

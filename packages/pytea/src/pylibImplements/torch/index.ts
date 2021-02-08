@@ -1667,9 +1667,7 @@ export namespace TorchLCImpl {
         const weightLastShape = ExpShape.slice(weightShape, 1, undefined, source);
         const returnShape = ExpShape.concat(inputShape, weightLastShape, source);
 
-        return ctx
-            .require([ctx.genEq(2, weightRank, source)])
-            .flatMap((ctx) => genTensor(ctx, returnShape, source));
+        return ctx.require([ctx.genEq(2, weightRank, source)]).flatMap((ctx) => genTensor(ctx, returnShape, source));
     }
 
     // TODO: `broadcastable` is not the sufficient condition for this code

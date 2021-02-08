@@ -14,6 +14,30 @@ class ndarray:
     def argmax(self, axis=None, out=None):
         return numpy.argmax(self, axis, out)
 
+    def __len__(self):
+        if len(self.shape) == 0:
+            raise TypeError("len() of a 0-d tensor")
+        return self.shape[0]
+
+    def __getitem__(self, index):
+        temp = self.shape
+
+        if isinstance(index, tuple):
+            idx_len = len(index)
+            if idx_len > len(self.shape):
+                raise IndexError("too many indices for tensor")
+            for axis in range(idx_len - 1, -1, -1):
+                temp = LibCall.shape.tensorGetItem(temp, axis, index[axis])
+            return ndarray(temp)
+
+        if len(temp) <= 0:
+            raise IndexError(
+                "invalid index of a 0-dim tensor. Use tensor.item() to convert a 0-dim tensor to a Python number"
+            )
+
+        temp = LibCall.shape.tensorGetItem(temp, 0, index)
+        return ndarray(temp)
+
     def __add__(self, other):
         return numpy._bop(self, other)
 

@@ -18,6 +18,7 @@ import { libCallMap as torchMap } from './torch';
 import { libCallMap as torchvisionMap } from './torchvision';
 import { libCallMap as PILMap } from './PIL';
 import { libCallMap as numpyMap } from './numpy';
+import { libCallMap as mathMap } from './math';
 
 export type LCParamType = LCBase.BaseParamType;
 
@@ -34,6 +35,7 @@ export function registLibCall(impls: Map<string, LCImpl>, relPath: string): Map<
 
 export const libCallMap: Map<string, LCImpl> = new Map([
     ...baseMap,
+    ...registLibCall(mathMap, 'math'),
     ...registLibCall(numpyMap, 'numpy'),
     ...registLibCall(PILMap, 'PIL'),
     ...registLibCall(torchMap, 'torch'),

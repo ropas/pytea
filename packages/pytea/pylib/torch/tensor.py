@@ -165,7 +165,7 @@ class Tensor:
 
         if isinstance(index, tuple):
             idx_len = len(index)
-            if len(self.shape) > idx_len:
+            if idx_len > len(self.shape):
                 raise IndexError("too many indices for tensor")
             for axis in range(idx_len - 1, -1, -1):
                 temp = LibCall.shape.tensorGetItem(temp, axis, index[axis])
@@ -218,6 +218,13 @@ class Tensor:
     def __eq__(self, other):
         return torch._bop(self, other)
 
+
+    ###
+    def max(dim=None, keepdim=False):
+        return torch.max(self, dim, keepdim)
+
+    def sqrt(self):
+        return torch.sqrt(self)
 
 class tensor(Tensor):
     def __init__(self, *args, **kwargs):
