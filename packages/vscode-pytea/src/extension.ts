@@ -40,7 +40,6 @@ import { Commands } from 'pyright-internal/commands/commands';
 import { isThenable } from 'pyright-internal/common/core';
 
 import { FileBasedCancellationStrategy } from './cancellationUtils';
-import { ProgressReporting } from './progress';
 
 let cancellationStrategy: FileBasedCancellationStrategy | undefined;
 
@@ -64,7 +63,7 @@ export function activate(context: ExtensionContext) {
     cancellationStrategy = new FileBasedCancellationStrategy();
 
     const bundlePath = context.asAbsolutePath(path.join('dist', 'server.js'));
-    const debugOptions = { execArgv: ['--nolazy', '--inspect=6800'] };
+    const debugOptions = { execArgv: ['--nolazy', '--inspect=6600'] };
 
     // If the extension is launched in debug mode, then the debug server options are used.
     const serverOptions: ServerOptions = {
@@ -163,10 +162,6 @@ export function activate(context: ExtensionContext) {
     // Push the disposable to the context's subscriptions so that the
     // client can be deactivated on extension deactivation.
     context.subscriptions.push(disposable);
-
-    // Allocate a progress reporting object.
-    const progressReporting = new ProgressReporting(languageClient);
-    context.subscriptions.push(progressReporting);
 
     // Register our custom commands.
     const textEditorCommands = [Commands.orderImports, Commands.addMissingOptionalToParam];
