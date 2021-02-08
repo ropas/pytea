@@ -10,40 +10,11 @@
             "preLaunchTask": "npm: build:cli:dev",
             "args": [
                 "--verifytypes",
-                "aiohttp",
+                "pandas.core.reshape.concat",
             ],
             "internalConsoleOptions": "openOnSessionStart",
             "outFiles": [
                 "${workspaceRoot}/packages/pyright/dist/**/*.js"
-            ]
-        },
-        {
-            "name": "Pytea CLI",
-            "type": "node",
-            "request": "launch",
-            "program": "${workspaceRoot}/packages/pytea/index.js",
-            "protocol": "inspector",
-            "args": [
-                "${workspaceRoot}/packages/pytea/pytest/basics",
-            ],
-            "preLaunchTask": "npm: build:cli:tea",
-            "internalConsoleOptions": "openOnSessionStart",
-            "outFiles": [
-                "${workspaceRoot}/packages/pytea/dist/**/*.js"
-            ]
-        },
-        {
-            "name": "Pytea CLI scratch",
-            "type": "node",
-            "request": "launch",
-            "program": "${workspaceRoot}/packages/pytea/index.js",
-            "protocol": "inspector",
-            "args": [
-                "${workspaceRoot}/packages/pytea/pytest/basics/scratch.py",
-            ],
-            "internalConsoleOptions": "openOnSessionStart",
-            "outFiles": [
-                "${workspaceRoot}/packages/pytea/dist/**/*.js"
             ]
         },
         {
@@ -92,35 +63,6 @@
             ]
         },
         {
-            "name": "Pytea extension",
-            "type": "extensionHost",
-            "request": "launch",
-            "runtimeExecutable": "${workspaceRoot}/packages/vscode-pytea/dist/extension.js",
-            "preLaunchTask": "npm: build:extension:tea",
-            "args": [
-                "--extensionDevelopmentPath=${workspaceFolder}/packages/vscode-pytea",
-                "--disable-extension=ms-pyright.pyright"
-            ],
-            "stopOnEntry": false,
-            "smartStep": true,
-            "sourceMaps": true,
-            "outFiles": [
-                "${workspaceRoot}/packages/vscode-pytea/dist/**/*.js"
-            ]
-        },
-        {
-            "name": "Pytea attach server",
-            "type": "node",
-            "request": "attach",
-            "protocol": "inspector",
-            "port": 6800,
-            "smartStep": true,
-            "sourceMaps": true,
-            "outFiles": [
-                "${workspaceRoot}/packages/vscode-pytea/dist/**/*.js"
-            ]
-        },
-        {
             "name": "Pyright jest current file",
             "type": "node",
             "request": "launch",
@@ -148,6 +90,64 @@
             "internalConsoleOptions": "neverOpen",
             "disableOptimisticBPs": true,
             "program": "${workspaceFolder}/packages/pyright-internal/node_modules/jest/bin/jest"
+        },
+        {
+            "name": "Pytea CLI",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceRoot}/packages/pytea/index.js",
+            "protocol": "inspector",
+            "args": [
+                "${workspaceRoot}/packages/pytea/pytest/basics",
+            ],
+            "preLaunchTask": "npm: build:cli:tea",
+            "internalConsoleOptions": "openOnSessionStart",
+            "outFiles": [
+                "${workspaceRoot}/packages/pytea/dist/**/*.js"
+            ]
+        },
+        {
+            "name": "Pytea CLI scratch",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceRoot}/packages/pytea/index.js",
+            "protocol": "inspector",
+            "args": [
+                "${workspaceRoot}/packages/pytea/pytest/basics/scratch.py",
+            ],
+            "internalConsoleOptions": "openOnSessionStart",
+            "outFiles": [
+                "${workspaceRoot}/packages/pytea/dist/**/*.js"
+            ]
+        },
+        {
+            "name": "Pytea extension",
+            "type": "extensionHost",
+            "request": "launch",
+            "runtimeExecutable": "${workspaceRoot}/packages/vscode-pytea/dist/extension.js",
+            "preLaunchTask": "npm: build:extension:tea",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}/packages/vscode-pytea",
+                "--disable-extension=ms-pyright.pyright"
+            ],
+            "stopOnEntry": false,
+            "smartStep": true,
+            "sourceMaps": true,
+            "outFiles": [
+                "${workspaceRoot}/packages/vscode-pytea/dist/**/*.js"
+            ]
+        },
+        {
+            "name": "Pytea attach server",
+            "type": "node",
+            "request": "attach",
+            "protocol": "inspector",
+            "port": 6800,
+            "smartStep": true,
+            "sourceMaps": true,
+            "outFiles": [
+                "${workspaceRoot}/packages/vscode-pytea/dist/**/*.js"
+            ]
         }
     ]
 }

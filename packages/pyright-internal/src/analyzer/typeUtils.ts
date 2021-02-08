@@ -16,17 +16,24 @@ import {
     AnyType,
     ClassType,
     combineConstrainedTypes,
+    combineTypes,
     ConstrainedSubtype,
     EnumLiteral,
     findSubtype,
     FunctionType,
+    isAny,
     isAnyOrUnknown,
     isClass,
+    isFunction,
     isNone,
     isObject,
+    isOverloadedFunction,
     isTypeSame,
     isTypeVar,
+    isUnbound,
+    isUnion,
     isUnknown,
+    isVariadicTypeVar,
     maxTypeRecursionCount,
     ModuleType,
     NeverType,
@@ -113,6 +120,9 @@ export const enum CanAssignFlags {
 
     // For function types, skip the return type check.
     SkipFunctionReturnTypeCheck = 1 << 5,
+
+    // Allow bool values to be assigned to TypeGuard[x] types.
+    AllowBoolTypeGuard = 1 << 6,
 }
 
 interface TypeVarTransformer {
@@ -124,7 +134,7 @@ interface TypeVarTransformer {
 let synthesizedTypeVarIndexForExpectedType = 1;
 
 export function isOptionalType(type: Type): boolean {
-    if (type.category === TypeCategory.Union) {
+    if (isUnion(type)) {
         return findSubtype(type, (subtype) => isNone(subtype)) !== undefined;
     }
 
@@ -134,7 +144,7 @@ export function isOptionalType(type: Type): boolean {
 // Calls a callback for each subtype and combines the results
 // into a final type.
 export function mapSubtypes(type: Type, callback: (type: Type) => Type | undefined): Type {
-    if (type.category === TypeCategory.Union) {
+    if (isUnion(type)) {
         const newSubtypes: ConstrainedSubtype[] = [];
         let typeChanged = false;
 
@@ -166,7 +176,7 @@ export function doForEachSubtype(
     type: Type,
     callback: (type: Type, index: number, constraints: SubtypeConstraints) => void
 ): void {
-    if (type.category === TypeCategory.Union) {
+    if (isUnion(type)) {
         if (type.constraints) {
             type.subtypes.forEach((subtype, index) => {
                 callback(subtype, index, type.constraints![index]);
@@ -216,6 +226,38 @@ export function derivesFromAnyOrUnknown(type: Type): boolean {
     return anyOrUnknown;
 }
 
+export function getFullNameOfType(type: Type): string | undefined {
+    if (type.typeAliasInfo?.fullName) {
+        return type.typeAliasInfo.fullName;
+    }
+
+    switch (type.category) {
+        case TypeCategory.Any:
+        case TypeCategory.Unknown:
+            return 'typing.Any';
+
+        case TypeCategory.None:
+            return 'builtins.None';
+
+        case TypeCategory.Class:
+            return type.details.fullName;
+
+        case TypeCategory.Object:
+            return type.classType.details.fullName;
+
+        case TypeCategory.Function:
+            return type.details.fullName;
+
+        case TypeCategory.Module:
+            return type.moduleName;
+
+        case TypeCategory.OverloadedFunction:
+            return type.overloads[0].details.fullName;
+    }
+
+    return undefined;
+}
+
 export function stripLiteralValue(type: Type): Type {
     if (isObject(type)) {
         if (type.classType.literalValue !== undefined) {
@@ -233,7 +275,7 @@ export function stripLiteralValue(type: Type): Type {
         return type;
     }
 
-    if (type.category === TypeCategory.Union) {
+    if (isUnion(type)) {
         return mapSubtypes(type, (subtype) => {
             return stripLiteralValue(subtype);
         });
@@ -279,7 +321,7 @@ export function transformTypeObjectToClass(type: Type): Type {
     }
 
     const classType = type.classType;
-    if (!ClassType.isBuiltIn(classType, 'type')) {
+    if (!ClassType.isBuiltIn(classType, 'Type')) {
         return type;
     }
 
@@ -309,9 +351,9 @@ export function isTypeAliasRecursive(typeAliasPlaceholder: TypeVarType, type: Ty
         // Handle the specific case where the type alias directly refers to itself.
         // In this case, the type will be unbound because it could not be resolved.
         return (
-            type.category === TypeCategory.Unbound &&
+            isUnbound(type) &&
             type.typeAliasInfo &&
-            type.typeAliasInfo.aliasName === typeAliasPlaceholder.details.recursiveTypeAliasName
+            type.typeAliasInfo.name === typeAliasPlaceholder.details.recursiveTypeAliasName
         );
     }
 
@@ -374,13 +416,12 @@ export function canBeFalsy(type: Type, recursionLevel = 0): boolean {
 
         case TypeCategory.Object: {
             // Handle tuples specially.
-            if (isTupleClass(type.classType) && type.classType.variadicTypeArguments) {
-                if (type.classType.variadicTypeArguments.length === 0) {
+            if (isTupleClass(type.classType) && type.classType.tupleTypeArguments) {
+                if (type.classType.tupleTypeArguments.length === 0) {
                     return true;
                 }
 
-                const lastTypeArg =
-                    type.classType.variadicTypeArguments[type.classType.variadicTypeArguments.length - 1];
+                const lastTypeArg = type.classType.tupleTypeArguments[type.classType.tupleTypeArguments.length - 1];
                 if (isEllipsisType(lastTypeArg)) {
                     return true;
                 }
@@ -437,7 +478,7 @@ export function canBeTruthy(type: Type, recursionLevel = 0): boolean {
         case TypeCategory.Object: {
             // Check for Tuple[()] (an empty tuple).
             if (isTupleClass(type.classType)) {
-                if (type.classType.variadicTypeArguments && type.classType.variadicTypeArguments.length === 0) {
+                if (type.classType.tupleTypeArguments && type.classType.tupleTypeArguments.length === 0) {
                     return false;
                 }
             }
@@ -457,19 +498,19 @@ export function canBeTruthy(type: Type, recursionLevel = 0): boolean {
 }
 
 export function getTypeVarScopeId(type: Type): TypeVarScopeId | undefined {
-    if (type.category === TypeCategory.Class) {
+    if (isClass(type)) {
         return type.details.typeVarScopeId;
     }
 
-    if (type.category === TypeCategory.Object) {
+    if (isObject(type)) {
         return type.classType.details.typeVarScopeId;
     }
 
-    if (type.category === TypeCategory.Function) {
+    if (isFunction(type)) {
         return type.details.typeVarScopeId;
     }
 
-    if (type.category === TypeCategory.TypeVar) {
+    if (isTypeVar(type)) {
         return type.scopeId;
     }
 
@@ -510,7 +551,7 @@ export function isLiteralType(type: Type, allowLiteralUnions = true): boolean {
         return type.classType.literalValue !== undefined;
     }
 
-    if (allowLiteralUnions && type.category === TypeCategory.Union) {
+    if (allowLiteralUnions && isUnion(type)) {
         return !findSubtype(type, (subtype) => !isObject(subtype) || subtype.classType.literalValue === undefined);
     }
 
@@ -518,13 +559,7 @@ export function isLiteralType(type: Type, allowLiteralUnions = true): boolean {
 }
 
 export function isEllipsisType(type: Type): boolean {
-    // Ellipses are translated into both a special form of "Any" or
-    // a distinct class depending on the context.
-    if (type.category === TypeCategory.Any && type.isEllipsis) {
-        return true;
-    }
-
-    return isClass(type) && ClassType.isBuiltIn(type, 'ellipsis');
+    return isAny(type) && type.isEllipsis;
 }
 
 export function isNoReturnType(type: Type): boolean {
@@ -533,14 +568,6 @@ export function isNoReturnType(type: Type): boolean {
 
 export function removeNoReturnFromUnion(type: Type): Type {
     return removeFromUnion(type, (subtype) => isNoReturnType(subtype));
-}
-
-export function isParamSpecType(type: Type): boolean {
-    if (!isTypeVar(type)) {
-        return false;
-    }
-
-    return type.details.isParamSpec;
 }
 
 export function isProperty(type: Type): type is ObjectType {
@@ -627,13 +654,10 @@ export function transformExpectedTypeForConstructor(
         }
 
         const isInstance = TypeBase.isInstance(prevTypeVar);
-        let newTypeVar = TypeVarType.createInstance(
-            `__expected_type_${synthesizedTypeVarIndexForExpectedType}`,
-            /* isParamSpec */ false,
-            /* isSynthesized */ true
-        );
+        let newTypeVar = TypeVarType.createInstance(`__expected_type_${synthesizedTypeVarIndexForExpectedType}`);
+        newTypeVar.details.isSynthesized = true;
         newTypeVar.scopeId = dummyScopeId;
-        newTypeVar.scopeName = TypeVarType.makeScopeName(newTypeVar.details.name, dummyScopeId);
+        newTypeVar.nameWithScope = TypeVarType.makeNameWithScope(newTypeVar.details.name, dummyScopeId);
         if (!isInstance) {
             newTypeVar = convertToInstantiable(newTypeVar) as TypeVarType;
         }
@@ -863,13 +887,13 @@ export function getTypeVarArgumentsRecursive(type: Type, recursionCount = 0): Ty
         return getTypeVarsFromClass(type);
     } else if (isObject(type)) {
         return getTypeVarsFromClass(type.classType);
-    } else if (type.category === TypeCategory.Union) {
+    } else if (isUnion(type)) {
         const combinedList: TypeVarType[] = [];
         doForEachSubtype(type, (subtype) => {
             addTypeVarsToListIfUnique(combinedList, getTypeVarArgumentsRecursive(subtype, recursionCount + 1));
         });
         return combinedList;
-    } else if (type.category === TypeCategory.Function) {
+    } else if (isFunction(type)) {
         const combinedList: TypeVarType[] = [];
 
         for (let i = 0; i < type.details.parameters.length; i++) {
@@ -943,8 +967,8 @@ export function setTypeArgumentsRecursive(destType: Type, srcType: Type, typeVar
                     setTypeArgumentsRecursive(typeArg, srcType, typeVarMap, recursionCount + 1);
                 });
             }
-            if (destType.variadicTypeArguments) {
-                destType.variadicTypeArguments.forEach((typeArg) => {
+            if (destType.tupleTypeArguments) {
+                destType.tupleTypeArguments.forEach((typeArg) => {
                     setTypeArgumentsRecursive(typeArg, srcType, typeVarMap, recursionCount + 1);
                 });
             }
@@ -1012,8 +1036,8 @@ export function buildTypeVarMapFromSpecializedClass(classType: ClassType, makeCo
     }
 
     const typeVarMap = buildTypeVarMap(typeParameters, typeArguments, getTypeVarScopeId(classType));
-    if (ClassType.isVariadicTypeParam(classType) && classType.variadicTypeArguments && typeParameters.length >= 1) {
-        typeVarMap.setVariadicTypeVar(typeParameters[0], classType.variadicTypeArguments);
+    if (ClassType.isTupleClass(classType) && classType.tupleTypeArguments && typeParameters.length >= 1) {
+        typeVarMap.setVariadicTypeVar(typeParameters[0], classType.tupleTypeArguments);
     }
 
     return typeVarMap;
@@ -1140,16 +1164,16 @@ export function removeTruthinessFromType(type: Type): Type {
 }
 
 // Returns the declared yield type if provided, or undefined otherwise.
-export function getDeclaredGeneratorYieldType(functionType: FunctionType, iteratorType: Type): Type | undefined {
+export function getDeclaredGeneratorYieldType(functionType: FunctionType, iterableType: Type): Type | undefined {
     const returnType = FunctionType.getSpecializedReturnType(functionType);
     if (returnType) {
         const generatorTypeArgs = _getGeneratorReturnTypeArgs(returnType);
 
-        if (generatorTypeArgs && generatorTypeArgs.length >= 1 && isClass(iteratorType)) {
-            // The yield type is the first type arg. Wrap it in an iterator.
+        if (generatorTypeArgs && generatorTypeArgs.length >= 1 && isClass(iterableType)) {
+            // The yield type is the first type arg. Wrap it in an iterable.
             return ObjectType.create(
                 ClassType.cloneForSpecialization(
-                    iteratorType,
+                    iterableType,
                     [generatorTypeArgs[0]],
                     /* isTypeArgumentExplicit */ true
                 )
@@ -1235,7 +1259,8 @@ export function convertToInstance(type: Type): Type {
     if (type.typeAliasInfo && type !== result) {
         result = TypeBase.cloneForTypeAlias(
             result,
-            type.typeAliasInfo.aliasName,
+            type.typeAliasInfo.name,
+            type.typeAliasInfo.fullName,
             type.typeAliasInfo.typeVarScopeId,
             type.typeAliasInfo.typeParameters,
             type.typeAliasInfo.typeArguments
@@ -1278,7 +1303,8 @@ export function convertToInstantiable(type: Type): Type {
     if (type.typeAliasInfo && type !== result) {
         result = TypeBase.cloneForTypeAlias(
             result,
-            type.typeAliasInfo.aliasName,
+            type.typeAliasInfo.name,
+            type.typeAliasInfo.fullName,
             type.typeAliasInfo.typeVarScopeId,
             type.typeAliasInfo.typeParameters,
             type.typeAliasInfo.typeArguments
@@ -1341,6 +1367,21 @@ export function getMembersForModule(moduleType: ModuleType, symbolTable: SymbolT
     });
 }
 
+// Determines if the type is an Unknown or a union that contains an Unknown.
+// It does not look at type arguments.
+export function containsUnknown(type: Type) {
+    let foundUnknown = false;
+
+    doForEachSubtype(type, (subtype) => {
+        if (isUnknown(subtype)) {
+            foundUnknown = true;
+        }
+    });
+
+    return foundUnknown;
+}
+
+// Determines if any part of the type contains "Unknown", including any type arguments.
 export function isPartlyUnknown(type: Type, allowUnknownTypeArgsForClasses = false, recursionCount = 0): boolean {
     if (recursionCount > maxTypeRecursionCount) {
         return false;
@@ -1351,7 +1392,7 @@ export function isPartlyUnknown(type: Type, allowUnknownTypeArgsForClasses = fal
     }
 
     // See if a union contains an unknown type.
-    if (type.category === TypeCategory.Union) {
+    if (isUnion(type)) {
         return (
             findSubtype(type, (subtype) =>
                 isPartlyUnknown(subtype, allowUnknownTypeArgsForClasses, recursionCount + 1)
@@ -1366,12 +1407,6 @@ export function isPartlyUnknown(type: Type, allowUnknownTypeArgsForClasses = fal
 
     if (isClass(type)) {
         if (type.typeArguments && !allowUnknownTypeArgsForClasses && !ClassType.isPseudoGenericClass(type)) {
-            // Handle the 'type' class specially because it's sometimes
-            // treated as generic and sometimes not.
-            if (ClassType.isBuiltIn(type, 'type') && !type.isTypeArgumentExplicit) {
-                return false;
-            }
-
             for (const argType of type.typeArguments) {
                 if (isPartlyUnknown(argType, allowUnknownTypeArgsForClasses, recursionCount + 1)) {
                     return true;
@@ -1383,13 +1418,13 @@ export function isPartlyUnknown(type: Type, allowUnknownTypeArgsForClasses = fal
     }
 
     // See if a function has an unknown type.
-    if (type.category === TypeCategory.OverloadedFunction) {
+    if (isOverloadedFunction(type)) {
         return type.overloads.some((overload) => {
             return isPartlyUnknown(overload, false, recursionCount + 1);
         });
     }
 
-    if (type.category === TypeCategory.Function) {
+    if (isFunction(type)) {
         for (let i = 0; i < type.details.parameters.length; i++) {
             // Ignore parameters such as "*" that have no name.
             if (type.details.parameters[i].name) {
@@ -1459,7 +1494,8 @@ export function _transformTypeVars(
             if (requiresUpdate) {
                 return TypeBase.cloneForTypeAlias(
                     type,
-                    type.typeAliasInfo.aliasName,
+                    type.typeAliasInfo.name,
+                    type.typeAliasInfo.fullName,
                     type.typeAliasInfo.typeVarScopeId,
                     type.typeAliasInfo.typeParameters,
                     typeArgs
@@ -1473,7 +1509,7 @@ export function _transformTypeVars(
 
         // Recursively transform the results, but ensure that we don't replace the
         // same type variable recursively by setting it in the recursionMap.
-        const typeVarName = TypeVarType.getScopeName(type);
+        const typeVarName = TypeVarType.getNameWithScope(type);
         if (!recursionMap.has(typeVarName)) {
             replacementType = callbacks.transformTypeVar(type);
 
@@ -1493,9 +1529,31 @@ export function _transformTypeVars(
         return replacementType;
     }
 
-    if (type.category === TypeCategory.Union) {
+    if (isUnion(type)) {
         return mapSubtypes(type, (subtype) => {
-            return _transformTypeVars(subtype, callbacks, recursionMap, recursionLevel + 1);
+            let transformedType = _transformTypeVars(subtype, callbacks, recursionMap, recursionLevel + 1);
+
+            // If we're transforming a variadic type variable within a union,
+            // combine the individual types within the variadic type variable.
+            if (isVariadicTypeVar(subtype) && !isVariadicTypeVar(transformedType)) {
+                const subtypesToCombine: Type[] = [];
+                doForEachSubtype(transformedType, (transformedSubtype) => {
+                    if (
+                        isObject(transformedSubtype) &&
+                        isTupleClass(transformedSubtype.classType) &&
+                        transformedSubtype.classType.tupleTypeArguments &&
+                        transformedSubtype.classType.isTupleForUnpackedVariadicTypeVar
+                    ) {
+                        subtypesToCombine.push(...transformedSubtype.classType.tupleTypeArguments);
+                    } else {
+                        subtypesToCombine.push(transformedSubtype);
+                    }
+                });
+
+                transformedType = combineTypes(subtypesToCombine);
+            }
+
+            return transformedType;
         });
     }
 
@@ -1503,7 +1561,7 @@ export function _transformTypeVars(
         const classType = _transformTypeVarsInClassType(type.classType, callbacks, recursionMap, recursionLevel + 1);
 
         // Handle the "Type" special class.
-        if (ClassType.isBuiltIn(classType, 'type')) {
+        if (ClassType.isBuiltIn(classType, 'Type')) {
             const typeArgs = classType.typeArguments;
             if (typeArgs && typeArgs.length >= 1) {
                 if (isObject(typeArgs[0])) {
@@ -1529,11 +1587,11 @@ export function _transformTypeVars(
         return _transformTypeVarsInClassType(type, callbacks, recursionMap, recursionLevel + 1);
     }
 
-    if (type.category === TypeCategory.Function) {
+    if (isFunction(type)) {
         return _transformTypeVarsInFunctionType(type, callbacks, recursionMap, recursionLevel + 1);
     }
 
-    if (type.category === TypeCategory.OverloadedFunction) {
+    if (isOverloadedFunction(type)) {
         let requiresUpdate = false;
 
         // Specialize each of the functions in the overload.
@@ -1582,7 +1640,7 @@ function _transformTypeVarsInClassType(
         typeParams.forEach((typeParam) => {
             let replacementType: Type = typeParam;
 
-            const typeParamName = TypeVarType.getScopeName(typeParam);
+            const typeParamName = TypeVarType.getNameWithScope(typeParam);
             if (!recursionMap.has(typeParamName)) {
                 replacementType = callbacks.transformTypeVar(typeParam);
                 if (replacementType !== typeParam) {
@@ -1597,14 +1655,25 @@ function _transformTypeVarsInClassType(
         });
     }
 
-    if (ClassType.isVariadicTypeParam(classType)) {
-        if (classType.variadicTypeArguments) {
-            newVariadicTypeArgs = classType.variadicTypeArguments.map((oldTypeArgType) => {
+    if (ClassType.isTupleClass(classType)) {
+        if (classType.tupleTypeArguments) {
+            newVariadicTypeArgs = [];
+            classType.tupleTypeArguments.forEach((oldTypeArgType) => {
                 const newTypeArgType = _transformTypeVars(oldTypeArgType, callbacks, recursionMap, recursionLevel + 1);
                 if (newTypeArgType !== oldTypeArgType) {
                     specializationNeeded = true;
                 }
-                return newTypeArgType;
+
+                if (
+                    isVariadicTypeVar(oldTypeArgType) &&
+                    isObject(newTypeArgType) &&
+                    isTupleClass(newTypeArgType.classType) &&
+                    newTypeArgType.classType.tupleTypeArguments
+                ) {
+                    newVariadicTypeArgs!.push(...newTypeArgType.classType.tupleTypeArguments);
+                } else {
+                    newVariadicTypeArgs!.push(newTypeArgType);
+                }
             });
         } else if (typeParams.length > 0) {
             newVariadicTypeArgs = callbacks.transformVariadicTypeVar(typeParams[0]);
@@ -1696,7 +1765,12 @@ function _getGeneratorReturnTypeArgs(returnType: Type): Type[] | undefined {
                 return classType.typeArguments;
             }
 
-            if (className === 'Iterator' || className === 'AsyncIterator' || className === 'AsyncIterable') {
+            if (
+                className === 'Iterator' ||
+                className === 'Iterable' ||
+                className === 'AsyncIterator' ||
+                className === 'AsyncIterable'
+            ) {
                 return classType.typeArguments;
             }
         }
@@ -1728,7 +1802,7 @@ export function requiresTypeArguments(classType: ClassType) {
             'Annotated',
             'TypeGuard',
         ];
-        if (specialClasses.some((t) => t === classType.details.name)) {
+        if (specialClasses.some((t) => t === (classType.aliasName || classType.details.name))) {
             return true;
         }
     }

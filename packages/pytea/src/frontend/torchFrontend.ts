@@ -1030,7 +1030,8 @@ export class TorchIRFrontend {
     }
 
     visitIndex(node: IndexNode): ThExpr {
-        const items = node.items.items.map((i) => this.visitExprNode(i));
+        // TODO: handle argumentCategory
+        const items = node.items.map((arg) => this.visitExprNode(arg.valueExpression));
         if (items.length === 0) {
             this.fail(node);
         } else if (items.length >= 2) {

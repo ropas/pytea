@@ -52,7 +52,7 @@ export class NullConsole implements ConsoleInterface {
 
 export class StandardConsole implements ConsoleInterface {
     log(message: string) {
-        console.log(message);
+        console.info(message);
     }
 
     info(message: string) {

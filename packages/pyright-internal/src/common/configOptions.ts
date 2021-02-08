@@ -195,6 +195,9 @@ export interface DiagnosticRuleSet {
     // Report usage of generic class without explicit type arguments?
     reportMissingTypeArgument: DiagnosticLevel;
 
+    // Report improper usage of type variables within function signatures?
+    reportInvalidTypeVarUse: DiagnosticLevel;
+
     // Report usage of function call within default value
     // initialization expression?
     reportCallInDefaultInitializer: DiagnosticLevel;
@@ -233,6 +236,10 @@ export interface DiagnosticRuleSet {
     // Report cases where a call expression's return result is not
     // None and is not used in any way.
     reportUnusedCallResult: DiagnosticLevel;
+
+    // Report cases where a call expression's return result is Coroutine
+    // and is not used in any way.
+    reportUnusedCoroutine: DiagnosticLevel;
 }
 
 export function cloneDiagnosticRuleSet(diagSettings: DiagnosticRuleSet): DiagnosticRuleSet {
@@ -289,6 +296,7 @@ export function getDiagLevelDiagnosticRules() {
         DiagnosticRule.reportUnknownVariableType,
         DiagnosticRule.reportUnknownMemberType,
         DiagnosticRule.reportMissingTypeArgument,
+        DiagnosticRule.reportInvalidTypeVarUse,
         DiagnosticRule.reportCallInDefaultInitializer,
         DiagnosticRule.reportUnnecessaryIsInstance,
         DiagnosticRule.reportUnnecessaryCast,
@@ -300,6 +308,7 @@ export function getDiagLevelDiagnosticRules() {
         DiagnosticRule.reportInvalidStubStatement,
         DiagnosticRule.reportUnsupportedDunderAll,
         DiagnosticRule.reportUnusedCallResult,
+        DiagnosticRule.reportUnusedCoroutine,
     ];
 }
 
@@ -353,17 +362,19 @@ export function getOffDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUnknownVariableType: 'none',
         reportUnknownMemberType: 'none',
         reportMissingTypeArgument: 'none',
+        reportInvalidTypeVarUse: 'none',
         reportCallInDefaultInitializer: 'none',
         reportUnnecessaryIsInstance: 'none',
         reportUnnecessaryCast: 'none',
         reportAssertAlwaysTrue: 'none',
         reportSelfClsParameterName: 'none',
         reportImplicitStringConcatenation: 'none',
-        reportUnboundVariable: 'warning',
+        reportUnboundVariable: 'none',
         reportUndefinedVariable: 'warning',
         reportInvalidStubStatement: 'none',
         reportUnsupportedDunderAll: 'none',
         reportUnusedCallResult: 'none',
+        reportUnusedCoroutine: 'none',
     };
 
     return diagSettings;
@@ -413,6 +424,7 @@ export function getBasicDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUnknownVariableType: 'none',
         reportUnknownMemberType: 'none',
         reportMissingTypeArgument: 'none',
+        reportInvalidTypeVarUse: 'warning',
         reportCallInDefaultInitializer: 'none',
         reportUnnecessaryIsInstance: 'none',
         reportUnnecessaryCast: 'none',
@@ -424,6 +436,7 @@ export function getBasicDiagnosticRuleSet(): DiagnosticRuleSet {
         reportInvalidStubStatement: 'none',
         reportUnsupportedDunderAll: 'warning',
         reportUnusedCallResult: 'none',
+        reportUnusedCoroutine: 'error',
     };
 
     return diagSettings;
@@ -473,6 +486,7 @@ export function getStrictDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUnknownVariableType: 'error',
         reportUnknownMemberType: 'error',
         reportMissingTypeArgument: 'error',
+        reportInvalidTypeVarUse: 'error',
         reportCallInDefaultInitializer: 'none',
         reportUnnecessaryIsInstance: 'error',
         reportUnnecessaryCast: 'error',
@@ -484,6 +498,7 @@ export function getStrictDiagnosticRuleSet(): DiagnosticRuleSet {
         reportInvalidStubStatement: 'error',
         reportUnsupportedDunderAll: 'error',
         reportUnusedCallResult: 'none',
+        reportUnusedCoroutine: 'error',
     };
 
     return diagSettings;
@@ -1050,6 +1065,13 @@ export class ConfigOptions {
                 defaultSettings.reportMissingTypeArgument
             ),
 
+            // Read the "reportInvalidTypeVarUse" entry.
+            reportInvalidTypeVarUse: this._convertDiagnosticLevel(
+                configObj.reportInvalidTypeVarUse,
+                DiagnosticRule.reportInvalidTypeVarUse,
+                defaultSettings.reportInvalidTypeVarUse
+            ),
+
             // Read the "reportCallInDefaultInitializer" entry.
             reportCallInDefaultInitializer: this._convertDiagnosticLevel(
                 configObj.reportCallInDefaultInitializer,
@@ -1125,6 +1147,13 @@ export class ConfigOptions {
                 configObj.reportUnusedCallResult,
                 DiagnosticRule.reportUnusedCallResult,
                 defaultSettings.reportUnusedCallResult
+            ),
+
+            // Read the "reportUnusedCoroutine" entry.
+            reportUnusedCoroutine: this._convertDiagnosticLevel(
+                configObj.reportUnusedCoroutine,
+                DiagnosticRule.reportUnusedCoroutine,
+                defaultSettings.reportUnusedCoroutine
             ),
         };
 

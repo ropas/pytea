@@ -10,7 +10,8 @@
 
 import { assert } from '../common/debug';
 import { ParseNode } from '../parser/parseNodes';
-import { Type } from './types';
+import * as ParseTreeUtils from './parseTreeUtils';
+import { isTypeSame, Type } from './types';
 
 // A type cache maps node IDs to types or pseudo-type objects.
 export type TypeCache = Map<number, CachedType | undefined>;
@@ -51,17 +52,30 @@ interface TypeCacheEntry {
 interface SpeculativeContext {
     speculativeRootNode: ParseNode;
     entriesToUndo: TypeCacheEntry[];
+    allowCacheRetention: boolean;
+}
+
+interface SpeculativeTypeEntry {
+    type: Type;
+    expectedType: Type | undefined;
 }
 
 // This class maintains a stack of "speculative type contexts". When
 // a context is popped off the stack, all of the speculative type cache
 // entries that were created within that context are removed from the
 // corresponding type caches because they are no longer valid.
+// Each type context also contains a map of "speculative types" that are
+// contextually evaluated based on an "expected type".
 export class SpeculativeTypeTracker {
     private _speculativeContextStack: SpeculativeContext[] = [];
+    private _speculativeTypeCache = new Map<number, SpeculativeTypeEntry[]>();
 
-    enterSpeculativeContext(speculativeRootNode: ParseNode) {
-        this._speculativeContextStack.push({ speculativeRootNode, entriesToUndo: [] });
+    enterSpeculativeContext(speculativeRootNode: ParseNode, allowCacheRetention: boolean) {
+        this._speculativeContextStack.push({
+            speculativeRootNode,
+            entriesToUndo: [],
+            allowCacheRetention,
+        });
     }
 
     leaveSpeculativeContext() {
@@ -75,19 +89,22 @@ export class SpeculativeTypeTracker {
         });
     }
 
-    isSpeculative() {
-        return this._speculativeContextStack.length > 0;
-    }
-
-    getSpeculativeRootNode() {
-        const stackDepth = this._speculativeContextStack.length;
-        if (stackDepth > 0) {
-            // Return the speculative node associated with the most
-            // recent context pushed onto the stack.
-            return this._speculativeContextStack[stackDepth - 1].speculativeRootNode;
+    isSpeculative(node?: ParseNode) {
+        if (this._speculativeContextStack.length === 0) {
+            return false;
         }
 
-        return undefined;
+        if (!node) {
+            return true;
+        }
+
+        for (let i = this._speculativeContextStack.length - 1; i >= 0; i--) {
+            if (ParseTreeUtils.isNodeContainedWithin(node, this._speculativeContextStack[i].speculativeRootNode)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     trackEntry(cache: TypeCache, id: number) {
@@ -112,6 +129,43 @@ export class SpeculativeTypeTracker {
     enableSpeculativeMode(stack: SpeculativeContext[]) {
         assert(this._speculativeContextStack.length === 0);
         this._speculativeContextStack = stack;
+    }
+
+    addSpeculativeType(node: ParseNode, type: Type, expectedType: Type | undefined) {
+        assert(this._speculativeContextStack.length > 0);
+        if (this._speculativeContextStack.some((context) => !context.allowCacheRetention)) {
+            return;
+        }
+
+        let cacheEntries = this._speculativeTypeCache.get(node.id);
+        if (!cacheEntries) {
+            cacheEntries = [];
+            this._speculativeTypeCache.set(node.id, cacheEntries);
+        }
+        cacheEntries.push({ type, expectedType });
+    }
+
+    getSpeculativeType(node: ParseNode, expectedType: Type | undefined) {
+        if (
+            this._speculativeContextStack.some((context) =>
+                ParseTreeUtils.isNodeContainedWithin(node, context.speculativeRootNode)
+            )
+        ) {
+            const entries = this._speculativeTypeCache.get(node.id);
+            if (entries) {
+                for (const entry of entries) {
+                    if (!expectedType) {
+                        if (!entry.expectedType) {
+                            return entry.type;
+                        }
+                    } else if (entry.expectedType && isTypeSame(expectedType, entry.expectedType)) {
+                        return entry.type;
+                    }
+                }
+            }
+        }
+
+        return undefined;
     }
 }
 

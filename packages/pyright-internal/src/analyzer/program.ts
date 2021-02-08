@@ -31,7 +31,6 @@ import { LogTracker } from '../common/logTracker';
 import {
     combinePaths,
     getDirectoryPath,
-    getFileExtension,
     getFileName,
     getRelativePath,
     makeDirectories,
@@ -51,7 +50,7 @@ import {
     ModuleSymbolMap,
 } from '../languageService/autoImporter';
 import { CallHierarchyProvider } from '../languageService/callHierarchyProvider';
-import { AbbreviationMap, CompletionResults } from '../languageService/completionProvider';
+import { AbbreviationMap, CompletionOptions, CompletionResults } from '../languageService/completionProvider';
 import { IndexOptions, IndexResults, WorkspaceSymbolCallback } from '../languageService/documentSymbolProvider';
 import { HoverResults } from '../languageService/hoverProvider';
 import { ReferenceCallback, ReferencesResult } from '../languageService/referencesProvider';
@@ -68,7 +67,8 @@ import { SourceFile } from './sourceFile';
 import { SourceMapper } from './sourceMapper';
 import { Symbol } from './symbol';
 import { isPrivateOrProtectedName } from './symbolNameUtils';
-import { createTypeEvaluator, TypeEvaluator } from './typeEvaluator';
+import { TypeEvaluator } from './typeEvaluator';
+import { createTypeEvaluatorWithTracker } from './typeEvaluatorWithTracker';
 import { PrintTypeFlags } from './typePrinter';
 import { Type } from './types';
 import { TypeStubWriter } from './typeStubWriter';
@@ -663,7 +663,7 @@ export class Program {
     }
 
     private _createNewEvaluator() {
-        this._evaluator = createTypeEvaluator(this._lookUpImport, {
+        this._evaluator = createTypeEvaluatorWithTracker(this._lookUpImport, {
             disableInferenceForPyTypedSources: this._configOptions.disableInferenceForPyTypedSources,
             printTypeFlags: Program._getPrintTypeFlags(this._configOptions),
         });
@@ -1359,7 +1359,7 @@ export class Program {
         filePath: string,
         position: Position,
         workspacePath: string,
-        format: MarkupKind,
+        options: CompletionOptions,
         nameMap: AbbreviationMap | undefined,
         libraryMap: Map<string, IndexResults> | undefined,
         token: CancellationToken
@@ -1383,7 +1383,7 @@ export class Program {
                         this._importResolver,
                         this._lookUpImport,
                         this._evaluator!,
-                        format,
+                        options,
                         this._createSourceMapper(execEnv, /* mapCompiled */ true),
                         nameMap,
                         libraryMap,
@@ -1423,7 +1423,7 @@ export class Program {
     resolveCompletionItem(
         filePath: string,
         completionItem: CompletionItem,
-        format: MarkupKind,
+        options: CompletionOptions,
         token: CancellationToken
     ) {
         return this._runEvaluatorWithCancellationToken(token, () => {
@@ -1440,7 +1440,7 @@ export class Program {
                 this._importResolver,
                 this._lookUpImport,
                 this._evaluator!,
-                format,
+                options,
                 this._createSourceMapper(execEnv, /* mapCompiled */ true),
                 completionItem,
                 token
@@ -1855,7 +1855,7 @@ export class Program {
 
         let thirdPartyImportAllowed =
             this._configOptions.useLibraryCodeForTypes ||
-            (importResult.importType === ImportType.ThirdParty && !!importResult.isPyTypedPresent) ||
+            (importResult.importType === ImportType.ThirdParty && !!importResult.pyTypedInfo) ||
             (importResult.importType === ImportType.Local && importer.isThirdPartyPyTypedPresent);
 
         if (
@@ -1917,7 +1917,7 @@ export class Program {
 
             if (importResult.importType === ImportType.ThirdParty) {
                 isThirdPartyImport = true;
-                if (importResult.isPyTypedPresent) {
+                if (importResult.pyTypedInfo) {
                     isPyTypedPresent = true;
                 }
             } else if (sourceFileInfo.isThirdPartyImport && importResult.importType === ImportType.Local) {
@@ -2068,10 +2068,6 @@ export class Program {
 
     private _addToSourceFileListAndMap(fileInfo: SourceFileInfo) {
         const filePath = normalizePathCase(this._fs, fileInfo.sourceFile.getFilePath());
-
-        // All source files should be ".pyi" or ".py" files.
-        const fileExtension = getFileExtension(filePath).toLowerCase();
-        assert(fileExtension === '.py' || fileExtension === '.pyi');
 
         // We should never add a file with the same path twice.
         assert(!this._sourceFileMap.has(filePath));

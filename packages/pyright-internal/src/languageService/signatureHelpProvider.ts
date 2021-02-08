@@ -14,6 +14,7 @@ import { CancellationToken, MarkupContent, MarkupKind } from 'vscode-languageser
 import { convertDocStringToMarkdown, convertDocStringToPlainText } from '../analyzer/docStringConversion';
 import { extractParameterDocumentation } from '../analyzer/docStringUtils';
 import * as ParseTreeUtils from '../analyzer/parseTreeUtils';
+import { getCallNodeAndActiveParameterIndex } from '../analyzer/parseTreeUtils';
 import { CallSignature, TypeEvaluator } from '../analyzer/typeEvaluator';
 import { throwIfCancellationRequested } from '../common/cancellationUtils';
 import { convertPositionToOffset } from '../common/positionUtils';
@@ -77,7 +78,16 @@ export class SignatureHelpProvider {
             return undefined;
         }
 
-        const callSignatureInfo = evaluator.getCallSignatureInfo(node, offset, parseResults.tokenizerOutput.tokens);
+        const callInfo = getCallNodeAndActiveParameterIndex(node, offset, parseResults.tokenizerOutput.tokens);
+        if (!callInfo) {
+            return;
+        }
+
+        const callSignatureInfo = evaluator.getCallSignatureInfo(
+            callInfo.callNode,
+            callInfo.activeIndex,
+            callInfo.activeOrFake
+        );
         if (!callSignatureInfo) {
             return undefined;
         }
@@ -101,9 +111,16 @@ export class SignatureHelpProvider {
         const parameters: ParamInfo[] = [];
         const functionDocString = functionType.details.docString;
         let label = '(';
+        const params = functionType.details.parameters;
 
         stringParts[0].forEach((paramString: string, paramIndex) => {
-            const paramName = functionType.details.parameters[paramIndex].name || '';
+            let paramName = '';
+            if (paramIndex < params.length) {
+                paramName = params[paramIndex].name || '';
+            } else if (params.length > 0) {
+                paramName = params[params.length - 1].name || '';
+            }
+
             parameters.push({
                 startOffset: label.length,
                 endOffset: label.length + paramString.length,
@@ -121,7 +138,7 @@ export class SignatureHelpProvider {
 
         let activeParameter: number | undefined;
         if (signature.activeParam) {
-            activeParameter = functionType.details.parameters.indexOf(signature.activeParam);
+            activeParameter = params.indexOf(signature.activeParam);
             if (activeParameter === -1) {
                 activeParameter = undefined;
             }

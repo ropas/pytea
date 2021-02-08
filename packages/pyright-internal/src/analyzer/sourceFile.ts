@@ -33,7 +33,7 @@ import { DocumentRange, getEmptyRange, Position, TextRange } from '../common/tex
 import { TextRangeCollection } from '../common/textRangeCollection';
 import { timingStats } from '../common/timing';
 import { ModuleSymbolMap } from '../languageService/autoImporter';
-import { AbbreviationMap, CompletionResults } from '../languageService/completionProvider';
+import { AbbreviationMap, CompletionOptions, CompletionResults } from '../languageService/completionProvider';
 import { CompletionItemData, CompletionProvider } from '../languageService/completionProvider';
 import { DefinitionProvider } from '../languageService/definitionProvider';
 import { DocumentHighlightProvider } from '../languageService/documentHighlightProvider';
@@ -190,21 +190,22 @@ export class SourceFile {
         this._isThirdPartyPyTypedPresent = isThirdPartyPyTypedPresent;
         const fileName = getFileName(filePath);
         this._isTypingStubFile =
-            this._isStubFile && (fileName === 'typing.pyi' || fileName === 'typing_extensions.pyi');
+            this._isStubFile &&
+            (this._filePath.endsWith(normalizeSlashes('stdlib/typing.pyi')) || fileName === 'typing_extensions.pyi');
         this._isTypingExtensionsStubFile = this._isStubFile && fileName === 'typing_extensions.pyi';
 
         this._isBuiltInStubFile = false;
         if (this._isStubFile) {
             if (
-                this._filePath.endsWith(normalizeSlashes('/collections/__init__.pyi')) ||
-                this._filePath.endsWith(normalizeSlashes('/asyncio/futures.pyi')) ||
-                fileName === 'builtins.pyi' ||
-                fileName === '_importlib_modulespec.pyi' ||
-                fileName === 'dataclasses.pyi' ||
-                fileName === 'abc.pyi' ||
-                fileName === 'enum.pyi' ||
-                fileName === 'queue.pyi' ||
-                fileName === 'types.pyi'
+                this._filePath.endsWith(normalizeSlashes('stdlib/collections/__init__.pyi')) ||
+                this._filePath.endsWith(normalizeSlashes('stdlib/asyncio/futures.pyi')) ||
+                this._filePath.endsWith(normalizeSlashes('stdlib/builtins.pyi')) ||
+                this._filePath.endsWith(normalizeSlashes('stdlib/_importlib_modulespec.pyi')) ||
+                this._filePath.endsWith(normalizeSlashes('stdlib/dataclasses.pyi')) ||
+                this._filePath.endsWith(normalizeSlashes('stdlib/abc.pyi')) ||
+                this._filePath.endsWith(normalizeSlashes('stdlib/enum.pyi')) ||
+                this._filePath.endsWith(normalizeSlashes('stdlib/queue.pyi')) ||
+                this._filePath.endsWith(normalizeSlashes('stdlib/types.pyi'))
             ) {
                 this._isBuiltInStubFile = true;
             }
@@ -512,7 +513,8 @@ export class SourceFile {
             let fileContents = this.getFileContents();
             if (fileContents === undefined) {
                 try {
-                    const elapsedTime = timingStats.readFileTime.timeOperation(() => {
+                    const startTime = timingStats.readFileTime.totalTime;
+                    timingStats.readFileTime.timeOperation(() => {
                         // Read the file's contents.
                         fileContents = content ?? this.fileSystem.readFileSync(this._filePath, 'utf8');
 
@@ -520,7 +522,7 @@ export class SourceFile {
                         this._lastFileContentLength = fileContents.length;
                         this._lastFileContentHash = StringUtils.hashString(fileContents);
                     });
-                    logState.add(`fs read ${elapsedTime}ms`);
+                    logState.add(`fs read ${timingStats.readFileTime.totalTime - startTime}ms`);
                 } catch (error) {
                     diagSink.addError(`Source file could not be read`, getEmptyRange());
                     fileContents = '';
@@ -795,7 +797,7 @@ export class SourceFile {
         importResolver: ImportResolver,
         importLookup: ImportLookup,
         evaluator: TypeEvaluator,
-        format: MarkupKind,
+        options: CompletionOptions,
         sourceMapper: SourceMapper,
         nameMap: AbbreviationMap | undefined,
         libraryMap: Map<string, IndexResults> | undefined,
@@ -824,7 +826,7 @@ export class SourceFile {
             configOptions,
             importLookup,
             evaluator,
-            format,
+            options,
             sourceMapper,
             {
                 nameMap,
@@ -842,7 +844,7 @@ export class SourceFile {
         importResolver: ImportResolver,
         importLookup: ImportLookup,
         evaluator: TypeEvaluator,
-        format: MarkupKind,
+        options: CompletionOptions,
         sourceMapper: SourceMapper,
         completionItem: CompletionItem,
         token: CancellationToken
@@ -863,7 +865,7 @@ export class SourceFile {
             configOptions,
             importLookup,
             evaluator,
-            format,
+            options,
             sourceMapper,
             undefined,
             token

@@ -94,7 +94,8 @@ export const maxTypeRecursionCount = 16;
 export type InheritanceChain = (ClassType | UnknownType)[];
 
 interface TypeAliasInfo {
-    aliasName: string;
+    name: string;
+    fullName: string;
     typeParameters?: TypeVarType[];
     typeArguments?: Type[];
     typeVarScopeId: TypeVarScopeId;
@@ -118,6 +119,7 @@ export namespace TypeBase {
     export function cloneForTypeAlias(
         type: Type,
         name: string,
+        fullName: string,
         typeVarScopeId: TypeVarScopeId,
         typeParams?: TypeVarType[],
         typeArgs?: Type[]
@@ -125,7 +127,8 @@ export namespace TypeBase {
         const typeClone = { ...type };
 
         typeClone.typeAliasInfo = {
-            aliasName: name,
+            name,
+            fullName,
             typeParameters: typeParams,
             typeArguments: typeArgs,
             typeVarScopeId,
@@ -299,10 +302,9 @@ export const enum ClassTypeFlags {
     // semantics.
     HasCustomClassGetItem = 1 << 18,
 
-    // This class uses a variadic type arguments, so the number of
-    // arguments is variable. Currently, the only class that supports
-    // this is tuple.
-    VariadicTypeParameter = 1 << 19,
+    // The tuple class uses a variadic type parameter and requires
+    // special-case handling of its type arguments.
+    TupleClass = 1 << 19,
 
     // The class has a metaclass of EnumMet or derives from
     // a class that has this metaclass.
@@ -337,11 +339,16 @@ export interface ClassType extends TypeBase {
     // some or all of the type parameters.
     typeArguments?: Type[];
 
-    // For a few classes (e.g., tuple), the class definition calls for a single
-    // type parameter but the spec allows the programmer to provide variadic
-    // type arguments. To make these compatible, we need to derive a single
-    // typeArgument value based on the variadic arguments.
-    variadicTypeArguments?: Type[];
+    // For tuples, the class definition calls for a single type parameter but
+    // the spec allows the programmer to provide variadic type arguments.
+    // To make these compatible, we need to derive a single typeArgument value
+    // based on the variadic arguments.
+    tupleTypeArguments?: Type[];
+
+    // We sometimes package multiple types into a tuple internally
+    // for matching against a variadic type variable. We need to be
+    // able to distinguish this case from normal tuples.
+    isTupleForUnpackedVariadicTypeVar?: boolean;
 
     // If type arguments are present, were they explicit (i.e.
     // provided explicitly in the code)?
@@ -398,7 +405,7 @@ export namespace ClassType {
         typeArguments: Type[] | undefined,
         isTypeArgumentExplicit: boolean,
         skipAbstractClassTest = false,
-        variadicTypeArguments?: Type[]
+        tupleTypeArguments?: Type[]
     ): ClassType {
         const newClassType = { ...classType };
 
@@ -409,8 +416,8 @@ export namespace ClassType {
 
         newClassType.isTypeArgumentExplicit = isTypeArgumentExplicit;
         newClassType.skipAbstractClassTest = skipAbstractClassTest;
-        newClassType.variadicTypeArguments = variadicTypeArguments
-            ? variadicTypeArguments.map((t) => (isNever(t) ? UnknownType.create() : t))
+        newClassType.tupleTypeArguments = tupleTypeArguments
+            ? tupleTypeArguments.map((t) => (isNever(t) ? UnknownType.create() : t))
             : undefined;
 
         return newClassType;
@@ -551,8 +558,8 @@ export namespace ClassType {
         return !!(classType.details.flags & ClassTypeFlags.HasCustomClassGetItem);
     }
 
-    export function isVariadicTypeParam(classType: ClassType) {
-        return !!(classType.details.flags & ClassTypeFlags.VariadicTypeParameter);
+    export function isTupleClass(classType: ClassType) {
+        return !!(classType.details.flags & ClassTypeFlags.TupleClass);
     }
 
     export function getTypeParameters(classType: ClassType) {
@@ -623,33 +630,6 @@ export namespace ClassType {
 
         for (let i = 0; i < class1Details.typeParameters.length; i++) {
             if (!isTypeSame(class1Details.typeParameters[i], class2Details.typeParameters[i], recursionCount + 1)) {
-                return false;
-            }
-        }
-
-        // If the two types don't have the same symbol table, they are probably
-        // using synthesized (undeclared) symbols. Make sure that they contain the
-        // same number of symbols and types.
-        if (class1Details.fields !== class2Details.fields) {
-            if (class1Details.fields.size !== class2Details.fields.size) {
-                return false;
-            }
-
-            let symbolsMatch = true;
-            class1Details.fields.forEach((symbol1, name) => {
-                const symbol2 = class2Details.fields.get(name);
-                if (!symbol2) {
-                    symbolsMatch = false;
-                } else {
-                    const symbol1Type = symbol1.getSynthesizedType() || UnknownType.create();
-                    const symbol2Type = symbol2.getSynthesizedType() || UnknownType.create();
-                    if (!isTypeSame(symbol1Type, symbol2Type, recursionCount + 1)) {
-                        symbolsMatch = false;
-                    }
-                }
-            });
-
-            if (!symbolsMatch) {
                 return false;
             }
         }
@@ -731,6 +711,7 @@ export interface FunctionParameter {
     defaultValueExpression?: ExpressionNode;
     defaultType?: Type;
     hasDeclaredType?: boolean;
+    typeAnnotation?: ExpressionNode;
     type: Type;
 }
 
@@ -796,6 +777,7 @@ export const enum FunctionTypeFlags {
 
 interface FunctionDetails {
     name: string;
+    fullName: string;
     moduleName: string;
     flags: FunctionTypeFlags;
     parameters: FunctionParameter[];
@@ -832,6 +814,11 @@ export interface FunctionType extends TypeBase {
     // (specialized) type of that stripped parameter.
     strippedFirstParamType?: Type;
 
+    // If this is a bound function where the first parameter
+    // was stripped from the original unbound function,
+    // the class or object to which the function was bound.
+    boundToType?: ClassType | ObjectType;
+
     // The type var scope for the class that the function was bound to
     boundTypeVarScopeId?: TypeVarScopeId;
 }
@@ -839,30 +826,34 @@ export interface FunctionType extends TypeBase {
 export interface ParamSpecEntry {
     category: ParameterCategory;
     name?: string;
+    hasDefault: boolean;
     type: Type;
 }
 
 export namespace FunctionType {
     export function createInstance(
         name: string,
+        fullName: string,
         moduleName: string,
         functionFlags: FunctionTypeFlags,
         docString?: string
     ) {
-        return create(name, moduleName, functionFlags, TypeFlags.Instance, docString);
+        return create(name, fullName, moduleName, functionFlags, TypeFlags.Instance, docString);
     }
 
     export function createInstantiable(
         name: string,
+        fullName: string,
         moduleName: string,
         functionFlags: FunctionTypeFlags,
         docString?: string
     ) {
-        return create(name, moduleName, functionFlags, TypeFlags.Instantiable, docString);
+        return create(name, fullName, moduleName, functionFlags, TypeFlags.Instantiable, docString);
     }
 
     function create(
         name: string,
+        fullName: string,
         moduleName: string,
         functionFlags: FunctionTypeFlags,
         typeFlags: TypeFlags,
@@ -872,6 +863,7 @@ export namespace FunctionType {
             category: TypeCategory.Function,
             details: {
                 name,
+                fullName,
                 moduleName,
                 flags: functionFlags,
                 parameters: [],
@@ -887,10 +879,12 @@ export namespace FunctionType {
     export function clone(
         type: FunctionType,
         stripFirstParam = false,
+        boundToType?: ClassType | ObjectType,
         boundTypeVarScopeId?: TypeVarScopeId
     ): FunctionType {
         const newFunction = create(
             type.details.name,
+            type.details.fullName,
             type.details.moduleName,
             type.details.flags,
             type.flags,
@@ -904,12 +898,17 @@ export namespace FunctionType {
                 type.details.parameters.length > 0 &&
                 type.details.parameters[0].category === ParameterCategory.Simple
             ) {
-                // Stash away the effective type of the first parameter.
-                newFunction.strippedFirstParamType = getEffectiveParameterType(type, 0);
+                if (type.details.parameters.length > 0 && !type.details.parameters[0].isTypeInferred) {
+                    // Stash away the effective type of the first parameter if it
+                    // wasn't synthesized.
+                    newFunction.strippedFirstParamType = getEffectiveParameterType(type, 0);
+                }
                 newFunction.details.parameters = type.details.parameters.slice(1);
             } else {
                 stripFirstParam = false;
             }
+
+            newFunction.boundToType = boundToType;
 
             // If we strip off the first parameter, this is no longer an
             // instance method or class method.
@@ -962,6 +961,7 @@ export namespace FunctionType {
     ): FunctionType {
         const newFunction = create(
             type.details.name,
+            type.details.fullName,
             type.details.moduleName,
             type.details.flags,
             type.flags,
@@ -983,6 +983,7 @@ export namespace FunctionType {
     export function cloneForParamSpec(type: FunctionType, paramTypes: ParamSpecEntry[] | undefined) {
         const newFunction = create(
             type.details.name,
+            type.details.fullName,
             type.details.moduleName,
             type.details.flags,
             type.flags,
@@ -997,15 +998,19 @@ export namespace FunctionType {
         delete newFunction.details.paramSpec;
 
         if (paramTypes) {
-            newFunction.details.parameters = paramTypes.map((specEntry, index) => {
-                return {
-                    category: specEntry.category,
-                    name: specEntry.name,
-                    isNameSynthesized: false,
-                    hasDeclaredType: true,
-                    type: specEntry.type,
-                };
-            });
+            newFunction.details.parameters = [
+                ...type.details.parameters,
+                ...paramTypes.map((specEntry) => {
+                    return {
+                        category: specEntry.category,
+                        name: specEntry.name,
+                        hasDefault: specEntry.hasDefault,
+                        isNameSynthesized: false,
+                        hasDeclaredType: true,
+                        type: specEntry.type,
+                    };
+                }),
+            ];
         }
 
         return newFunction;
@@ -1392,9 +1397,11 @@ export interface TypeVarDetails {
     boundType?: Type;
     variance: Variance;
     isParamSpec: boolean;
+    isVariadic: boolean;
 
     // Internally created (e.g. for pseudo-generic classes)
     isSynthesized: boolean;
+    isSynthesizedSelfCls?: boolean;
     synthesizedIndex?: number;
 
     // Used for recursive type aliases.
@@ -1409,21 +1416,28 @@ export interface TypeVarType extends TypeBase {
     category: TypeCategory.TypeVar;
     details: TypeVarDetails;
 
-    // An ID that uniquely identifies the scope in which this TypeVar is
-    // defined.
+    // An ID that uniquely identifies the scope in which this TypeVar is defined.
     scopeId?: TypeVarScopeId;
 
-    // String formatted as <name>.<scopeId>.
+    // A human-readable name of the function, class, or type alias that
+    // provides the scope for this type variable. This might not be unique,
+    // so it should be used only for error messages.
     scopeName?: string;
+
+    // String formatted as <name>.<scopeId>.
+    nameWithScope?: string;
+
+    // Is this variadic TypeVar unpacked (i.e. Unpack or * operator applied)?
+    isVariadicUnpacked?: boolean;
 }
 
 export namespace TypeVarType {
-    export function createInstance(name: string, isParamSpec: boolean, isSynthesized = false) {
-        return create(name, isParamSpec, isSynthesized, TypeFlags.Instance);
+    export function createInstance(name: string) {
+        return create(name, /* isParamSpec */ false, TypeFlags.Instance);
     }
 
-    export function createInstantiable(name: string, isParamSpec: boolean, isSynthesized = false) {
-        return create(name, isParamSpec, isSynthesized, TypeFlags.Instantiable);
+    export function createInstantiable(name: string, isParamSpec = false) {
+        return create(name, isParamSpec, TypeFlags.Instantiable);
     }
 
     export function cloneAsInstance(type: TypeVarType) {
@@ -1442,18 +1456,33 @@ export namespace TypeVarType {
         return newInstance;
     }
 
-    export function cloneForScopeId(type: TypeVarType, scopeId: string) {
+    export function cloneForScopeId(type: TypeVarType, scopeId: string, scopeName: string) {
         const newInstance: TypeVarType = { ...type };
-        newInstance.scopeName = makeScopeName(type.details.name, scopeId);
+        newInstance.nameWithScope = makeNameWithScope(type.details.name, scopeId);
         newInstance.scopeId = scopeId;
+        newInstance.scopeName = scopeName;
         return newInstance;
     }
 
-    export function makeScopeName(name: string, scopeId: string) {
+    export function cloneForUnpacked(type: TypeVarType) {
+        assert(type.details.isVariadic);
+        const newInstance: TypeVarType = { ...type };
+        newInstance.isVariadicUnpacked = true;
+        return newInstance;
+    }
+
+    export function cloneForPacked(type: TypeVarType) {
+        assert(type.details.isVariadic);
+        const newInstance: TypeVarType = { ...type };
+        newInstance.isVariadicUnpacked = false;
+        return newInstance;
+    }
+
+    export function makeNameWithScope(name: string, scopeId: string) {
         return `${name}.${scopeId}`;
     }
 
-    function create(name: string, isParamSpec: boolean, isSynthesized: boolean, typeFlags: TypeFlags) {
+    function create(name: string, isParamSpec: boolean, typeFlags: TypeFlags) {
         const newTypeVarType: TypeVarType = {
             category: TypeCategory.TypeVar,
             details: {
@@ -1461,7 +1490,8 @@ export namespace TypeVarType {
                 constraints: [],
                 variance: Variance.Invariant,
                 isParamSpec,
-                isSynthesized,
+                isVariadic: false,
+                isSynthesized: false,
             },
             flags: typeFlags,
         };
@@ -1472,8 +1502,17 @@ export namespace TypeVarType {
         typeVarType.details.constraints.push(constraintType);
     }
 
-    export function getScopeName(typeVarType: TypeVarType) {
-        return typeVarType.scopeName || typeVarType.details.name;
+    export function getNameWithScope(typeVarType: TypeVarType) {
+        // If there is no name with scope, fall back on the (unscoped) name.
+        return typeVarType.nameWithScope || typeVarType.details.name;
+    }
+
+    export function getReadableName(typeVarType: TypeVarType) {
+        if (typeVarType.scopeName) {
+            return `${typeVarType.details.name}@${typeVarType.scopeName}`;
+        }
+
+        return typeVarType.details.name;
     }
 }
 
@@ -1485,6 +1524,10 @@ export function isNone(type: Type): type is NoneType {
     return type.category === TypeCategory.None;
 }
 
+export function isAny(type: Type): type is AnyType {
+    return type.category === TypeCategory.Any;
+}
+
 export function isUnknown(type: Type): type is UnknownType {
     return type.category === TypeCategory.Unknown;
 }
@@ -1494,7 +1537,7 @@ export function isAnyOrUnknown(type: Type): type is AnyType | UnknownType {
         return true;
     }
 
-    if (type.category === TypeCategory.Union) {
+    if (isUnion(type)) {
         return type.subtypes.find((subtype) => !isAnyOrUnknown(subtype)) === undefined;
     }
 
@@ -1505,12 +1548,16 @@ export function isUnbound(type: Type): type is UnboundType {
     return type.category === TypeCategory.Unbound;
 }
 
+export function isUnion(type: Type): type is UnionType {
+    return type.category === TypeCategory.Union;
+}
+
 export function isPossiblyUnbound(type: Type): boolean {
-    if (type.category === TypeCategory.Unbound) {
+    if (isUnbound(type)) {
         return true;
     }
 
-    if (type.category === TypeCategory.Union) {
+    if (isUnion(type)) {
         return type.subtypes.find((subtype) => isPossiblyUnbound(subtype)) !== undefined;
     }
 
@@ -1531,6 +1578,21 @@ export function isModule(type: Type): type is ModuleType {
 
 export function isTypeVar(type: Type): type is TypeVarType {
     return type.category === TypeCategory.TypeVar;
+}
+
+export function isVariadicTypeVar(type: Type): type is TypeVarType {
+    return type.category === TypeCategory.TypeVar && type.details.isVariadic;
+}
+
+export function isUnpackedVariadicTypeVar(type: Type): boolean {
+    if (isUnion(type) && type.subtypes.length === 1) {
+        type = type.subtypes[0];
+    }
+    return type.category === TypeCategory.TypeVar && type.details.isVariadic && !!type.isVariadicUnpacked;
+}
+
+export function isParamSpec(type: Type): type is TypeVarType {
+    return type.category === TypeCategory.TypeVar && type.details.isParamSpec;
 }
 
 export function isFunction(type: Type): type is FunctionType {
@@ -1591,13 +1653,13 @@ export function isTypeSame(type1: Type, type2: Type, recursionCount = 0): boolea
                 }
             }
 
-            const type1VariadicTypeArgs = type1.variadicTypeArguments || [];
-            const type2VariadicTypeArgs = classType2.variadicTypeArguments || [];
-            if (type1VariadicTypeArgs.length !== type2VariadicTypeArgs.length) {
+            const type1TupleTypeArgs = type1.tupleTypeArguments || [];
+            const type2TupleTypeArgs = classType2.tupleTypeArguments || [];
+            if (type1TupleTypeArgs.length !== type2TupleTypeArgs.length) {
                 return false;
             }
-            for (let i = 0; i < type1VariadicTypeArgs.length; i++) {
-                if (!isTypeSame(type1VariadicTypeArgs[i], type2VariadicTypeArgs[i], recursionCount + 1)) {
+            for (let i = 0; i < type1TupleTypeArgs.length; i++) {
+                if (!isTypeSame(type1TupleTypeArgs[i], type2TupleTypeArgs[i], recursionCount + 1)) {
                     return false;
                 }
             }
@@ -1782,13 +1844,13 @@ export function removeAnyFromUnion(type: Type): Type {
 // If the type is a union, remove an "unknown" type from the union,
 // returning only the known types.
 export function removeUnknownFromUnion(type: Type): Type {
-    return removeFromUnion(type, (t: Type) => t.category === TypeCategory.Unknown);
+    return removeFromUnion(type, (t: Type) => isUnknown(t));
 }
 
 // If the type is a union, remove an "unbound" type from the union,
 // returning only the known types.
 export function removeUnbound(type: Type): Type {
-    if (type.category === TypeCategory.Union) {
+    if (isUnion(type)) {
         return removeFromUnion(type, (t: Type) => isUnbound(t));
     }
 
@@ -1802,11 +1864,11 @@ export function removeUnbound(type: Type): Type {
 // If the type is a union, remove an "None" type from the union,
 // returning only the known types.
 export function removeNoneFromUnion(type: Type): Type {
-    return removeFromUnion(type, (t: Type) => t.category === TypeCategory.None);
+    return removeFromUnion(type, (t: Type) => isNone(t));
 }
 
 export function removeFromUnion(type: Type, removeFilter: (type: Type, constraints: SubtypeConstraints) => boolean) {
-    if (type.category === TypeCategory.Union) {
+    if (isUnion(type)) {
         const remainingTypes: ConstrainedSubtype[] = [];
         type.subtypes.forEach((subtype, index) => {
             const constraints = type.constraints ? type.constraints[index] : undefined;
@@ -1826,7 +1888,7 @@ export function findSubtype(
     type: Type,
     filter: (type: UnionableType | NeverType, constraints: SubtypeConstraints) => boolean
 ) {
-    if (type.category === TypeCategory.Union) {
+    if (isUnion(type)) {
         return type.subtypes.find((subtype, index) => {
             return filter(subtype, type.constraints ? type.constraints[index] : undefined);
         });
@@ -1872,14 +1934,14 @@ export function combineConstrainedTypes(subtypes: ConstrainedSubtype[], maxSubty
     }
 
     // Handle the common case where there is only one type.
-    if (subtypes.length === 1 && !subtypes[0].constraints) {
+    if (subtypes.length === 1 && !subtypes[0].constraints && !isUnpackedVariadicTypeVar(subtypes[0].type)) {
         return subtypes[0].type;
     }
 
     // Expand all union types.
     let expandedTypes: ConstrainedSubtype[] = [];
     for (const constrainedType of subtypes) {
-        if (constrainedType.type.category === TypeCategory.Union) {
+        if (isUnion(constrainedType.type)) {
             const unionType = constrainedType.type;
             unionType.subtypes.forEach((subtype, index) => {
                 expandedTypes.push({
@@ -1938,8 +2000,13 @@ export function combineConstrainedTypes(subtypes: ConstrainedSubtype[], maxSubty
         return AnyType.create();
     }
 
-    // If only one type remains, convert it from a union to a simple type.
-    if (newUnionType.subtypes.length === 1) {
+    // If only one type remains and there are no constraints and no variadic
+    // type var, convert it from a union to a simple type.
+    if (
+        newUnionType.subtypes.length === 1 &&
+        !newUnionType.constraints &&
+        !isUnpackedVariadicTypeVar(newUnionType.subtypes[0])
+    ) {
         return newUnionType.subtypes[0];
     }
 

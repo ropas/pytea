@@ -13,6 +13,7 @@ import {
     CompletionItem,
     CompletionItemKind,
     CompletionList,
+    InsertTextFormat,
     MarkupKind,
     Range,
     TextEdit,
@@ -24,6 +25,7 @@ import { Declaration, DeclarationType, FunctionDeclaration } from '../analyzer/d
 import { convertDocStringToMarkdown, convertDocStringToPlainText } from '../analyzer/docStringConversion';
 import { ImportedModuleDescriptor, ImportResolver } from '../analyzer/importResolver';
 import * as ParseTreeUtils from '../analyzer/parseTreeUtils';
+import { getCallNodeAndActiveParameterIndex } from '../analyzer/parseTreeUtils';
 import { SourceMapper } from '../analyzer/sourceMapper';
 import { Symbol, SymbolTable } from '../analyzer/symbol';
 import * as SymbolNameUtils from '../analyzer/symbolNameUtils';
@@ -31,6 +33,7 @@ import { getLastTypedDeclaredForSymbol } from '../analyzer/symbolUtils';
 import {
     getClassDocString,
     getFunctionDocStringFromDeclaration,
+    getFunctionDocStringFromDeclarations,
     getFunctionDocStringFromType,
     getModuleDocString,
     getOverloadedFunctionDocStrings,
@@ -45,6 +48,7 @@ import {
     isModule,
     isNone,
     isObject,
+    isOverloadedFunction,
     isUnbound,
     isUnknown,
     ObjectType,
@@ -204,6 +208,11 @@ export interface CompletionResults {
     memberAccessInfo?: MemberAccessInfo;
 }
 
+export interface CompletionOptions {
+    format: MarkupKind;
+    snippet: boolean;
+}
+
 export type AbbreviationMap = Map<string, AbbreviationInfo>;
 
 export interface AutoImportMaps {
@@ -218,6 +227,7 @@ interface RecentCompletionInfo {
 }
 
 interface Edits {
+    format?: InsertTextFormat;
     textEdit?: TextEdit;
     additionalTextEdits?: TextEditAction[];
 }
@@ -262,7 +272,7 @@ export class CompletionProvider {
         private _configOptions: ConfigOptions,
         private _importLookup: ImportLookup,
         private _evaluator: TypeEvaluator,
-        private _format: MarkupKind,
+        private _options: CompletionOptions,
         private _sourceMapper: SourceMapper,
         private _autoImportMaps: AutoImportMaps | undefined,
         private _cancellationToken: CancellationToken
@@ -624,9 +634,18 @@ export class CompletionProvider {
             }
 
             case ErrorExpressionCategory.MissingExpression:
-            case ErrorExpressionCategory.MissingIndexOrSlice:
             case ErrorExpressionCategory.MissingDecoratorCallName: {
                 return this._getExpressionCompletions(node, priorWord, priorText, postText);
+            }
+
+            case ErrorExpressionCategory.MissingIndexOrSlice: {
+                let completionResults = this._getStringLiteralCompletions(node, priorWord, priorText, postText);
+
+                if (!completionResults || !completionResults.completionList) {
+                    completionResults = this._getExpressionCompletions(node, priorWord, priorText, postText);
+                }
+
+                return completionResults;
             }
 
             case ErrorExpressionCategory.MissingMemberAccessName: {
@@ -781,7 +800,7 @@ export class CompletionProvider {
                     }
 
                     const methodSignature = this._printMethodSignature(decl.node) + ':';
-                    const methodBody = this._printOverriddenMethodBody(declaredType, decl);
+                    const methodBody = this._printOverriddenMethodBody(classResults.classType, declaredType, decl);
                     const textEdit = this._createReplaceEdits(
                         priorWord,
                         partialName,
@@ -791,7 +810,10 @@ export class CompletionProvider {
                     this._addSymbol(name, symbol, partialName.value, completionList, {
                         // method signature already contains ()
                         funcParensDisabled: true,
-                        edits: { textEdit },
+                        edits: {
+                            format: this._options.snippet ? InsertTextFormat.Snippet : undefined,
+                            textEdit,
+                        },
                     });
                 }
             }
@@ -855,11 +877,20 @@ export class CompletionProvider {
         return methodSignature;
     }
 
-    private _printOverriddenMethodBody(declaredType: FunctionType, decl: FunctionDeclaration) {
+    private _printOverriddenMethodBody(classType: ClassType, declaredType: FunctionType, decl: FunctionDeclaration) {
         let sb = '    ';
 
+        if (
+            classType.details.baseClasses.length === 1 &&
+            classType.details.baseClasses[0].category === TypeCategory.Class &&
+            classType.details.baseClasses[0].details.fullName === 'builtins.object'
+        ) {
+            sb += this._options.snippet ? '${0:pass}' : 'pass';
+            return sb;
+        }
+
         if (decl.node.parameters.length === 0) {
-            sb += 'pass';
+            sb += this._options.snippet ? '${0:pass}' : 'pass';
             return sb;
         }
 
@@ -914,10 +945,7 @@ export class CompletionProvider {
                     getMembersForClass(subtype, symbolTable, /* includeInstanceVars */ false);
                 } else if (isModule(subtype)) {
                     getMembersForModule(subtype, symbolTable);
-                } else if (
-                    subtype.category === TypeCategory.Function ||
-                    subtype.category === TypeCategory.OverloadedFunction
-                ) {
+                } else if (isFunction(subtype) || isOverloadedFunction(subtype)) {
                     const functionClass = this._evaluator.getBuiltInType(leftExprNode, 'function');
                     if (functionClass && isClass(functionClass)) {
                         getMembersForClass(functionClass, symbolTable, /* includeInstanceVars */ true);
@@ -1083,10 +1111,20 @@ export class CompletionProvider {
     ) {
         // If we're within the argument list of a call, add parameter names.
         const offset = convertPositionToOffset(this._position, this._parseResults.tokenizerOutput.lines)!;
-        const signatureInfo = this._evaluator.getCallSignatureInfo(
+        const callInfo = getCallNodeAndActiveParameterIndex(
             parseNode,
             offset,
             this._parseResults.tokenizerOutput.tokens
+        );
+
+        if (!callInfo) {
+            return;
+        }
+
+        const signatureInfo = this._evaluator.getCallSignatureInfo(
+            callInfo.callNode,
+            callInfo.activeIndex,
+            callInfo.activeOrFake
         );
 
         if (signatureInfo) {
@@ -1154,30 +1192,32 @@ export class CompletionProvider {
     }
 
     private _getStringLiteralCompletions(
-        parseNode: StringNode,
+        parseNode: StringNode | ErrorNode,
         priorWord: string,
         priorText: string,
         postText: string
     ): CompletionResults | undefined {
         let parentNode: ParseNode | undefined = parseNode.parent;
-        if (!parentNode || parentNode.nodeType !== ParseNodeType.StringList || parentNode.strings.length > 1) {
-            return undefined;
-        }
 
-        parentNode = parentNode.parent;
         if (!parentNode) {
             return undefined;
         }
 
-        const completionList = CompletionList.create();
-
-        if (parentNode.nodeType === ParseNodeType.IndexItems) {
-            parentNode = parentNode.parent;
-            if (!parentNode || parentNode.nodeType !== ParseNodeType.Index) {
+        if (parentNode.nodeType !== ParseNodeType.Argument) {
+            if (parentNode.nodeType !== ParseNodeType.StringList || parentNode.strings.length > 1) {
                 return undefined;
             }
 
-            const baseType = this._evaluator.getType(parentNode.baseExpression);
+            parentNode = parentNode.parent;
+            if (!parentNode) {
+                return undefined;
+            }
+        }
+
+        const completionList = CompletionList.create();
+
+        if (parentNode.nodeType === ParseNodeType.Argument && parentNode.parent?.nodeType === ParseNodeType.Index) {
+            const baseType = this._evaluator.getType(parentNode.parent.baseExpression);
             if (!baseType || !isObject(baseType)) {
                 return undefined;
             }
@@ -1242,16 +1282,11 @@ export class CompletionProvider {
     }
 
     private _getIndexStringLiteral(parseNode: ErrorNode, completionList: CompletionList) {
-        if (!parseNode.parent || parseNode.parent.nodeType !== ParseNodeType.IndexItems) {
+        if (!parseNode.parent || parseNode.parent.nodeType !== ParseNodeType.Index) {
             return;
         }
 
-        const parentNode = parseNode.parent;
-        if (!parentNode.parent || parentNode.parent.nodeType !== ParseNodeType.Index) {
-            return;
-        }
-
-        const baseType = this._evaluator.getType(parentNode.parent.baseExpression);
+        const baseType = this._evaluator.getType(parseNode.parent.baseExpression);
         if (!baseType || !isObject(baseType)) {
             return;
         }
@@ -1285,7 +1320,7 @@ export class CompletionProvider {
             const valueWithQuotes = `${quoteCharacter}${value}${quoteCharacter}`;
             const completionItem = CompletionItem.create(valueWithQuotes);
 
-            completionItem.kind = CompletionItemKind.Text;
+            completionItem.kind = CompletionItemKind.Constant;
             completionItem.sortText = this._makeSortText(SortCategory.LiteralValue, valueWithQuotes);
             let rangeStartCol = this._position.character;
             if (priorString !== undefined) {
@@ -1589,7 +1624,7 @@ export class CompletionProvider {
                                     if (type && TypeBase.isInstantiable(type)) {
                                         const typeAliasInfo = getTypeAliasInfo(type);
                                         if (typeAliasInfo) {
-                                            if (typeAliasInfo.aliasName === name) {
+                                            if (typeAliasInfo.name === name) {
                                                 expandTypeAlias = true;
                                             }
                                         }
@@ -1597,6 +1632,7 @@ export class CompletionProvider {
                                     typeDetail = name + ': ' + this._evaluator.printType(type, expandTypeAlias);
                                     break;
                                 }
+
                                 case DeclarationType.Function: {
                                     const functionType =
                                         detail.boundObject && isFunction(type)
@@ -1614,7 +1650,7 @@ export class CompletionProvider {
                                                 ': ' +
                                                 this._evaluator.printType(propertyType, /* expandTypeAlias */ false) +
                                                 ' (property)';
-                                        } else if (functionType.category === TypeCategory.OverloadedFunction) {
+                                        } else if (isOverloadedFunction(functionType)) {
                                             typeDetail = functionType.overloads
                                                 .map(
                                                     (overload) =>
@@ -1631,6 +1667,7 @@ export class CompletionProvider {
                                     }
                                     break;
                                 }
+
                                 case DeclarationType.Class:
                                 case DeclarationType.SpecialBuiltInClass: {
                                     typeDetail = 'class ' + name + '()';
@@ -1658,9 +1695,9 @@ export class CompletionProvider {
                                 documentation = getModuleDocString(type, primaryDecl, this._sourceMapper);
                             } else if (isClass(type)) {
                                 documentation = getClassDocString(type, primaryDecl, this._sourceMapper);
-                            } else if (type.category === TypeCategory.Function) {
+                            } else if (isFunction(type)) {
                                 documentation = getFunctionDocStringFromType(type, this._sourceMapper);
-                            } else if (type.category === TypeCategory.OverloadedFunction) {
+                            } else if (isOverloadedFunction(type)) {
                                 documentation = getOverloadedFunctionDocStrings(
                                     type,
                                     primaryDecl,
@@ -1669,9 +1706,16 @@ export class CompletionProvider {
                             } else if (primaryDecl.type === DeclarationType.Function) {
                                 // @property functions
                                 documentation = getFunctionDocStringFromDeclaration(primaryDecl, this._sourceMapper);
+                                if (documentation === undefined) {
+                                    // if the setter was undocumented check the getter
+                                    documentation = getFunctionDocStringFromDeclarations(
+                                        symbol.getDeclarations(),
+                                        this._sourceMapper
+                                    );
+                                }
                             }
 
-                            if (this._format === MarkupKind.Markdown) {
+                            if (this._options.format === MarkupKind.Markdown) {
                                 let markdownString = '```python\n' + typeDetail + '\n```\n';
 
                                 if (documentation) {
@@ -1683,7 +1727,7 @@ export class CompletionProvider {
                                     kind: MarkupKind.Markdown,
                                     value: markdownString,
                                 };
-                            } else if (this._format === MarkupKind.PlainText) {
+                            } else if (this._options.format === MarkupKind.PlainText) {
                                 let plainTextString = typeDetail + '\n';
 
                                 if (documentation) {
@@ -1696,7 +1740,7 @@ export class CompletionProvider {
                                     value: plainTextString,
                                 };
                             } else {
-                                fail(`Unsupported markup type: ${this._format}`);
+                                fail(`Unsupported markup type: ${this._options.format}`);
                             }
                         }
                     }
@@ -1737,12 +1781,12 @@ export class CompletionProvider {
             autoImportText = `${autoImportText} as ${importAlias}`;
         }
 
-        if (this._format === MarkupKind.Markdown) {
+        if (this._options.format === MarkupKind.Markdown) {
             return `\`\`\`\n${autoImportText}\n\`\`\``;
-        } else if (this._format === MarkupKind.PlainText) {
+        } else if (this._options.format === MarkupKind.PlainText) {
             return autoImportText;
         } else {
-            fail(`Unsupported markup type: ${this._format}`);
+            fail(`Unsupported markup type: ${this._options.format}`);
         }
     }
 
@@ -1793,7 +1837,7 @@ export class CompletionProvider {
 
         completionItemData.symbolLabel = name;
 
-        if (this._format === MarkupKind.Markdown) {
+        if (this._options.format === MarkupKind.Markdown) {
             let markdownString = '';
 
             if (detail?.autoImportText) {
@@ -1817,7 +1861,7 @@ export class CompletionProvider {
                     value: markdownString,
                 };
             }
-        } else if (this._format === MarkupKind.PlainText) {
+        } else if (this._options.format === MarkupKind.PlainText) {
             let plainTextString = '';
 
             if (detail?.autoImportText) {
@@ -1841,7 +1885,11 @@ export class CompletionProvider {
                 };
             }
         } else {
-            fail(`Unsupported markup type: ${this._format}`);
+            fail(`Unsupported markup type: ${this._options.format}`);
+        }
+
+        if (detail?.edits?.format) {
+            completionItem.insertTextFormat = detail.edits.format;
         }
 
         if (detail?.edits?.textEdit) {

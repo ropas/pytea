@@ -180,6 +180,9 @@ export class Binder extends ParseTreeWalker {
     // Aliases of "typing" and "typing_extensions".
     private _typingImportAliases: string[] = [];
 
+    // Aliases of "sys".
+    private _sysImportAliases: string[] = [];
+
     // Map of imports of specific symbols imported from "typing" and "typing_extensions"
     // and the names they alias to.
     private _typingSymbolAliases: Map<string, string> = new Map<string, string>();
@@ -293,7 +296,7 @@ export class Binder extends ParseTreeWalker {
         if (
             !importResult.isStubFile &&
             importResult.importType === ImportType.ThirdParty &&
-            !importResult.isPyTypedPresent
+            !importResult.pyTypedInfo
         ) {
             const diagnostic = this._addDiagnostic(
                 this._fileInfo.diagnosticRuleSet.reportMissingTypeStubs,
@@ -732,6 +735,7 @@ export class Binder extends ParseTreeWalker {
         const evaluationNode = ParseTreeUtils.getEvaluationNodeForAssignmentExpression(node);
         if (!evaluationNode) {
             this._addError(Localizer.Diagnostic.assignmentExprContext(), node);
+            this.walk(node.name);
         } else {
             // Bind the name to the containing scope. This special logic is required
             // because of the behavior defined in PEP 572. Targets of assignment
@@ -758,9 +762,8 @@ export class Binder extends ParseTreeWalker {
 
             this._bindNameToScope(containerScope, node.name.value);
             this._addInferredTypeAssignmentForVariable(node.name, node.rightExpression);
+            this._createAssignmentTargetFlowNodes(node.name, /* walkTargets */ true, /* unbound */ false);
         }
-
-        this._createAssignmentTargetFlowNodes(node.name, /* walkTargets */ true, /* unbound */ false);
 
         return false;
     }
@@ -971,7 +974,8 @@ export class Binder extends ParseTreeWalker {
         const constExprValue = StaticExpressions.evaluateStaticBoolLikeExpression(
             node.testExpression,
             this._fileInfo.executionEnvironment,
-            this._typingImportAliases
+            this._typingImportAliases,
+            this._sysImportAliases
         );
 
         this._bindConditional(node.testExpression, thenLabel, elseLabel);
@@ -1006,7 +1010,8 @@ export class Binder extends ParseTreeWalker {
         const constExprValue = StaticExpressions.evaluateStaticBoolLikeExpression(
             node.testExpression,
             this._fileInfo.executionEnvironment,
-            this._typingImportAliases
+            this._typingImportAliases,
+            this._sysImportAliases
         );
 
         const preLoopLabel = this._createLoopLabel();
@@ -1169,6 +1174,13 @@ export class Binder extends ParseTreeWalker {
             this._addAntecedent(preFinallyLabel, preFinallyGate);
         }
 
+        // Add the finally target as an exception target unless there is
+        // a "bare" except clause that accepts all exception types.
+        const hasBareExceptClause = node.exceptClauses.some((except) => !except.typeExpression);
+        if (!hasBareExceptClause) {
+            curExceptTargets.push(preFinallyReturnOrRaiseLabel);
+        }
+
         // An exception may be generated before the first flow node
         // added by the try block, so all of the exception targets
         // must have the pre-try flow node as an antecedent.
@@ -1226,6 +1238,7 @@ export class Binder extends ParseTreeWalker {
             const postFinallyNode: FlowPostFinally = {
                 flags: FlowFlags.PostFinally,
                 id: getUniqueFlowNodeId(),
+                finallyNode: node.finallySuite,
                 antecedent: this._currentFlowNode,
                 preFinallyGate,
             };
@@ -1386,6 +1399,8 @@ export class Binder extends ParseTreeWalker {
             if (node.module.nameParts.length === 1) {
                 if (firstNamePartValue === 'typing' || firstNamePartValue === 'typing_extensions') {
                     this._typingImportAliases.push(node.alias?.value || firstNamePartValue);
+                } else if (firstNamePartValue === 'sys') {
+                    this._sysImportAliases.push(node.alias?.value || firstNamePartValue);
                 }
             }
         }
@@ -1394,7 +1409,7 @@ export class Binder extends ParseTreeWalker {
     }
 
     visitImportFrom(node: ImportFromNode): boolean {
-        const typingSymbolsOfInterest = ['Final', 'TypeAlias'];
+        const typingSymbolsOfInterest = ['Final', 'TypeAlias', 'ClassVar'];
         const importInfo = AnalyzerNodeInfo.getImportInfo(node.module);
 
         let resolvedPath = '';
@@ -1511,16 +1526,7 @@ export class Binder extends ParseTreeWalker {
             }
         } else {
             if (isModuleInitFile) {
-                // If the symbol is going to be immediately replaced with a same-named
-                // imported symbol, skip this.
-                const isImmediatelyReplaced = node.imports.some((importSymbolNode) => {
-                    const nameNode = importSymbolNode.alias || importSymbolNode.name;
-                    return nameNode.value === node.module.nameParts[0].value;
-                });
-
-                if (!isImmediatelyReplaced) {
-                    this._addImplicitFromImport(node, importInfo);
-                }
+                this._addImplicitFromImport(node, importInfo);
             }
 
             node.imports.forEach((importSymbolNode) => {
@@ -1921,6 +1927,7 @@ export class Binder extends ParseTreeWalker {
                 range: getEmptyRange(),
                 usesLocalName: !!importAlias,
                 moduleName: '',
+                isUnresolved: true,
             };
             symbol.addDeclaration(newDecl);
         }
@@ -2014,9 +2021,9 @@ export class Binder extends ParseTreeWalker {
             return Binder._unreachableFlowNode;
         }
 
-        // If there was only one antecedent, there's no need
-        // for a label to exist.
-        if (node.antecedents.length === 1) {
+        // If there was only one antecedent and this is a simple
+        // branch label, there's no need for a label to exist.
+        if (node.antecedents.length === 1 && node.flags === FlowFlags.BranchLabel) {
             return node.antecedents[0];
         }
 
@@ -2053,7 +2060,8 @@ export class Binder extends ParseTreeWalker {
         const staticValue = StaticExpressions.evaluateStaticBoolLikeExpression(
             expression,
             this._fileInfo.executionEnvironment,
-            this._typingImportAliases
+            this._typingImportAliases,
+            this._sysImportAliases
         );
         if (
             (staticValue === true && flags & FlowFlags.FalseCondition) ||
@@ -2280,6 +2288,10 @@ export class Binder extends ParseTreeWalker {
         }
 
         AnalyzerNodeInfo.setFlowNode(node, this._currentFlowNode!);
+
+        if (!this._isCodeUnreachable()) {
+            this._addExceptTargets(this._currentFlowNode!);
+        }
     }
 
     private _createAssignmentAliasFlowNode(targetSymbolId: number, aliasSymbolId: number) {
@@ -2679,8 +2691,7 @@ export class Binder extends ParseTreeWalker {
                     // "ClassVar" maps to the typing module symbol by this name.
                     const isClassVar =
                         typeAnnotation.nodeType === ParseNodeType.Index &&
-                        typeAnnotation.baseExpression.nodeType === ParseNodeType.Name &&
-                        typeAnnotation.baseExpression.value === 'ClassVar';
+                        this._isTypingAnnotation(typeAnnotation.baseExpression, 'ClassVar');
 
                     if (isClassVar) {
                         symbolWithScope.symbol.setIsClassVar();
@@ -2783,12 +2794,17 @@ export class Binder extends ParseTreeWalker {
         if (typeAnnotation) {
             if (this._isTypingAnnotation(typeAnnotation, 'Final')) {
                 isFinal = true;
-            } else if (typeAnnotation.nodeType === ParseNodeType.Index && typeAnnotation.items.items.length === 1) {
+            } else if (typeAnnotation.nodeType === ParseNodeType.Index && typeAnnotation.items.length === 1) {
                 // Recursively call to see if the base expression is "Final".
                 const finalInfo = this._isAnnotationFinal(typeAnnotation.baseExpression);
-                if (finalInfo.isFinal) {
+                if (
+                    finalInfo.isFinal &&
+                    typeAnnotation.items[0].argumentCategory === ArgumentCategory.Simple &&
+                    !typeAnnotation.items[0].name &&
+                    !typeAnnotation.trailingComma
+                ) {
                     isFinal = true;
-                    finalTypeNode = typeAnnotation.items.items[0];
+                    finalTypeNode = typeAnnotation.items[0].valueExpression;
                 }
             }
         }
@@ -2945,6 +2961,7 @@ export class Binder extends ParseTreeWalker {
             OrderedDict: true,
             Concatenate: true,
             TypeGuard: true,
+            Unpack: true,
         };
 
         const assignedName = assignedNameNode.value;

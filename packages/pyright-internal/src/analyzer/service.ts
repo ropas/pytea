@@ -31,7 +31,7 @@ import { ConsoleInterface, log, LogLevel, StandardConsole } from '../common/cons
 import { Diagnostic } from '../common/diagnostic';
 import { FileEditAction, TextEditAction } from '../common/editAction';
 import { LanguageServiceExtension } from '../common/extensibility';
-import { FileSystem, FileWatcher, ignoredWatchEventFunction } from '../common/fileSystem';
+import { FileSystem, FileWatcher, ignoredWatchEventFunction, Stats } from '../common/fileSystem';
 import {
     combinePaths,
     FileSpec,
@@ -46,7 +46,7 @@ import {
 } from '../common/pathUtils';
 import { DocumentRange, Position, Range } from '../common/textRange';
 import { timingStats } from '../common/timing';
-import { AbbreviationMap, CompletionResults } from '../languageService/completionProvider';
+import { AbbreviationMap, CompletionOptions, CompletionResults } from '../languageService/completionProvider';
 import { IndexResults, WorkspaceSymbolCallback } from '../languageService/documentSymbolProvider';
 import { HoverResults } from '../languageService/hoverProvider';
 import { ReferenceCallback } from '../languageService/referencesProvider';
@@ -295,7 +295,7 @@ export class AnalyzerService {
         filePath: string,
         position: Position,
         workspacePath: string,
-        format: MarkupKind,
+        options: CompletionOptions,
         nameMap: AbbreviationMap | undefined,
         token: CancellationToken
     ): Promise<CompletionResults | undefined> {
@@ -303,7 +303,7 @@ export class AnalyzerService {
             filePath,
             position,
             workspacePath,
-            format,
+            options,
             nameMap,
             this._backgroundAnalysisProgram.getIndexing(filePath),
             token
@@ -317,10 +317,10 @@ export class AnalyzerService {
     resolveCompletionItem(
         filePath: string,
         completionItem: CompletionItem,
-        format: MarkupKind,
+        options: CompletionOptions,
         token: CancellationToken
     ) {
-        this._program.resolveCompletionItem(filePath, completionItem, format, token);
+        this._program.resolveCompletionItem(filePath, completionItem, options, token);
     }
 
     performQuickAction(
@@ -706,9 +706,9 @@ export class AnalyzerService {
     // This is called after a new type stub has been created. It allows
     // us to invalidate caches and force reanalysis of files that potentially
     // are affected by the appearance of a new type stub.
-    invalidateAndForceReanalysis() {
+    invalidateAndForceReanalysis(rebuildLibraryIndexing = true) {
         // Mark all files with one or more errors dirty.
-        this._backgroundAnalysisProgram.invalidateAndForceReanalysis();
+        this._backgroundAnalysisProgram.invalidateAndForceReanalysis(rebuildLibraryIndexing);
     }
 
     // Forces the service to stop all analysis, discard all its caches,
@@ -1057,10 +1057,26 @@ export class AnalyzerService {
                         this._console.info(`SourceFile: Received fs event '${event}' for path '${path}'`);
                     }
 
+                    // Wholesale ignore events that appear to be from tmp file modification.
+                    if (path.endsWith('.tmp')) {
+                        return;
+                    }
+
+                    let stats: Stats | undefined;
+                    try {
+                        stats = this._fs.statSync(path);
+                    } catch {
+                        stats = undefined;
+                    }
+
+                    if (stats && stats.isFile() && !path.endsWith('.py') && !path.endsWith('.pyi')) {
+                        return;
+                    }
+
                     // Delete comes in as a change event, so try to distinguish here.
-                    if (event === 'change' && this._fs.existsSync(path)) {
-                        this._backgroundAnalysisProgram.markFilesDirty([path], false);
-                        this._scheduleReanalysis(false);
+                    if (event === 'change' && stats) {
+                        this._backgroundAnalysisProgram.markFilesDirty([path], /* evenIfContentsAreSame */ false);
+                        this._scheduleReanalysis(/* requireTrackedFileUpdate */ false);
                     } else {
                         // Determine if this is an add or delete event related to a temporary
                         // file. Some tools (like auto-formatters) create temporary files
@@ -1079,8 +1095,8 @@ export class AnalyzerService {
                         if (!isTemporaryFile) {
                             // Added/deleted/renamed files impact imports,
                             // clear the import resolver cache and reanalyze everything.
-                            this.invalidateAndForceReanalysis();
-                            this._scheduleReanalysis(true);
+                            this.invalidateAndForceReanalysis(/* rebuildLibraryIndexing */ false);
+                            this._scheduleReanalysis(/* requireTrackedFileUpdate */ true);
                         }
                     }
                 });

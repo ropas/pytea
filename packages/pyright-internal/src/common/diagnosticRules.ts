@@ -50,6 +50,7 @@ export enum DiagnosticRule {
     reportUnknownVariableType = 'reportUnknownVariableType',
     reportUnknownMemberType = 'reportUnknownMemberType',
     reportMissingTypeArgument = 'reportMissingTypeArgument',
+    reportInvalidTypeVarUse = 'reportInvalidTypeVarUse',
     reportCallInDefaultInitializer = 'reportCallInDefaultInitializer',
     reportUnnecessaryIsInstance = 'reportUnnecessaryIsInstance',
     reportUnnecessaryCast = 'reportUnnecessaryCast',
@@ -61,4 +62,5 @@ export enum DiagnosticRule {
     reportInvalidStubStatement = 'reportInvalidStubStatement',
     reportUnsupportedDunderAll = 'reportUnsupportedDunderAll',
     reportUnusedCallResult = 'reportUnusedCallResult',
+    reportUnusedCoroutine = 'reportUnusedCoroutine',
 }
