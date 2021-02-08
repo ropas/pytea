@@ -1,0 +1,164 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "PyTea Configuration Schema",
+  "definitions": {
+    "diagnostic": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string",
+          "enum": [
+            "none",
+            "information",
+            "warning",
+            "error"
+          ]
+        }
+      ]
+    }
+  },
+  "properties": {
+    "include": {
+      "$id": "#/properties/include",
+      "type": "array",
+      "title": "Files and directories included in type analysis",
+      "items": {
+        "$id": "#/properties/include/items",
+        "type": "string",
+        "title": "File or directory to include in type analysis",
+        "pattern": "^(.*)$"
+      }
+    },
+    "strict": {
+      "$id": "#/properties/strict",
+      "type": "array",
+      "title": "Files and directories that should use 'strict' type checking rules",
+      "items": {
+        "$id": "#/properties/strict/items",
+        "type": "string",
+        "title": "File or directory that should use 'strict' type checking rules",
+        "pattern": "^(.*)$"
+      }
+    },
+    "typeCheckingMode": {
+      "$id": "#/properties/typeCheckingMode",
+      "type": "string",
+      "enum": [
+        "off",
+        "basic",
+        "strict"
+      ],
+      "title": "Specifies the default rule set to use for type checking",
+      "default": "basic"
+    },
+    "stubPath": {
+      "$id": "#/properties/stubPath",
+      "type": "string",
+      "title": "Path to directory containing custom type stub files",
+      "default": "",
+      "examples": [
+        "src/typestubs"
+      ],
+      "pattern": "^(.*)$"
+    },
+    "strictListInference": {
+      "$id": "#/properties/strictListInference",
+      "type": "boolean",
+      "title": "Infer strict types for list expressions",
+      "default": false
+    },
+    "reportGeneralTypeIssues": {
+      "$id": "#/properties/reportGeneralTypeIssues",
+      "$ref": "#/definitions/diagnostic",
+      "title": "Controls reporting of general type issues",
+      "default": "error"
+    },
+    "pythonVersion": {
+      "$id": "#/properties/pythonVersion",
+      "type": "string",
+      "title": "Python version to assume during type analysis",
+      "default": "",
+      "examples": [
+        "3.7"
+      ],
+      "pattern": "^3\\.[0-9]+$"
+    },
+    "pythonPlatform": {
+      "$id": "#/properties/pythonPlatform",
+      "type": "string",
+      "title": "Python platform to assume during type analysis",
+      "default": "",
+      "examples": [
+        "Linux"
+      ],
+      "pattern": "^(Linux|Windows|Darwin)$"
+    },
+    "executionEnvironments": {
+      "$id": "#/properties/executionEnvironments",
+      "type": "array",
+      "title": "Analysis settings to use for specified subdirectories of code",
+      "items": {
+        "$id": "#/properties/executionEnvironments/items",
+        "type": "object",
+        "title": "Analysis settings to use for specified subdirectories of code",
+        "required": [
+          "root"
+        ],
+        "properties": {
+          "root": {
+            "$id": "#/properties/executionEnvironments/items/properties/root",
+            "type": "string",
+            "title": "Path to code subdirectory to which these settings apply",
+            "default": "",
+            "pattern": "^(.*)$"
+          },
+          "extraPaths": {
+            "$id": "#/properties/executionEnvironments/items/properties/extraPaths",
+            "type": "array",
+            "title": "Additional import search resolution paths",
+            "items": {
+              "$id": "#/properties/executionEnvironments/items/properties/extraPaths/items",
+              "type": "string",
+              "title": "Additional import search resolution path",
+              "default": "",
+              "pattern": "^(.*)$"
+            }
+          },
+          "pythonVersion": {
+            "$id": "#/properties/pythonVersion",
+            "type": "string",
+            "title": "Python version to assume during type analysis",
+            "default": "",
+            "examples": [
+              "3.7"
+            ],
+            "pattern": "^3\\.[0-9]+$"
+          },
+          "pythonPlatform": {
+            "$id": "#/properties/pythonPlatform",
+            "type": "string",
+            "title": "Python platform to assume during type analysis",
+            "default": "",
+            "examples": [
+              "Linux"
+            ],
+            "pattern": "^(Linux|Windows|Darwin)$"
+          },
+          "venv": {
+            "$id": "#/properties/venv",
+            "type": "string",
+            "title": "Name of virtual environment subdirectory within venvPath",
+            "default": "",
+            "examples": [
+              "python37"
+            ],
+            "pattern": "^(.*)$"
+          }
+        }
+      }
+    }
+  }
+}

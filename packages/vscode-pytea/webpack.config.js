@@ -13,22 +13,24 @@ const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const { monorepoResourceNameMapper } = require('../../build/lib/webpack');
 
 const outPath = path.resolve(__dirname, 'dist');
-const pylibImplements = path.resolve(__dirname, 'pylib');
-const z3wrapper = path.resolve(__dirname, 'z3wrapper');
+const pylibImplements = path.resolve(__dirname, '..', 'pytea', 'pylib');
+const z3wrapper = path.resolve(__dirname, '..', 'pytea', 'z3wrapper');
 
 module.exports = (_, { mode }) => {
     return {
         context: __dirname,
-        cache: true,
         entry: {
+            extension: './src/extension.ts',
+            server: './src/server.ts',
             pytea: './src/pytea.ts',
         },
         target: 'node',
         output: {
             filename: '[name].js',
             path: outPath,
+            libraryTarget: 'commonjs2',
             devtoolModuleFilenameTemplate:
-                mode === 'development' ? '../[resource-path]' : monorepoResourceNameMapper('pytea'),
+                mode === 'development' ? '../[resource-path]' : monorepoResourceNameMapper('vscode-pytea'),
         },
         devtool: mode === 'development' ? 'source-map' : 'nosources-source-map',
         stats: {
@@ -45,6 +47,7 @@ module.exports = (_, { mode }) => {
             ],
         },
         externals: {
+            vscode: 'commonjs vscode',
             fsevents: 'commonjs2 fsevents',
         },
         module: {
@@ -54,7 +57,6 @@ module.exports = (_, { mode }) => {
                     loader: 'ts-loader',
                     options: {
                         configFile: 'tsconfig.json',
-                        experimentalWatchApi: true,
                     },
                 },
             ],
@@ -68,25 +70,5 @@ module.exports = (_, { mode }) => {
                 ],
             }),
         ],
-        optimization: {
-            removeAvailableModules: false,
-            removeEmptyChunks: false,
-            splitChunks: {
-                cacheGroups: {
-                    defaultVendors: {
-                        name: 'vendor',
-                        test: /[\\/]node_modules[\\/]/,
-                        chunks: 'all',
-                        priority: -10,
-                    },
-                    pytea: {
-                        name: 'pyright-internal',
-                        chunks: 'all',
-                        test: /[\\/]pyright-internal[\\/]/,
-                        priority: -20,
-                    },
-                },
-            },
-        },
     };
 };

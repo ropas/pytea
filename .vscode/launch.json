@@ -92,6 +92,35 @@
             ]
         },
         {
+            "name": "Pytea extension",
+            "type": "extensionHost",
+            "request": "launch",
+            "runtimeExecutable": "${workspaceRoot}/packages/vscode-pytea/dist/extension.js",
+            "preLaunchTask": "npm: build:extension:tea",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}/packages/vscode-pytea",
+                "--disable-extension=ms-pyright.pyright"
+            ],
+            "stopOnEntry": false,
+            "smartStep": true,
+            "sourceMaps": true,
+            "outFiles": [
+                "${workspaceRoot}/packages/vscode-pytea/dist/**/*.js"
+            ]
+        },
+        {
+            "name": "Pytea attach server",
+            "type": "node",
+            "request": "attach",
+            "protocol": "inspector",
+            "port": 6800,
+            "smartStep": true,
+            "sourceMaps": true,
+            "outFiles": [
+                "${workspaceRoot}/packages/vscode-pytea/dist/**/*.js"
+            ]
+        },
+        {
             "name": "Pyright jest current file",
             "type": "node",
             "request": "launch",
