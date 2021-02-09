@@ -22,7 +22,6 @@ module.exports = (_, { mode }) => {
         entry: {
             extension: './src/extension.ts',
             server: './src/server.ts',
-            pytea: './src/pytea.ts',
         },
         target: 'node',
         output: {
