@@ -1,7 +1,7 @@
 {
     "name": "vscode-tea",
-    "displayName": "PyTea",
-    "description": "PyTea: PyTorch Tensor Error Analyzer",
+    "displayName": "Pytea",
+    "description": "Pytea: PyTorch Tensor Error Analyzer",
     "version": "0.1.0",
     "private": true,
     "license": "MIT",
@@ -43,12 +43,12 @@
             {
                 "command": "pytea.analyzefile",
                 "title": "Analyze This File",
-                "category": "PyTea"
+                "category": "Pytea"
             },
             {
                 "command": "pytea.restartserver",
                 "title": "Restart Server",
-                "category": "PyTea"
+                "category": "Pytea"
             }
         ],
         "menus": {
@@ -63,7 +63,7 @@
         },
         "configuration": {
             "type": "object",
-            "title": "PyTea",
+            "title": "Pytea",
             "properties": {
                 "python.analysis.diagnosticMode": {
                     "type": "string",
@@ -123,20 +123,16 @@
         },
         "jsonValidation": [
             {
-                "fileMatch": "pyrightconfig.json",
-                "url": "./schemas/pyrightconfig.schema.json"
-            },
-            {
-                "fileMatch": "mspythonconfig.json",
-                "url": "./schemas/pyrightconfig.schema.json"
+                "fileMatch": "pyteaconfig.json",
+                "url": "./schemas/pyteaconfig.schema.json"
             }
         ]
     },
     "scripts": {
         "clean": "shx rm -rf ./dist ./out",
-        "prepackage": "node ./build/renamePackage.js pyright",
+        "prepackage": "node ./build/renamePackage.js pytea",
         "package": "vsce package",
-        "postpackage": "node ./build/renamePackage.js vscode-pyright",
+        "postpackage": "node ./build/renamePackage.js vscode-pytea",
         "vscode:prepublish": "node ./build/checkPackage.js && npm run clean && webpack --mode production --progress",
         "webpack": "webpack --mode development --progress",
         "webpack-dev": "npm run clean && webpack --mode development --watch --progress"

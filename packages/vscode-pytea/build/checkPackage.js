@@ -10,7 +10,7 @@ async function main() {
 
     const name = obj.name;
     if (name !== 'pyright') {
-        console.error(chalk.red(`Extension name must be "pyright", but is currently set to "${name}".`));
+        console.error(chalk.red(`Extension name must be "pytea", but is currently set to "${name}".`));
         console.error(chalk.red('Please package by running "npm run package" to ensure the name is set correctly.'));
         console.error();
         process.exit(1);

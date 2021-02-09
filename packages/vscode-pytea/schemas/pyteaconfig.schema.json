@@ -1,162 +1,84 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "title": "PyTea Configuration Schema",
-  "definitions": {
-    "diagnostic": {
-      "anyOf": [
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "string",
-          "enum": [
-            "none",
-            "information",
-            "warning",
-            "error"
-          ]
-        }
-      ]
-    }
-  },
+  "title": "Pytea Configuration Schema",
   "properties": {
-    "include": {
-      "$id": "#/properties/include",
-      "type": "array",
-      "title": "Files and directories included in type analysis",
-      "items": {
-        "$id": "#/properties/include/items",
-        "type": "string",
-        "title": "File or directory to include in type analysis",
-        "pattern": "^(.*)$"
-      }
-    },
-    "strict": {
-      "$id": "#/properties/strict",
-      "type": "array",
-      "title": "Files and directories that should use 'strict' type checking rules",
-      "items": {
-        "$id": "#/properties/strict/items",
-        "type": "string",
-        "title": "File or directory that should use 'strict' type checking rules",
-        "pattern": "^(.*)$"
-      }
-    },
-    "typeCheckingMode": {
-      "$id": "#/properties/typeCheckingMode",
+    "configPath": {
+      "$id": "#/properties/configPath",
       "type": "string",
-      "enum": [
-        "off",
-        "basic",
-        "strict"
-      ],
-      "title": "Specifies the default rule set to use for type checking",
-      "default": "basic"
-    },
-    "stubPath": {
-      "$id": "#/properties/stubPath",
-      "type": "string",
-      "title": "Path to directory containing custom type stub files",
-      "default": "",
-      "examples": [
-        "src/typestubs"
-      ],
+      "title": "Path to pyteaconfig.json. It may be overidden by VSCode settings which are set explicitly",
       "pattern": "^(.*)$"
     },
-    "strictListInference": {
-      "$id": "#/properties/strictListInference",
+    "pyteaLibPath": {
+      "$id": "#/properties/pyteaLibPath",
+      "type": "string",
+      "title": "Path to Pytea implementation of Python builtins",
+      "pattern": "^(.*)$"
+    },
+    "entryPath": {
+      "$id": "#/properties/entryPath",
+      "type": "string",
+      "title": "File path to start tensor shape analysis",
+      "pattern": "^(.*)$"
+    },
+    "pythonCmdArgs": {
+      "$id": "#/properties/pythonCmdArgs",
+      "type": "object",
+      "title": "Python command line arguments. Injected to Python argparse functions"
+    },
+    "pythonSubcommand": {
+      "$id": "#/properties/pythonSubcommand",
+      "type": "string",
+      "title": "'dest' of argparse.add_subparsers",
+      "pattern": "^(.*)$"
+    },
+    "logLevel": {
+      "$id": "#/properties/logLevel",
+      "type": "string",
+      "enum": [
+        "none",
+        "result-only",
+        "reduced",
+        "full"
+      ],
+      "title": "Verbosity of analysis log",
+      "default": "result-only"
+    },
+    "immediateConstraintCheck": {
+      "$id": "#/properties/immediateConstraintCheck",
       "type": "boolean",
-      "title": "Infer strict types for list expressions",
+      "title": "Check and discard trivial integer constraints",
+      "default": true
+    },
+    "ignoreAssert": {
+      "$id": "#/properties/ignoreAssert",
+      "type": "boolean",
+      "title": "Ignore assert statements of Python",
       "default": false
     },
-    "reportGeneralTypeIssues": {
-      "$id": "#/properties/reportGeneralTypeIssues",
-      "$ref": "#/definitions/diagnostic",
-      "title": "Controls reporting of general type issues",
-      "default": "error"
+    "extractIR": {
+      "$id": "#/properties/extractIR",
+      "type": "boolean",
+      "title": "Extract internal representation of Python workspace",
+      "default": false
     },
-    "pythonVersion": {
-      "$id": "#/properties/pythonVersion",
-      "type": "string",
-      "title": "Python version to assume during type analysis",
-      "default": "",
-      "examples": [
-        "3.7"
-      ],
-      "pattern": "^3\\.[0-9]+$"
-    },
-    "pythonPlatform": {
-      "$id": "#/properties/pythonPlatform",
-      "type": "string",
-      "title": "Python platform to assume during type analysis",
-      "default": "",
-      "examples": [
-        "Linux"
-      ],
-      "pattern": "^(Linux|Windows|Darwin)$"
-    },
-    "executionEnvironments": {
-      "$id": "#/properties/executionEnvironments",
-      "type": "array",
-      "title": "Analysis settings to use for specified subdirectories of code",
-      "items": {
-        "$id": "#/properties/executionEnvironments/items",
-        "type": "object",
-        "title": "Analysis settings to use for specified subdirectories of code",
-        "required": [
-          "root"
-        ],
-        "properties": {
-          "root": {
-            "$id": "#/properties/executionEnvironments/items/properties/root",
-            "type": "string",
-            "title": "Path to code subdirectory to which these settings apply",
-            "default": "",
-            "pattern": "^(.*)$"
-          },
-          "extraPaths": {
-            "$id": "#/properties/executionEnvironments/items/properties/extraPaths",
-            "type": "array",
-            "title": "Additional import search resolution paths",
-            "items": {
-              "$id": "#/properties/executionEnvironments/items/properties/extraPaths/items",
-              "type": "string",
-              "title": "Additional import search resolution path",
-              "default": "",
-              "pattern": "^(.*)$"
+    "variableRange": {
+      "$id": "#/properties/variableRange",
+      "type": "object",
+      "title": "Explicit range of random variables. null ",
+      "patternProperties": {
+        "^(.*)$": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "number" },
+            {
+              "type": "array",
+              "items": [
+                { "type": ["number", "null"] },
+                { "type": ["number", "null"] }
+              ]
             }
-          },
-          "pythonVersion": {
-            "$id": "#/properties/pythonVersion",
-            "type": "string",
-            "title": "Python version to assume during type analysis",
-            "default": "",
-            "examples": [
-              "3.7"
-            ],
-            "pattern": "^3\\.[0-9]+$"
-          },
-          "pythonPlatform": {
-            "$id": "#/properties/pythonPlatform",
-            "type": "string",
-            "title": "Python platform to assume during type analysis",
-            "default": "",
-            "examples": [
-              "Linux"
-            ],
-            "pattern": "^(Linux|Windows|Darwin)$"
-          },
-          "venv": {
-            "$id": "#/properties/venv",
-            "type": "string",
-            "title": "Name of virtual environment subdirectory within venvPath",
-            "default": "",
-            "examples": [
-              "python37"
-            ],
-            "pattern": "^(.*)$"
-          }
+          ]
         }
       }
     }
