@@ -18,7 +18,13 @@ import { getFileInfo } from 'pyright-internal/analyzer/analyzerNodeInfo';
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { ConfigOptions } from 'pyright-internal/common/configOptions';
 import { ConsoleInterface } from 'pyright-internal/common/console';
-import { combinePaths, getPathComponents, normalizePath } from 'pyright-internal/common/pathUtils';
+import {
+    combinePaths,
+    ensureTrailingDirectorySeparator,
+    getDirectoryPath,
+    getPathComponents,
+    normalizePath,
+} from 'pyright-internal/common/pathUtils';
 import { convertOffsetToPosition } from 'pyright-internal/common/positionUtils';
 import { ParseNode, ParseNodeType } from 'pyright-internal/parser/parseNodes';
 
@@ -50,8 +56,32 @@ export class NodeConsole implements ConsoleInterface {
     }
 }
 
-export function buildPyteaOption(args: CommandLineOptions): PyteaOptions | string {
-    const cwd = path.normalize(process.cwd());
+export function getPyteaLibPath() {
+    const pylibDir = 'pylib';
+    let moduleDirectory = (global as any).__rootDirectory;
+    if (!moduleDirectory) {
+        return undefined;
+    }
+
+    moduleDirectory = getDirectoryPath(ensureTrailingDirectorySeparator(normalizePath(moduleDirectory)));
+
+    const pylibPath = combinePaths(moduleDirectory, pylibDir);
+    if (fs.existsSync(pylibPath)) {
+        return pylibPath;
+    }
+
+    // In the debug version of Pytea, the code is one level
+    // deeper, so we need to look one level up for the typeshed fallback.
+    const debugPylibPath = combinePaths(getDirectoryPath(moduleDirectory), pylibDir);
+    if (fs.existsSync(debugPylibPath)) {
+        return debugPylibPath;
+    }
+
+    return undefined;
+}
+
+export function buildPyteaOption(args: CommandLineOptions, basePath?: string): PyteaOptions | string {
+    const cwd = basePath ?? path.normalize(process.cwd());
 
     const rawEntryPath: string = args['file'];
     const rawConfigPath: string = args['configPath'];
@@ -112,7 +142,8 @@ export function buildPyteaOption(args: CommandLineOptions): PyteaOptions | strin
         options.pyteaLibPath = rawLibPath;
     } else if (!options.pyteaLibPath) {
         // default libpath should be bundled with pytea.js
-        options.pyteaLibPath = path.join(__dirname, 'pylib');
+        options.pyteaLibPath = getPyteaLibPath();
+        if (!options.pyteaLibPath) options.pyteaLibPath = path.join(__dirname, 'pylib');
     } else {
         options.pyteaLibPath = normalizePath(combinePaths(dirPath, options.pyteaLibPath));
     }

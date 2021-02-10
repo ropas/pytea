@@ -23,7 +23,6 @@ import { ExpNum, ExpNumSymbol, NumBopType, NumUopType } from '../backend/symExpr
 import { TorchBackend } from '../backend/torchBackend';
 import { LCImpl } from '.';
 import { LCBase } from './libcall';
-import { Console } from 'console';
 
 export namespace BuiltinsLCImpl {
     export function superGetAttr(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
@@ -228,8 +227,12 @@ export namespace BuiltinsLCImpl {
         const value = sanitizeAddr(params[1], heap);
 
         if (list?.type !== SVType.Object || !value) {
-            if (list?.type !== SVType.Object) { console.log(params[0]?.type); console.log(list?.type); console.log(SVType.Object); }
-            if (!value) console.log("two");
+            if (list?.type !== SVType.Object) {
+                console.log(params[0]?.type);
+                console.log(list?.type);
+                console.log(SVType.Object);
+            }
+            if (!value) console.log('two');
             return ctx.warnWithMsg(`from 'LibCall.builtins.list_append': invalid value type`, source).toSet();
         }
 
@@ -335,7 +338,9 @@ export namespace BuiltinsLCImpl {
             return ctx.warnWithMsg(`from 'LibCall.builtins.dict_setitem': invalid value type`, source).toSet();
         }
         if (typeof key.value !== 'string') {
-            return ctx.warnWithMsg(`from 'LibCall.builtins.dict_setitem': does not supports symbolic string`, source).toSet();
+            return ctx
+                .warnWithMsg(`from 'LibCall.builtins.dict_setitem': does not supports symbolic string`, source)
+                .toSet();
         }
 
         const newDict = dict.setKeyVal(key.value, value);
@@ -364,7 +369,9 @@ export namespace BuiltinsLCImpl {
             return ctx.warnWithMsg(`from 'LibCall.builtins.dict_getitem': invalid value type`, source).toSet();
         }
         if (typeof key.value !== 'string') {
-            return ctx.warnWithMsg(`from 'LibCall.builtins.dict_getitem': does not supports symbolic string`, source).toSet();
+            return ctx
+                .warnWithMsg(`from 'LibCall.builtins.dict_getitem': does not supports symbolic string`, source)
+                .toSet();
         }
 
         const value = dict.getKeyVal(key.value);
@@ -397,7 +404,9 @@ export namespace BuiltinsLCImpl {
             return ctx.warnWithMsg(`from 'LibCall.builtins.dict_pop': invalid value type`, source).toSet();
         }
         if (typeof key.value !== 'string') {
-            return ctx.warnWithMsg(`from 'LibCall.builtins.dict_pop': does not supports symbolic string`, source).toSet();
+            return ctx
+                .warnWithMsg(`from 'LibCall.builtins.dict_pop': does not supports symbolic string`, source)
+                .toSet();
         }
 
         let retVal = dict.getKeyVal(key.value);
@@ -472,6 +481,11 @@ export namespace BuiltinsLCImpl {
             const range = varRangeMap[prefix];
             let num: ExpNumSymbol | undefined;
 
+            if (range === null) {
+                num = ExpNum.fromSymbol(ctx.genSymInt(prefix, source));
+                return ctx.toSetWith(SVInt.create(num, source));
+            }
+
             if (typeof range === 'number') {
                 return ctx.toSetWith(SVInt.create(range, source));
             } else {
@@ -532,6 +546,11 @@ export namespace BuiltinsLCImpl {
         if (prefix in varRangeMap) {
             const range = varRangeMap[prefix];
             let num: ExpNumSymbol | undefined;
+
+            if (range === null) {
+                num = ExpNum.fromSymbol(ctx.genSymFloat(prefix, source));
+                return ctx.toSetWith(SVFloat.create(num, source));
+            }
 
             if (typeof range === 'number') {
                 return ctx.toSetWith(SVFloat.create(range, source));

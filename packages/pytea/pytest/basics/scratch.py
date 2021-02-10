@@ -1,7 +1,4 @@
-class A:
-    pass
+import torch
 
+x = torch.rand(3, 5)
 
-a = A()
-
-[a.x, a.y] = [1, 2]

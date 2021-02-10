@@ -8,7 +8,16 @@
  */
 
 import * as path from 'path';
-import { commands, ExtensionContext, extensions, OutputChannel, Uri } from 'vscode';
+import {
+    commands,
+    ExtensionContext,
+    extensions,
+    OutputChannel,
+    TextEdit,
+    TextEditor,
+    TextEditorEdit,
+    Uri,
+} from 'vscode';
 import {
     CancellationToken,
     ConfigurationParams,
@@ -135,14 +144,26 @@ export function activate(context: ExtensionContext) {
     // client can be deactivated on extension deactivation.
     context.subscriptions.push(disposable);
 
-    const pyteaCommands = [PyteaCommands.restartServer, PyteaCommands.analyzeFile];
-    pyteaCommands.forEach((command) => {
-        context.subscriptions.push(
-            commands.registerCommand(command, (...args: any[]) => {
-                languageClient.sendRequest('workspace/executeCommand', { command, arguments: args });
-            })
-        );
-    });
+    const analyzeFileCommand = PyteaCommands.analyzeFile;
+    context.subscriptions.push(
+        commands.registerTextEditorCommand(
+            analyzeFileCommand,
+            (editor: TextEditor, edit: TextEditorEdit, ...args: any[]) => {
+                const cmd = {
+                    command: analyzeFileCommand,
+                    arguments: [editor.document.uri.toString(), ...args],
+                };
+                languageClient.sendRequest<TextEdit[] | undefined>('workspace/executeCommand', cmd);
+            }
+        )
+    );
+
+    const restartCommand = PyteaCommands.restartServer;
+    context.subscriptions.push(
+        commands.registerCommand(restartCommand, (...args: any[]) => {
+            languageClient.sendRequest('workspace/executeCommand', { command: restartCommand, arguments: args });
+        })
+    );
 }
 
 export function deactivate() {

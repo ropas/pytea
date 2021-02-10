@@ -4,20 +4,26 @@
  * Workspace management related functionality.
  */
 
+import { PyteaService } from 'pytea/service/pyteaService';
+
 import { createDeferred } from 'pyright-internal/common/deferred';
 import { WorkspaceServiceInstance } from 'pyright-internal/languageServerBase';
 
 import { PyteaServer } from './server';
 
-export class PyteaWorkspaceMap extends Map<string, WorkspaceServiceInstance> {
+export interface PyteaWorkspaceInstance extends WorkspaceServiceInstance {
+    pyteaInstance: PyteaService;
+}
+
+export class PyteaWorkspaceMap extends Map<string, PyteaWorkspaceInstance> {
     private _defaultWorkspacePath = '<default>';
 
     constructor(private _ls: PyteaServer) {
         super();
     }
 
-    getNonDefaultWorkspaces(): WorkspaceServiceInstance[] {
-        const workspaces: WorkspaceServiceInstance[] = [];
+    getNonDefaultWorkspaces(): PyteaWorkspaceInstance[] {
+        const workspaces: PyteaWorkspaceInstance[] = [];
         this.forEach((workspace) => {
             if (workspace.rootPath) {
                 workspaces.push(workspace);
@@ -27,9 +33,9 @@ export class PyteaWorkspaceMap extends Map<string, WorkspaceServiceInstance> {
         return workspaces;
     }
 
-    getWorkspaceForFile(filePath: string): WorkspaceServiceInstance {
+    getWorkspaceForFile(filePath: string): PyteaWorkspaceInstance {
         let bestRootPath: string | undefined;
-        let bestInstance: WorkspaceServiceInstance | undefined;
+        let bestInstance: PyteaWorkspaceInstance | undefined;
 
         this.forEach((workspace) => {
             if (workspace.rootPath) {

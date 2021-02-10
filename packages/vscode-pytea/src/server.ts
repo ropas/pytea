@@ -6,6 +6,7 @@
  * Implements pytea language server.
  */
 
+import { PyteaService } from 'pytea/service/pyteaService';
 import {
     CancellationToken,
     CodeAction,
@@ -48,11 +49,10 @@ import { convertPathToUri, convertUriToPath, resolvePaths } from 'pyright-intern
 import { Position } from 'pyright-internal/common/textRange';
 import { ServerOptions, ServerSettings, WorkspaceServiceInstance } from 'pyright-internal/languageServerBase';
 import { AnalyzerServiceExecutor } from 'pyright-internal/languageService/analyzerServiceExecutor';
-import { CodeActionProvider } from 'pyright-internal/languageService/codeActionProvider';
 import { convertHoverResults } from 'pyright-internal/languageService/hoverProvider';
 
 import { PyteaCommandController } from './commandController';
-import { PyteaWorkspaceMap } from './workspaceMap';
+import { PyteaWorkspaceInstance, PyteaWorkspaceMap } from './workspaceMap';
 
 export class PyteaServer {
     protected _connection: Connection = createConnection({});
@@ -119,18 +119,18 @@ export class PyteaServer {
         this._connection.listen();
     }
 
-    async getSettings(workspace: WorkspaceServiceInstance): Promise<ServerSettings> {
+    async getSettings(workspace: PyteaWorkspaceInstance): Promise<ServerSettings> {
         const serverSettings: ServerSettings = {
             watchForSourceChanges: true,
-            watchForLibraryChanges: true,
+            watchForLibraryChanges: false,
             openFilesOnly: true,
             useLibraryCodeForTypes: false,
-            disableLanguageServices: false,
-            disableOrganizeImports: false,
+            disableLanguageServices: true,
+            disableOrganizeImports: true,
             typeCheckingMode: 'basic',
             diagnosticSeverityOverrides: {},
-            logLevel: LogLevel.Info,
-            autoImportCompletions: true,
+            logLevel: LogLevel.Log,
+            autoImportCompletions: false,
         };
 
         try {
@@ -153,88 +153,6 @@ export class PyteaServer {
                     );
                 }
             }
-
-            const pythonAnalysisSection = await this.getConfiguration(workspace.rootUri, 'python.analysis');
-            if (pythonAnalysisSection) {
-                const typeshedPaths = pythonAnalysisSection.typeshedPaths;
-                if (typeshedPaths && Array.isArray(typeshedPaths) && typeshedPaths.length > 0) {
-                    const typeshedPath = typeshedPaths[0];
-                    if (typeshedPath && isString(typeshedPath)) {
-                        serverSettings.typeshedPath = resolvePaths(
-                            workspace.rootPath,
-                            this.expandPathVariables(workspace.rootPath, typeshedPath)
-                        );
-                    }
-                }
-
-                const stubPath = pythonAnalysisSection.stubPath;
-                if (stubPath && isString(stubPath)) {
-                    serverSettings.stubPath = resolvePaths(
-                        workspace.rootPath,
-                        this.expandPathVariables(workspace.rootPath, stubPath)
-                    );
-                }
-
-                const diagnosticSeverityOverrides = pythonAnalysisSection.diagnosticSeverityOverrides;
-                if (diagnosticSeverityOverrides) {
-                    for (const [name, value] of Object.entries(diagnosticSeverityOverrides)) {
-                        const ruleName = this.getDiagnosticRuleName(name);
-                        const severity = this.getSeverityOverrides(value as string);
-                        if (ruleName && severity) {
-                            serverSettings.diagnosticSeverityOverrides![ruleName] = severity!;
-                        }
-                    }
-                }
-
-                if (pythonAnalysisSection.diagnosticMode !== undefined) {
-                    serverSettings.openFilesOnly = this.isOpenFilesOnly(pythonAnalysisSection.diagnosticMode);
-                } else if (pythonAnalysisSection.openFilesOnly !== undefined) {
-                    serverSettings.openFilesOnly = !!pythonAnalysisSection.openFilesOnly;
-                }
-
-                if (pythonAnalysisSection.useLibraryCodeForTypes !== undefined) {
-                    serverSettings.useLibraryCodeForTypes = !!pythonAnalysisSection.useLibraryCodeForTypes;
-                }
-
-                serverSettings.logLevel = this.convertLogLevel(pythonAnalysisSection.logLevel);
-                serverSettings.autoSearchPaths = !!pythonAnalysisSection.autoSearchPaths;
-
-                const extraPaths = pythonAnalysisSection.extraPaths;
-                if (extraPaths && Array.isArray(extraPaths) && extraPaths.length > 0) {
-                    serverSettings.extraPaths = extraPaths
-                        .filter((p) => p && isString(p))
-                        .map((p) => resolvePaths(workspace.rootPath, this.expandPathVariables(workspace.rootPath, p)));
-                }
-
-                if (pythonAnalysisSection.typeCheckingMode !== undefined) {
-                    serverSettings.typeCheckingMode = pythonAnalysisSection.typeCheckingMode;
-                }
-
-                if (pythonAnalysisSection.autoImportCompletions !== undefined) {
-                    serverSettings.autoImportCompletions = pythonAnalysisSection.autoImportCompletions;
-                }
-            } else {
-                serverSettings.autoSearchPaths = true;
-            }
-
-            const pyrightSection = await this.getConfiguration(workspace.rootUri, 'pyright');
-            if (pyrightSection) {
-                if (pyrightSection.openFilesOnly !== undefined) {
-                    serverSettings.openFilesOnly = !!pyrightSection.openFilesOnly;
-                }
-
-                if (pyrightSection.useLibraryCodeForTypes !== undefined) {
-                    serverSettings.useLibraryCodeForTypes = !!pyrightSection.useLibraryCodeForTypes;
-                }
-
-                serverSettings.disableLanguageServices = !!pyrightSection.disableLanguageServices;
-                serverSettings.disableOrganizeImports = !!pyrightSection.disableOrganizeImports;
-
-                const typeCheckingMode = pyrightSection.typeCheckingMode;
-                if (typeCheckingMode && isString(typeCheckingMode)) {
-                    serverSettings.typeCheckingMode = typeCheckingMode;
-                }
-            }
         } catch (error) {
             this.console.error(`Error reading settings: ${error}`);
         }
@@ -255,16 +173,6 @@ export class PyteaServer {
         return service;
     }
 
-    createBackgroundAnalysis(): BackgroundAnalysisBase | undefined {
-        if (isDebugMode() || !getCancellationFolderName()) {
-            // Don't do background analysis if we're in debug mode or an old client
-            // is used where cancellation is not supported.
-            return undefined;
-        }
-
-        return new BackgroundAnalysis(this.console);
-    }
-
     updateSettingsForAllWorkspaces(): void {
         this._workspaceMap.forEach((workspace) => {
             this.updateSettingsForWorkspace(workspace).ignoreErrors();
@@ -283,14 +191,14 @@ export class PyteaServer {
         });
     }
 
-    async getWorkspaceForFile(filePath: string): Promise<WorkspaceServiceInstance> {
+    async getWorkspaceForFile(filePath: string): Promise<PyteaWorkspaceInstance> {
         const workspace = this._workspaceMap.getWorkspaceForFile(filePath);
         await workspace.isInitialized.promise;
         return workspace;
     }
 
     async updateSettingsForWorkspace(
-        workspace: WorkspaceServiceInstance,
+        workspace: PyteaWorkspaceInstance,
         serverSettings?: ServerSettings
     ): Promise<void> {
         serverSettings = serverSettings ?? (await this.getSettings(workspace));
@@ -308,15 +216,6 @@ export class PyteaServer {
 
     protected executeCommand(params: ExecuteCommandParams, token: CancellationToken): Promise<any> {
         return this._controller.execute(params, token);
-    }
-
-    protected async executeCodeAction(
-        params: CodeActionParams,
-        token: CancellationToken
-    ): Promise<(Command | CodeAction)[] | undefined | null> {
-        const filePath = convertUriToPath(params.textDocument.uri);
-        const workspace = await this.getWorkspaceForFile(filePath);
-        return CodeActionProvider.getCodeActionsForPosition(workspace, filePath, params.range, token);
     }
 
     protected setupConnection(): void {
@@ -426,7 +325,7 @@ export class PyteaServer {
     protected createWorkspaceServiceInstance(
         workspace: WorkspaceFolder | undefined,
         rootPath: string
-    ): WorkspaceServiceInstance {
+    ): PyteaWorkspaceInstance {
         return {
             workspaceName: workspace?.name ?? '',
             rootPath,
@@ -481,28 +380,6 @@ export class PyteaServer {
 
             return match;
         });
-    }
-
-    protected isOpenFilesOnly(diagnosticMode: string): boolean {
-        return diagnosticMode !== 'workspace';
-    }
-
-    protected getSeverityOverrides(value: string): DiagnosticSeverityOverrides | undefined {
-        const enumValue = value as DiagnosticSeverityOverrides;
-        if (getDiagnosticSeverityOverrides().includes(enumValue)) {
-            return enumValue;
-        }
-
-        return undefined;
-    }
-
-    protected getDiagnosticRuleName(value: string): DiagnosticRule | undefined {
-        const enumValue = value as DiagnosticRule;
-        if (getDiagLevelDiagnosticRules().includes(enumValue)) {
-            return enumValue;
-        }
-
-        return undefined;
     }
 
     private _getCompatibleMarkupKind(clientSupportedFormats: MarkupKind[] | undefined) {

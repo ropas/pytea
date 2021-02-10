@@ -22,17 +22,31 @@ export class RestartServerCommand implements ServerCommand {
     }
 }
 
+export class AnalyzeFileCommand implements ServerCommand {
+    constructor(private _ls: PyteaServer) {}
+
+    async execute(cmdParams: ExecuteCommandParams): Promise<any> {
+        this._ls.restart();
+    }
+}
+
 export class PyteaCommandController implements ServerCommand {
     private _restartServer: RestartServerCommand;
+    private _analyzeFile: AnalyzeFileCommand;
 
     constructor(ls: PyteaServer) {
         this._restartServer = new RestartServerCommand(ls);
+        this._analyzeFile = new AnalyzeFileCommand(ls);
     }
 
     async execute(cmdParams: ExecuteCommandParams, token: CancellationToken): Promise<any> {
         switch (cmdParams.command) {
             case PyteaCommands.restartServer: {
                 return this._restartServer.execute(cmdParams);
+            }
+
+            case PyteaCommands.analyzeFile: {
+                return this._analyzeFile.execute(cmdParams);
             }
 
             default: {

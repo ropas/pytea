@@ -12,11 +12,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
 import { IRWriter } from 'src/frontend/IRReaderWriter';
+import { CancellationToken, MarkupKind } from 'vscode-languageserver/node';
 
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { CommandLineOptions as PyrightCommandLineOptions } from 'pyright-internal/common/commandLineOptions';
 import { ConsoleInterface, NullConsole, StandardConsole } from 'pyright-internal/common/console';
 import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
+import { Position } from 'pyright-internal/common/textRange';
+import { HoverResults } from 'pyright-internal/languageService/hoverProvider';
 
 import { fetchAddr } from '../backend/backUtils';
 import { ContextSet } from '../backend/context';
@@ -102,7 +105,7 @@ export class PyteaService {
         return options ? options.pythonSubcommand : '';
     }
 
-    static getVariableRange(): { [varName: string]: number | [number | null, number | null] } {
+    static getVariableRange(): { [varName: string]: null | number | [number | null, number | null] } {
         const options = _globalService?.options;
         return options ? options.variableRange : {};
     }
@@ -316,68 +319,15 @@ export class PyteaService {
         return [undefined, false];
     }
 
-    addFilesToTrack(files: string[]) {
-        if (this._service) {
-            this._service.dispose();
-            this._service = undefined;
-        }
-
-        if (!this._options?.pyteaLibPath) {
-            console.error(`cannot find pylib path`);
-            return;
-        }
-
-        const options = new PyrightCommandLineOptions(process.cwd(), false);
-        options.fileSpecs = files;
-        options.checkOnlyOpenFiles = false;
-
-        // ignore original pyright output.
-        const output = new NullConsole();
-        const realFileSystem = createFromRealFileSystem(output);
-
-        const watch = options.watchForSourceChanges;
-
-        const service = new AnalyzerService('<default>', realFileSystem, output);
-        this.setPyrightAnalyzerService(service);
-
-        service.setCompletionCallback((results) => {
-            if (results.fatalErrorOccurred) {
-                this._console.error('Pyright fatal error occured');
-                this._service = undefined;
-                service.dispose();
-                return;
-            }
-
-            if (results.configParseErrorOccurred) {
-                this._console.error('Pyright config parse error occured');
-                this._service = undefined;
-                service.dispose();
-                return;
-            }
-
-            if (this._options) {
-                const entryPath = this._options.entryPath;
-
-                // this triggers project folder parsing.
-                this.translateMainEntry(entryPath);
-
-                if (this.validate()) {
-                    // do pytea job
-                    try {
-                        this.analyze();
-                    } catch (e) {
-                        this._console.error(e);
-                    }
-                }
-            } else {
-                this._console.error('pytea option is not initialized');
-            }
-
-            if (!watch) process.exit(ExitStatus.NoErrors);
-        });
-
-        // This will trigger the analyzer.
-        service.setOptions(options);
+    getHoverForPosition(
+        filePath: string,
+        position: Position,
+        format: MarkupKind,
+        token: CancellationToken
+    ): HoverResults | undefined {
+        // TODO: hover for tensor shape
+        return;
+        //return this._program.getHoverForPosition(filePath, position, format, token);
     }
 
     private _noneLog(result: ContextSet<ShValue | ShContFlag>): void {
