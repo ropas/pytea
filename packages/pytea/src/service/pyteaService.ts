@@ -11,24 +11,24 @@ import chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
-import { IRWriter } from 'src/frontend/IRReaderWriter';
+
 import { CancellationToken, MarkupKind } from 'vscode-languageserver/node';
 
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
-import { CommandLineOptions as PyrightCommandLineOptions } from 'pyright-internal/common/commandLineOptions';
-import { ConsoleInterface, NullConsole, StandardConsole } from 'pyright-internal/common/console';
-import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
+import { ConsoleInterface, StandardConsole } from 'pyright-internal/common/console';
 import { Position } from 'pyright-internal/common/textRange';
 import { HoverResults } from 'pyright-internal/languageService/hoverProvider';
 
 import { fetchAddr } from '../backend/backUtils';
 import { ContextSet } from '../backend/context';
 import { ShHeap } from '../backend/sharpEnvironments';
-import { ShContFlag, ShValue, SVSize, SVString, SVType } from '../backend/sharpValues';
+import { ShContFlag, ShValue, SVAddr, SVSize, SVString, SVType } from '../backend/sharpValues';
 import { SymExp } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
+import { IRWriter } from '../frontend/IRReaderWriter';
 import { ThStmt } from '../frontend/torchStatements';
-import { PyCmdArgs, PyteaOptions } from './pyteaOptions';
+import { defaultOptions, PyCmdArgs, PyteaOptions } from './pyteaOptions';
+
 import * as PyteaUtils from './pyteaUtils';
 
 let _globalService: PyteaService | undefined;
@@ -47,16 +47,16 @@ export class PyteaService {
 
     private _projectPath: string;
     private _entryPath: string;
-    private _entryName: string;
 
     private _libStmt: Map<string, ThStmt>;
     private _projectStmt?: Map<string, ThStmt>;
     private _mainStmt?: ThStmt;
+    private _builtinSet?: ContextSet<SVAddr>;
 
     private _timeLog: [string, number][];
     private _currTime: number;
 
-    constructor(pyteaOptions: PyteaOptions, console?: ConsoleInterface, setDefault?: boolean) {
+    constructor(service?: AnalyzerService, options?: PyteaOptions, console?: ConsoleInterface, setDefault?: boolean) {
         if (setDefault) _globalService = this;
 
         this._console = console || new StandardConsole();
@@ -66,9 +66,9 @@ export class PyteaService {
 
         this._projectPath = '';
         this._entryPath = '';
-        this._entryName = '';
 
-        this._options = pyteaOptions;
+        this._options = options ?? defaultOptions;
+        this._service = service;
 
         this._libStmt = new Map();
     }
@@ -111,7 +111,7 @@ export class PyteaService {
     }
 
     static log(...message: any[]): void {
-        _globalService?._console.log(message.map((x) => `${x}`).join(' '));
+        _globalService?._console.info(message.map((x) => `${x}`).join(' '));
     }
 
     setPyrightAnalyzerService(service: AnalyzerService) {
@@ -120,6 +120,14 @@ export class PyteaService {
         }
 
         this._service = service;
+    }
+
+    setOptions(options: PyteaOptions) {
+        this._options = options;
+    }
+
+    setEntryPath(entryPath: string) {
+        this._entryPath = entryPath;
     }
 
     // check library or entry file is fully loaded.
@@ -152,6 +160,35 @@ export class PyteaService {
         return valid;
     }
 
+    // translate Python scripts starting from entryPath and every Pytea library script
+    // return error message (string) or undefined
+    translateAll(entryPath: string): string | undefined {
+        let errMsg = this.translatePyteaLib();
+        if (errMsg) return errMsg;
+        errMsg = this.translateMainEntry(entryPath);
+        if (errMsg) return errMsg;
+    }
+
+    // return error message (string) or undefined
+    translatePyteaLib(): string | undefined {
+        if (!this._service) {
+            return `pyright service is not set.`;
+        }
+
+        this._clearTimeLog();
+
+        // translate pytea library implementations
+        if (
+            this._service &&
+            this._libStmt.size === 0 &&
+            this._options?.pyteaLibPath &&
+            !(this._options?.extractIR === true)
+        ) {
+            this._libStmt = PyteaUtils.getStmtsFromDir(this._service, this._options.pyteaLibPath);
+            this._pushTimeLog('Translate library scripts');
+        }
+    }
+
     // return error message (string) or undefined
     translateMainEntry(entryPath: string): string | undefined {
         if (!entryPath) {
@@ -170,21 +207,7 @@ export class PyteaService {
             return `pyright service is not set.`;
         }
 
-        this._clearTimeLog();
-
         this._entryPath = entryPath;
-        this._entryName = path.basename(entryPath, path.extname(entryPath));
-
-        // translate pytea library implementations
-        if (
-            this._libStmt.size === 0 &&
-            this._service &&
-            this._options?.pyteaLibPath &&
-            !(this._options?.extractIR === true)
-        ) {
-            this._libStmt = PyteaUtils.getStmtsFromDir(this._service, this._options.pyteaLibPath);
-            this._pushTimeLog('Translate library scripts');
-        }
 
         // translate project scripts
         this._projectPath = path.join(entryPath, '..');
@@ -207,9 +230,11 @@ export class PyteaService {
             return;
         }
 
-        // TODO: consistent pyteaLibPath
-        const builtinSet = TorchBackend.runBuiltin(builtins, 'builtins');
-        const stmt = this._projectStmt?.get(this._entryName);
+        const builtinSet = this._builtinSet ?? TorchBackend.runBuiltin(builtins, 'builtins');
+        this._builtinSet = builtinSet;
+
+        const entryName = path.basename(this._entryPath, path.extname(this._entryPath));
+        const stmt = this._projectStmt?.get(entryName);
 
         if (!stmt) {
             this._mainStmt = undefined;
@@ -224,7 +249,7 @@ export class PyteaService {
         const startSet = builtinSet.map((ctx) => {
             // set __name__ to '__main__'
             const [nameAddr, newHeap] = ctx.heap.allocNew(SVString.create('__main__'));
-            return ctx.setRelPath(this._entryName).setEnv(ctx.env.setId('__name__', nameAddr)).setHeap(newHeap);
+            return ctx.setRelPath(entryName).setEnv(ctx.env.setId('__name__', nameAddr)).setHeap(newHeap);
         });
         const result = TorchBackend.run(startSet, stmt);
 
@@ -247,7 +272,9 @@ export class PyteaService {
 
         // TODO: consistent pyteaLibPath
         const builtinSet = TorchBackend.runBuiltin(builtins, 'builtins');
-        const stmt = this._projectStmt?.get(this._entryName);
+        const entryName = path.basename(this._entryPath, path.extname(this._entryPath));
+
+        const stmt = this._projectStmt?.get(entryName);
         if (!stmt) {
             this._console.error(`cannot parse entry file '${this._entryPath}'`);
             return false;
@@ -255,12 +282,10 @@ export class PyteaService {
 
         this._pushTimeLog('Running builtin libraries');
 
-        // this._console.log(ThStmt.toString(stmt));
-
         const startSet = builtinSet.map((ctx) => {
             // set __name__ to '__main__'
             const [nameAddr, newHeap] = ctx.heap.allocNew(SVString.create('__main__'));
-            return ctx.setRelPath(this._entryName).setEnv(ctx.env.setId('__name__', nameAddr)).setHeap(newHeap);
+            return ctx.setRelPath(entryName).setEnv(ctx.env.setId('__name__', nameAddr)).setHeap(newHeap);
         });
         const result = TorchBackend.run(startSet, stmt);
 
@@ -342,14 +367,14 @@ export class PyteaService {
         failed.forEach((ctx, i) => {
             const source = ctx.retVal.source;
 
-            this._console.log(
+            this._console.info(
                 `failed path #${i + 1}: ${ctx.retVal.reason} - ${PyteaUtils.formatParseNode(source)}\n\n`
             );
         });
 
         this._pushTimeLog('printing results');
 
-        this._console.log(
+        this._console.info(
             chalk.green(`potential success path #: ${success.count()}\n`) +
                 chalk.yellow(`potential unreachable path #: ${stopped.count()}\n`) +
                 chalk.red(`immediate failed path #: ${failed.count()}\n\n`) +
@@ -366,7 +391,7 @@ export class PyteaService {
         const jsonList: string[] = [];
 
         if (this._mainStmt) {
-            this._console.log(
+            this._console.info(
                 chalk.yellow(`PARSED STATEMENTS:`) + chalk.gray(`\n${ThStmt.toString(this._mainStmt)}\n`)
             );
         }
@@ -388,7 +413,7 @@ export class PyteaService {
                         .join('\n');
             }
 
-            this._console.log(
+            this._console.info(
                 chalk.green(`success path #${i + 1}`) +
                     `\n\nLOGS:\n${ctx.logsToString()}\n\nCONSTRAINTS:\n${ctx.ctrSet.toString()}\n\n${heapLog}`
             );
@@ -406,7 +431,7 @@ export class PyteaService {
                 })
                 .join('\n');
 
-            this._console.log(
+            this._console.info(
                 chalk.yellow(`stopped path #${i + 1}`) +
                     `: ${ctx.retVal.reason} - ${PyteaUtils.formatParseNode(source)}\n\n` +
                     `LOGS:\n${ctx.logsToString()}\n\n` +
@@ -428,7 +453,7 @@ export class PyteaService {
                 })
                 .join('\n');
 
-            this._console.log(
+            this._console.info(
                 chalk.red(`failed path #${i + 1}`) +
                     `: ${ctx.retVal.reason} - ${PyteaUtils.formatParseNode(source)}\n\n` +
                     `LOGS:\n${ctx.logsToString()}\n\n` +
@@ -442,7 +467,7 @@ export class PyteaService {
 
         this._pushTimeLog('printing results');
 
-        this._console.log(
+        this._console.info(
             chalk.green(`potential success path #: ${success.count()}\n`) +
                 chalk.yellow(`potential unreachable path #: ${stopped.count()}\n`) +
                 chalk.red(`immediate failed path #: ${failed.count()}\n\n`) +
@@ -457,13 +482,13 @@ export class PyteaService {
         const stopped = result.getStopped();
 
         if (this._mainStmt) {
-            this._console.log(
+            this._console.info(
                 chalk.yellow(`PARSED STATEMENTS:`) + chalk.gray(`\n${ThStmt.toString(this._mainStmt)}\n`)
             );
         }
 
         success.forEach((ctx, i) => {
-            this._console.log(
+            this._console.info(
                 chalk.green(`success path #${i + 1}`) +
                     `\nLOGS:\n${ctx.logsToString()}\n` +
                     `CONSTRAINTS:\n${ctx.ctrSet.toString()}\n` +
@@ -475,7 +500,7 @@ export class PyteaService {
         stopped.forEach((ctx, i) => {
             const source = ctx.retVal.source;
 
-            this._console.log(
+            this._console.info(
                 chalk.yellow(`stopped path #${i + 1}`) +
                     `: ${ctx.retVal.reason} / at ${ctx.relPath} ${PyteaUtils.formatParseNode(source)}\n` +
                     `LOGS:\n${ctx.logsToString()}\n` +
@@ -491,7 +516,7 @@ export class PyteaService {
         failed.forEach((ctx, i) => {
             const source = ctx.retVal.source;
 
-            this._console.log(
+            this._console.info(
                 chalk.red(`failed path #${i + 1}`) +
                     `: ${ctx.retVal.reason} / at ${ctx.relPath} ${PyteaUtils.formatParseNode(source)}\n` +
                     `LOGS:\n${ctx.logsToString()}\n` +
@@ -506,7 +531,7 @@ export class PyteaService {
 
         this._pushTimeLog('printing results');
 
-        this._console.log(
+        this._console.info(
             chalk.green(`potential success path #: ${success.count()}\n`) +
                 chalk.yellow(`potential unreachable path #: ${stopped.count()}\n`) +
                 chalk.red(`immediate failed path #: ${failed.count()}\n\n`) +
@@ -542,7 +567,7 @@ export class PyteaService {
 
             ctx.logs.forEach((value, i) => {
                 if (value.type === SVType.Error) {
-                    this._console.log(
+                    this._console.info(
                         `success path #${
                             i + 1
                         }\n\nLOGS:${ctx.logsToString()}\n\nCONSTRAINTS:\n${ctx.ctrSet.toString()}\n\n${heapLog}`

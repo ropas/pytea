@@ -1,5 +1,3 @@
-import { PyteaService } from 'src/service/pyteaService';
-
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { fetchAddr, sanitizeAddr, trackMro } from '../backend/backUtils';
@@ -21,6 +19,7 @@ import {
 } from '../backend/sharpValues';
 import { ExpNum, ExpNumSymbol, NumBopType, NumUopType } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
+import { PyteaService } from '../service/pyteaService';
 import { LCImpl } from '.';
 import { LCBase } from './libcall';
 

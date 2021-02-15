@@ -7,7 +7,7 @@
  * Definitions and types of constraints.
  */
 
-import { formatParseNode } from 'src/service/pyteaUtils';
+import { formatParseNode } from '../service/pyteaUtils';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 

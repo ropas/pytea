@@ -1,5 +1,5 @@
 {
-    "name": "vscode-tea",
+    "name": "vscode-pytea",
     "displayName": "Pytea",
     "description": "Pytea: PyTorch Tensor Error Analyzer",
     "version": "0.1.0",
@@ -65,58 +65,50 @@
             "type": "object",
             "title": "Pytea",
             "properties": {
-                "python.analysis.diagnosticMode": {
+                "python.pytea.configPath": {
                     "type": "string",
-                    "default": "openFilesOnly",
-                    "enum": [
-                        "openFilesOnly",
-                        "workspace"
-                    ],
-                    "enumDescriptions": [
-                        "Analyzes and reports errors on only open files.",
-                        "Analyzes and reports errors on all files in the workspace."
-                    ],
-                    "scope": "resource"
+                    "default": "",
+                    "description": "Path to pyteaconfig.json."
                 },
-                "python.analysis.diagnosticSeverityOverrides": {
+                "python.pytea.pyteaLibraryPath": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Path to Pytea implementation of Python builtins and libraries."
+                },
+                "python.pytea.pythonCommandLineArguments": {
                     "type": "object",
                     "default": {},
-                    "description": "Allows a user to override the severity levels for individual diagnostics.",
-                    "scope": "resource",
-                    "properties": {
-                        "reportGeneralTypeIssues": {
-                            "type": "string",
-                            "description": "Diagnostics for general type inconsistencies, unsupported operations, argument/parameter mismatches, etc. Covers all of the basic type-checking rules not covered by other rules. Does not include syntax errors.",
-                            "default": "error",
-                            "enum": [
-                                "none",
-                                "information",
-                                "warning",
-                                "error"
-                            ]
-                        },
-                        "reportPropertyTypeMismatch": {
-                            "type": "string",
-                            "description": "Diagnostics for property whose setter and getter have mismatched types.",
-                            "default": "error",
-                            "enum": [
-                                "none",
-                                "information",
-                                "warning",
-                                "error"
-                            ]
-                        }
-                    }
+                    "description": "Python command line arguments. Injected to Python argparse functions."
                 },
-                "python.analysis.logLevel": {
+                "python.pytea.pythonSubcommand": {
                     "type": "string",
-                    "default": "info",
-                    "description": "Specifies the level of logging for the Output panel",
+                    "default": "string",
+                    "description": "'dest' value of argparse.add_subparsers."
+                },
+                "python.pytea.immediateConstraintCheck": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Check and discard trivial integer constraints"
+                },
+                "python.pytea.ignoreAssert": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Ignore assert statements of Python."
+                },
+                "python.pytea.variableRange": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Explicit range of random variables. null means unbounded."
+                },
+                "python.pytea.logLevel": {
+                    "type": "string",
+                    "default": "result-only",
+                    "description": "Verbosity of Pytea analysis log.",
                     "enum": [
-                        "Error",
-                        "Warning",
-                        "Information",
-                        "Trace"
+                        "none",
+                        "result-only",
+                        "reduced",
+                        "full"
                     ]
                 }
             }

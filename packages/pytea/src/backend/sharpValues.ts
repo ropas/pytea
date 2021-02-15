@@ -8,11 +8,11 @@
  */
 
 import { List, Map, Record } from 'immutable';
-import { formatParseNode } from 'src/service/pyteaUtils';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { ThStmt, TSFunDef, TSPass } from '../frontend/torchStatements';
+import { formatParseNode } from '../service/pyteaUtils';
 import { fetchAddr } from './backUtils';
 import { Context } from './context';
 import { ShEnv, ShHeap } from './sharpEnvironments';

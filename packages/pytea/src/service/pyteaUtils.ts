@@ -10,7 +10,6 @@ import { spawn } from 'child_process';
 import { CommandLineOptions } from 'command-line-args';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ContextSet } from 'src/backend/context';
 import tmp from 'tmp';
 import * as util from 'util';
 
@@ -28,9 +27,10 @@ import {
 import { convertOffsetToPosition } from 'pyright-internal/common/positionUtils';
 import { ParseNode, ParseNodeType } from 'pyright-internal/parser/parseNodes';
 
+import { ContextSet } from '../backend/context';
 import { TorchIRFrontend } from '../frontend/torchFrontend';
 import { ThStmt } from '../frontend/torchStatements';
-import { defaultOptions, PyteaOptions, PyteaOptionsPart } from './pyteaOptions';
+import { defaultOptions, PyteaOptions } from './pyteaOptions';
 
 export class NodeConsole implements ConsoleInterface {
     logger: ReturnType<typeof util.debuglog>;
@@ -80,8 +80,13 @@ export function getPyteaLibPath() {
     return undefined;
 }
 
-export function buildPyteaOption(args: CommandLineOptions, basePath?: string): PyteaOptions | string {
+export function buildPyteaOption(
+    args?: CommandLineOptions,
+    basePath?: string,
+    baseOptions?: PyteaOptions
+): PyteaOptions | string {
     const cwd = basePath ?? path.normalize(process.cwd());
+    args = args ?? {};
 
     const rawEntryPath: string = args['file'];
     const rawConfigPath: string = args['configPath'];
@@ -97,7 +102,7 @@ export function buildPyteaOption(args: CommandLineOptions, basePath?: string): P
         return `file path '${entryPath}' does not exist`;
     }
 
-    let options: PyteaOptionsPart = {};
+    let options: Partial<PyteaOptions> = {};
     options.configPath = configPath;
 
     // find config by entryPath if configPath is not set
@@ -123,7 +128,7 @@ export function buildPyteaOption(args: CommandLineOptions, basePath?: string): P
             options = JSON.parse(fs.readFileSync(configPath).toString());
             if (options.entryPath) options.entryPath = normalizePath(combinePaths(dirPath, options.entryPath));
         } else {
-            options = { ...defaultOptions };
+            options = { ...baseOptions };
         }
     } catch (e) {
         throw `'${configPath}' is not a valid JSON file`;
@@ -152,7 +157,7 @@ export function buildPyteaOption(args: CommandLineOptions, basePath?: string): P
         return `pytea library path '${options.pyteaLibPath}' does not exist`;
     }
 
-    options = { ...defaultOptions, ...options };
+    options = { ...baseOptions, ...options };
 
     // override by runtime node args
     if (args.logLevel !== undefined) options.logLevel = args.logLevel;
@@ -214,7 +219,7 @@ export function filePathToQualId(path: string): string {
     return dotPaths;
 }
 
-// return module qualPath => ThStmt
+// return 'module qualPath => ThStmt'
 // e.g.) "torch.functional" => <some statement>
 export function getStmtsFromDir(service: AnalyzerService, dirPath: string): Map<string, ThStmt> {
     // Always enable "test mode".
@@ -225,7 +230,7 @@ export function getStmtsFromDir(service: AnalyzerService, dirPath: string): Map<
     const libFilePaths = libFileNames.map((fn) => path.resolve(dirPath, fn));
 
     const program = service.backgroundAnalysisProgram.program;
-    program.setTrackedFiles(libFilePaths);
+    program.addTrackedFiles(libFilePaths);
 
     while (program.analyze()) {
         // Continue to call analyze until it completes. Since we're not

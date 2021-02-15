@@ -8,10 +8,9 @@
  * Collection of Environment, Heap, and Constraint set.
  */
 import { List, Map, Record } from 'immutable';
-import { formatParseNode } from 'src/service/pyteaUtils';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
-
+import { formatParseNode } from '../service/pyteaUtils';
 import { fetchAddr } from './backUtils';
 import { ConstraintSet } from './constraintSet';
 import {
@@ -428,9 +427,10 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         partialDims?: Map<number, ExpNum>
     ): ContextSet<ExpShapeConst> {
         if (rank < 0)
-            return (this.failWithMsg(`from 'genRankedShape': got negative rank ${rank}`, source).toSet() as ContextSet<
-                unknown
-            >) as ContextSet<ExpShapeConst>;
+            return (this.failWithMsg(
+                `from 'genRankedShape': got negative rank ${rank}`,
+                source
+            ).toSet() as ContextSet<unknown>) as ContextSet<ExpShapeConst>;
 
         const dims: ExpNum[] = [];
         let ctx: Context<any> = this;

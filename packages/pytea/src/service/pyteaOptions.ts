@@ -8,6 +8,7 @@
  */
 
 export type PyCmdArgs = { [option: string]: boolean | number | string };
+export type PyteaLogLevel = 'none' | 'result-only' | 'reduced' | 'full';
 export interface PyteaOptions {
     // Absolute path to pyteaconfig.json
     configPath: string;
@@ -26,7 +27,7 @@ export interface PyteaOptions {
     pythonSubcommand: string;
 
     // Debug log level (default: reduced)
-    logLevel: 'none' | 'result-only' | 'reduced' | 'full';
+    logLevel: PyteaLogLevel;
 
     // Check and discard trivial constraints (default: true)
     immediateConstraintCheck: boolean;
@@ -43,9 +44,10 @@ export interface PyteaOptions {
     variableRange: { [prefix: string]: null | number | [number | null, number | null] };
 }
 
-export type PyteaOptionsPart = Partial<PyteaOptions>;
-
-export const defaultOptions: PyteaOptionsPart = {
+export const defaultOptions: PyteaOptions = {
+    configPath: '',
+    pyteaLibPath: '',
+    entryPath: '',
     pythonCmdArgs: {},
     pythonSubcommand: '',
     logLevel: 'reduced',

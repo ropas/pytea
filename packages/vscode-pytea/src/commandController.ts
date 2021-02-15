@@ -13,6 +13,7 @@ import { ServerCommand } from 'pyright-internal/commands/commandController';
 
 import { PyteaCommands } from './commands';
 import { PyteaServer } from './server';
+import { Uri } from 'vscode';
 
 export class RestartServerCommand implements ServerCommand {
     constructor(private _ls: PyteaServer) {}
@@ -26,7 +27,11 @@ export class AnalyzeFileCommand implements ServerCommand {
     constructor(private _ls: PyteaServer) {}
 
     async execute(cmdParams: ExecuteCommandParams): Promise<any> {
-        this._ls.restart();
+        const args = cmdParams.arguments;
+        if (args && args[0] && typeof args[0] === 'object') {
+            const entryPath = (args[0] as Uri).fsPath;
+            this._ls.analyze(entryPath);
+        }
     }
 }
 

@@ -20,6 +20,7 @@ import { NullConsole, StandardConsole } from 'pyright-internal/common/console';
 
 import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
 import { combinePaths } from 'pyright-internal/common/pathUtils';
+import { defaultOptions } from './service/pyteaOptions';
 
 import { PyteaService } from './service/pyteaService';
 import { buildPyteaOption, exportConstraintSet, runZ3Py } from './service/pyteaUtils';
@@ -84,7 +85,7 @@ function parsePyrightArgs(): CommandLineOptions | undefined {
     return args;
 }
 
-export function getPyteaService(args: CommandLineOptions): PyteaService | undefined {
+export function getPyteaService(args: CommandLineOptions, service?: AnalyzerService): PyteaService | undefined {
     const entryPath = args.file;
 
     if (!entryPath) {
@@ -92,7 +93,7 @@ export function getPyteaService(args: CommandLineOptions): PyteaService | undefi
         return;
     }
 
-    const pyteaOptions = buildPyteaOption(args);
+    const pyteaOptions = buildPyteaOption(args, undefined, defaultOptions);
 
     if (typeof pyteaOptions === 'string') {
         console.error(pyteaOptions);
@@ -100,7 +101,7 @@ export function getPyteaService(args: CommandLineOptions): PyteaService | undefi
     }
 
     const logger = new StandardConsole();
-    const pyteaService = new PyteaService(pyteaOptions, logger, true);
+    const pyteaService = new PyteaService(service, pyteaOptions, logger, true);
 
     return pyteaService;
 }
@@ -141,15 +142,14 @@ function runMain(args: CommandLineOptions) {
         }
 
         if (!pyteaService) {
-            pyteaService = getPyteaService(args);
-            pyteaService?.setPyrightAnalyzerService(pyrightService);
+            pyteaService = getPyteaService(args, pyrightService);
         }
 
         if (pyteaService && pyteaService.options) {
             const entryPath = pyteaService.options.entryPath;
 
-            // this triggers translation of project folder .
-            const errMsg = pyteaService.translateMainEntry(entryPath);
+            // this triggers translation of project folder.
+            const errMsg = pyteaService.translateAll(entryPath);
             if (errMsg) {
                 console.error(errMsg);
                 process.exit(ExitStatus.FatalError);

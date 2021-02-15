@@ -10,9 +10,11 @@ import { createDeferred } from 'pyright-internal/common/deferred';
 import { WorkspaceServiceInstance } from 'pyright-internal/languageServerBase';
 
 import { PyteaServer } from './server';
+import { defaultOptions, PyteaOptions } from 'pytea/service/pyteaOptions';
 
 export interface PyteaWorkspaceInstance extends WorkspaceServiceInstance {
-    pyteaInstance: PyteaService;
+    pyteaService: PyteaService;
+    pyteaOptions: PyteaOptions;
 }
 
 export class PyteaWorkspaceMap extends Map<string, PyteaWorkspaceInstance> {
@@ -66,11 +68,16 @@ export class PyteaWorkspaceMap extends Map<string, PyteaWorkspaceInstance> {
 
                 // Create a default workspace for files that are outside
                 // of all workspaces.
+                const pyrightService = this._ls.createAnalyzerService(this._defaultWorkspacePath);
+                const pyteaService = new PyteaService(pyrightService, undefined, this._ls.console);
+
                 defaultWorkspace = {
                     workspaceName: '',
                     rootPath: '',
                     rootUri: '',
-                    serviceInstance: this._ls.createAnalyzerService(this._defaultWorkspacePath),
+                    serviceInstance: pyrightService,
+                    pyteaService: pyteaService,
+                    pyteaOptions: defaultOptions,
                     disableLanguageServices: false,
                     disableOrganizeImports: false,
                     isInitialized: createDeferred<boolean>(),

@@ -12,7 +12,7 @@
     "pyteaLibPath": {
       "$id": "#/properties/pyteaLibPath",
       "type": "string",
-      "title": "Path to Pytea implementation of Python builtins",
+      "title": "Path to Pytea implementation of Python builtins and libraries",
       "pattern": "^(.*)$"
     },
     "entryPath": {
@@ -29,7 +29,7 @@
     "pythonSubcommand": {
       "$id": "#/properties/pythonSubcommand",
       "type": "string",
-      "title": "'dest' of argparse.add_subparsers",
+      "title": "'dest' value of argparse.add_subparsers",
       "pattern": "^(.*)$"
     },
     "logLevel": {
@@ -41,7 +41,7 @@
         "reduced",
         "full"
       ],
-      "title": "Verbosity of analysis log",
+      "title": "Verbosity of Pytea analysis log",
       "default": "result-only"
     },
     "immediateConstraintCheck": {
@@ -65,7 +65,7 @@
     "variableRange": {
       "$id": "#/properties/variableRange",
       "type": "object",
-      "title": "Explicit range of random variables. null ",
+      "title": "Explicit range of random variables. null means unbounded.",
       "patternProperties": {
         "^(.*)$": {
           "oneOf": [

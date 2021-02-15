@@ -6,11 +6,10 @@
  *
  * Direct call of shape operations in context.
  */
-import { Constraint } from 'src/backend/constraintType';
-
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { fetchAddr, sanitizeAddr } from '../backend/backUtils';
+import { Constraint } from '../backend/constraintType';
 import { Context, ContextSet } from '../backend/context';
 import {
     absExpIndexByLen,
