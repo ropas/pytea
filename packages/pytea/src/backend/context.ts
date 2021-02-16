@@ -10,6 +10,7 @@
 import { List, Map, Record } from 'immutable';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
+
 import { formatParseNode } from '../service/pyteaUtils';
 import { fetchAddr } from './backUtils';
 import { ConstraintSet } from './constraintSet';

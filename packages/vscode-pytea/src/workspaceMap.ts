@@ -4,13 +4,13 @@
  * Workspace management related functionality.
  */
 
+import { defaultOptions, PyteaOptions } from 'pytea/service/pyteaOptions';
 import { PyteaService } from 'pytea/service/pyteaService';
 
 import { createDeferred } from 'pyright-internal/common/deferred';
 import { WorkspaceServiceInstance } from 'pyright-internal/languageServerBase';
 
 import { PyteaServer } from './server';
-import { defaultOptions, PyteaOptions } from 'pytea/service/pyteaOptions';
 
 export interface PyteaWorkspaceInstance extends WorkspaceServiceInstance {
     pyteaService: PyteaService;

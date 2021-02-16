@@ -82,7 +82,7 @@
                 },
                 "python.pytea.pythonSubcommand": {
                     "type": "string",
-                    "default": "string",
+                    "default": "",
                     "description": "'dest' value of argparse.add_subparsers."
                 },
                 "python.pytea.immediateConstraintCheck": {

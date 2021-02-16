@@ -30,7 +30,7 @@ import { ParseNode, ParseNodeType } from 'pyright-internal/parser/parseNodes';
 import { ContextSet } from '../backend/context';
 import { TorchIRFrontend } from '../frontend/torchFrontend';
 import { ThStmt } from '../frontend/torchStatements';
-import { defaultOptions, PyteaOptions } from './pyteaOptions';
+import { PyteaOptions } from './pyteaOptions';
 
 export class NodeConsole implements ConsoleInterface {
     logger: ReturnType<typeof util.debuglog>;
@@ -90,10 +90,16 @@ export function buildPyteaOption(
 
     const rawEntryPath: string = args['file'];
     const rawConfigPath: string = args['configPath'];
-    const rawLibPath: string = args.libPath ? normalizePath(combinePaths(cwd, args.libPath)) : '';
+    const rawLibPath: string = args.libPath
+        ? normalizePath(combinePaths(cwd, args.libPath))
+        : baseOptions?.pyteaLibPath ?? '';
 
-    const entryPath: string = rawEntryPath ? normalizePath(combinePaths(cwd, rawEntryPath)) : '';
-    let configPath: string = rawConfigPath ? normalizePath(combinePaths(cwd, rawConfigPath)) : '';
+    const entryPath: string = rawEntryPath
+        ? normalizePath(combinePaths(cwd, rawEntryPath))
+        : baseOptions?.entryPath ?? '';
+    let configPath: string = rawConfigPath
+        ? normalizePath(combinePaths(cwd, rawConfigPath))
+        : baseOptions?.configPath ?? '';
 
     if (!configPath && !entryPath) {
         return `neither configPath nor file path is found: ${entryPath}`;

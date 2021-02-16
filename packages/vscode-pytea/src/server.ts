@@ -6,6 +6,11 @@
  * Implements pytea language server.
  */
 
+import { defaultOptions, PyteaLogLevel, PyteaOptions } from 'pytea/service/pyteaOptions';
+import { PyteaService } from 'pytea/service/pyteaService';
+import { buildPyteaOption } from 'pytea/service/pyteaUtils';
+import { inspect } from 'util';
+import { CancellationTokenSource } from 'vscode';
 import {
     CancellationToken,
     ConfigurationItem,
@@ -20,12 +25,15 @@ import {
     InitializeResult,
     Location,
     MarkupKind,
+    WorkDoneProgressReporter,
     WorkspaceFolder,
 } from 'vscode-languageserver/node';
+import { TextDocumentSyncKind } from 'vscode-languageserver-protocol';
 
 import { AnalysisResults } from 'pyright-internal/analyzer/analysis';
 import { isPythonBinary } from 'pyright-internal/analyzer/pythonPathUtils';
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
+import { CancelAfter } from 'pyright-internal/common/cancellationUtils';
 import { getNestedProperty } from 'pyright-internal/common/collectionUtils';
 import { ConsoleInterface, ConsoleWithLogLevel, LogLevel, NullConsole } from 'pyright-internal/common/console';
 import { isString } from 'pyright-internal/common/core';
@@ -35,16 +43,13 @@ import { DiagnosticRule } from 'pyright-internal/common/diagnosticRules';
 import { createFromRealFileSystem, FileSystem } from 'pyright-internal/common/fileSystem';
 import { convertPathToUri, convertUriToPath, resolvePaths } from 'pyright-internal/common/pathUtils';
 import { Position } from 'pyright-internal/common/textRange';
-import { ServerOptions, ServerSettings, WorkspaceServiceInstance } from 'pyright-internal/languageServerBase';
+import { ServerOptions, ServerSettings } from 'pyright-internal/languageServerBase';
 import { AnalyzerServiceExecutor } from 'pyright-internal/languageService/analyzerServiceExecutor';
 import { convertHoverResults } from 'pyright-internal/languageService/hoverProvider';
-
-import { defaultOptions, PyteaLogLevel, PyteaOptions } from 'pytea/service/pyteaOptions';
-import { PyteaService } from 'pytea/service/pyteaService';
+import { Localizer } from 'pyright-internal/localization/localize';
 
 import { PyteaCommandController } from './commandController';
 import { PyteaWorkspaceInstance, PyteaWorkspaceMap } from './workspaceMap';
-import { buildPyteaOption } from 'pytea/service/pyteaUtils';
 
 export interface PyteaServerSettings {
     pyrightSettings: ServerSettings;
@@ -52,7 +57,7 @@ export interface PyteaServerSettings {
 }
 
 export class PyteaServer {
-    protected _connection: Connection = createConnection({});
+    protected _connection: Connection;
     protected _workspaceMap: PyteaWorkspaceMap;
     protected _hasConfigurationCapability = false;
     protected _hasWorkspaceFoldersCapability = false;
@@ -61,6 +66,9 @@ export class PyteaServer {
 
     private _serverOptions: ServerOptions;
     private _controller: PyteaCommandController;
+
+    // We support running only one command at a time.
+    private _pendingCommandCancellationSource: CancellationTokenSource | undefined;
 
     // Global root path - the basis for all global settings.
     rootPath = '';
@@ -71,6 +79,11 @@ export class PyteaServer {
     readonly console: ConsoleInterface;
 
     constructor() {
+        this._connection = createConnection();
+        // this._connection = createConnection({
+        //     cancellationStrategy: getCancellationStrategyFromArgv(process.argv),
+        // });
+
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const version = require('../package.json').version || '';
 
@@ -132,38 +145,59 @@ export class PyteaServer {
 
     updateSettingsForAllWorkspaces(): void {
         this._workspaceMap.forEach((workspace) => {
-            this.updateSettingsForWorkspace(workspace).ignoreErrors();
+            this.updateSettingsForWorkspace(workspace).catch(() => {
+                // ignore errors
+            });
         });
     }
 
     analyze(entryPath: string) {
+        this.console.info(`analyzing ${entryPath}...`);
+
         const workspace = this._workspaceMap.getWorkspaceForFile(entryPath);
 
-        const options = workspace.pyteaOptions;
-        options.entryPath = resolvePaths(workspace.rootPath, this.expandPathVariables(workspace.rootPath, entryPath));
+        const baseOptions = workspace.pyteaOptions;
+        baseOptions.entryPath = resolvePaths(
+            workspace.rootPath,
+            this.expandPathVariables(workspace.rootPath, entryPath)
+        );
 
-        const tempOptions = buildPyteaOption(undefined, workspace.rootPath, options);
-        if (typeof tempOptions === 'string') {
-            this.console.error(`Found error while setting Pytea options: ${tempOptions}`);
+        const options = buildPyteaOption(undefined, workspace.rootPath, baseOptions);
+        if (typeof options === 'string') {
+            this.console.error(`Found error while setting Pytea options: ${options}`);
             return;
         }
 
-        workspace.pyteaOptions = tempOptions;
+        workspace.pyteaOptions = options;
         const pyteaService = workspace.pyteaService;
-        pyteaService.setOptions(tempOptions);
+        pyteaService.setOptions(options);
 
+        this.console.info(`options: ${inspect(options)}`);
         if (!pyteaService.validate()) {
             return;
         }
 
-        const errMsg = pyteaService.translateAll(options.entryPath);
+        const errMsg = pyteaService.translateAll(baseOptions.entryPath);
         if (errMsg) {
             this.console.error(`Found error while translating Python scripts: ${errMsg}`);
+            return;
         }
 
-        const result = pyteaService.analyze();
-        this.console.info(`completed analyzing. found ${result?.getList()?.count ?? 0} paths`);
-        // TODO: resulting!
+        try {
+            // TODO: remove global reference
+            PyteaService.setGlobalService(pyteaService);
+            const result = pyteaService.analyze();
+            this.console.info(`Analyzing completed. Found ${result?.getList()?.count() ?? 0} paths`);
+
+            if (result) {
+                // TODO: resulting!
+                pyteaService.printLog(result);
+            } else {
+                this.console.error('Analyzer returned undefined');
+            }
+        } catch (e) {
+            this.console.error(`Found error while analyzing ${options.entryPath}\n  ${e}`);
+        }
     }
 
     restart() {
@@ -226,7 +260,7 @@ export class PyteaServer {
                 }
             }
 
-            const pythonPyteaSection = await this.getConfiguration(workspace.rootUri, 'python.analysis');
+            const pythonPyteaSection = await this.getConfiguration(workspace.rootUri, 'python.pytea');
             if (pythonPyteaSection) {
                 const configPath = pythonPyteaSection.configPath;
                 if (configPath && typeof configPath === 'string') {
@@ -299,12 +333,14 @@ export class PyteaServer {
         workspace.disableLanguageServices = !!pyrightSettings.disableLanguageServices;
         workspace.disableOrganizeImports = !!pyrightSettings.disableOrganizeImports;
         workspace.pyteaOptions = serverSettings.pyteaOptions;
+        this.console.info(`setting options to ${inspect(serverSettings.pyteaOptions)}`);
 
         // The workspace is now open for business.
         workspace.isInitialized.resolve(true);
     }
 
     protected executeCommand(params: ExecuteCommandParams, token: CancellationToken): Promise<any> {
+        this.console.info(`got ${params.command}`);
         return this._controller.execute(params, token);
     }
 
@@ -330,14 +366,23 @@ export class PyteaServer {
             };
 
             // TODO: add pytea result.
-            const workspace = await this.getWorkspaceForFile(filePath);
-            const hoverResults = workspace.serviceInstance.getHoverForPosition(
-                filePath,
-                position,
-                this._hoverContentFormat,
-                token
-            );
-            return convertHoverResults(this._hoverContentFormat, hoverResults);
+            // const workspace = await this.getWorkspaceForFile(filePath);
+
+            this.console.info(`hover ${params.position.line}`);
+            // const hoverResults = workspace.serviceInstance.getHoverForPosition(
+            //     filePath,
+            //     position,
+            //     this._hoverContentFormat,
+            //     token
+            // );
+            // return convertHoverResults(this._hoverContentFormat, hoverResults);
+            return {
+                contents: {
+                    kind: MarkupKind.PlainText,
+                    value: `test: ${filePath} ${position.line}`,
+                },
+                range: { start: position, end: position },
+            };
         });
 
         this._connection.onInitialized(() => {
@@ -359,7 +404,31 @@ export class PyteaServer {
         });
 
         this._connection.onExecuteCommand(async (params, token, reporter) => {
-            await this.executeCommand(params, token);
+            // Cancel running command if there is one.
+            if (this._pendingCommandCancellationSource) {
+                this._pendingCommandCancellationSource.cancel();
+                this._pendingCommandCancellationSource = undefined;
+            }
+
+            const executeCommand = async (token: CancellationToken) => {
+                await this.executeCommand(params, token);
+            };
+
+            // Create a progress dialog for long-running commands.
+            const progress = await this._getProgressReporter(
+                params.workDoneToken,
+                reporter,
+                Localizer.CodeAction.executingCommand()
+            );
+            const source = CancelAfter(token, progress.token);
+            this._pendingCommandCancellationSource = source;
+
+            try {
+                await executeCommand(source.token);
+            } finally {
+                progress.reporter.done();
+                source.dispose();
+            }
         });
     }
 
@@ -374,16 +443,22 @@ export class PyteaServer {
         if (params.workspaceFolders) {
             params.workspaceFolders.forEach((folder) => {
                 const path = convertUriToPath(folder.uri);
+                this.console.info(`create ${path}`);
                 this._workspaceMap.set(path, this.createWorkspaceServiceInstance(folder, path));
             });
         } else if (params.rootPath) {
+            this.console.info(`create root path ${params.rootPath}`);
             this._workspaceMap.set(params.rootPath, this.createWorkspaceServiceInstance(undefined, params.rootPath));
         }
 
         const result: InitializeResult = {
             capabilities: {
+                textDocumentSync: TextDocumentSyncKind.Incremental,
                 hoverProvider: { workDoneProgress: true },
-                documentHighlightProvider: { workDoneProgress: true },
+                executeCommandProvider: {
+                    commands: [],
+                    workDoneProgress: true,
+                },
             },
         };
 
@@ -441,6 +516,7 @@ export class PyteaServer {
         //         diagnostics: this._convertDiagnostics(fileDiag.diagnostics),
         //     });
         // });
+        this.console.info(`pyright analysis finished`);
     }
 
     protected async getConfiguration(scopeUri: string | undefined, section: string) {
@@ -544,6 +620,24 @@ export class PyteaServer {
         }
 
         return convertedDiags;
+    }
+
+    private async _getProgressReporter(
+        workDoneToken: string | number | undefined,
+        clientReporter: WorkDoneProgressReporter,
+        title: string
+    ) {
+        if (workDoneToken) {
+            return { reporter: clientReporter, token: CancellationToken.None };
+        }
+
+        const serverInitiatedReporter = await this._connection.window.createWorkDoneProgress();
+        serverInitiatedReporter.begin(title, undefined, undefined, true);
+
+        return {
+            reporter: serverInitiatedReporter,
+            token: serverInitiatedReporter.token,
+        };
     }
 }
 

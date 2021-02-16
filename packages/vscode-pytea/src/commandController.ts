@@ -10,10 +10,10 @@
 import { CancellationToken, ExecuteCommandParams, ResponseError } from 'vscode-languageserver';
 
 import { ServerCommand } from 'pyright-internal/commands/commandController';
+import { convertUriToPath } from 'pyright-internal/common/pathUtils';
 
 import { PyteaCommands } from './commands';
 import { PyteaServer } from './server';
-import { Uri } from 'vscode';
 
 export class RestartServerCommand implements ServerCommand {
     constructor(private _ls: PyteaServer) {}
@@ -28,8 +28,8 @@ export class AnalyzeFileCommand implements ServerCommand {
 
     async execute(cmdParams: ExecuteCommandParams): Promise<any> {
         const args = cmdParams.arguments;
-        if (args && args[0] && typeof args[0] === 'object') {
-            const entryPath = (args[0] as Uri).fsPath;
+        if (args && args[0]) {
+            const entryPath = convertUriToPath(args[0]);
             this._ls.analyze(entryPath);
         }
     }
@@ -39,7 +39,7 @@ export class PyteaCommandController implements ServerCommand {
     private _restartServer: RestartServerCommand;
     private _analyzeFile: AnalyzeFileCommand;
 
-    constructor(ls: PyteaServer) {
+    constructor(private ls: PyteaServer) {
         this._restartServer = new RestartServerCommand(ls);
         this._analyzeFile = new AnalyzeFileCommand(ls);
     }

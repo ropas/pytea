@@ -153,6 +153,7 @@ export function activate(context: ExtensionContext) {
                     command: analyzeFileCommand,
                     arguments: [editor.document.uri.toString(), ...args],
                 };
+                console.log(`execute analyze ${editor.document.uri.toString()}`);
                 languageClient.sendRequest<TextEdit[] | undefined>('workspace/executeCommand', cmd);
             }
         )

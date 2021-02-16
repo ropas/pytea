@@ -11,7 +11,6 @@ import chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
-
 import { CancellationToken, MarkupKind } from 'vscode-languageserver/node';
 
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
@@ -28,25 +27,15 @@ import { TorchBackend } from '../backend/torchBackend';
 import { IRWriter } from '../frontend/IRReaderWriter';
 import { ThStmt } from '../frontend/torchStatements';
 import { defaultOptions, PyCmdArgs, PyteaOptions } from './pyteaOptions';
-
 import * as PyteaUtils from './pyteaUtils';
 
 let _globalService: PyteaService | undefined;
 
-enum ExitStatus {
-    NoErrors = 0,
-    ErrorsReported = 1,
-    FatalError = 2,
-    ConfigFileParseError = 3,
-}
 export class PyteaService {
     private _options?: PyteaOptions;
     private _service?: AnalyzerService;
 
     private _console: ConsoleInterface;
-
-    private _projectPath: string;
-    private _entryPath: string;
 
     private _libStmt: Map<string, ThStmt>;
     private _projectStmt?: Map<string, ThStmt>;
@@ -63,9 +52,6 @@ export class PyteaService {
 
         this._timeLog = [];
         this._currTime = performance.now();
-
-        this._projectPath = '';
-        this._entryPath = '';
 
         this._options = options ?? defaultOptions;
         this._service = service;
@@ -126,10 +112,6 @@ export class PyteaService {
         this._options = options;
     }
 
-    setEntryPath(entryPath: string) {
-        this._entryPath = entryPath;
-    }
-
     // check library or entry file is fully loaded.
     validate(): boolean {
         let valid = true;
@@ -142,17 +124,12 @@ export class PyteaService {
             this._console.error('PyTea service option is not set. Please check pyteaconfig.json.');
         }
 
-        if (!this._entryPath) {
+        if (!this._options?.entryPath) {
             this._console.error('Python entry point is not set.');
             valid = false;
         }
 
-        if (!this._projectStmt || this._projectStmt.size === 0) {
-            this._console.error('Project directory is empty');
-            valid = false;
-        }
-
-        if (!this._options?.extractIR && (!this._options?.pyteaLibPath || this._libStmt.size === 0)) {
+        if (!this._options?.extractIR && !this._options?.pyteaLibPath) {
             this._console.error('Invalid PyTea library path. Please check library path correctly.');
             valid = false;
         }
@@ -177,7 +154,7 @@ export class PyteaService {
 
         this._clearTimeLog();
 
-        // translate pytea library implementations
+        // translate and cache pytea library implementations
         if (
             this._service &&
             this._libStmt.size === 0 &&
@@ -207,11 +184,9 @@ export class PyteaService {
             return `pyright service is not set.`;
         }
 
-        this._entryPath = entryPath;
-
         // translate project scripts
-        this._projectPath = path.join(entryPath, '..');
-        this._projectStmt = PyteaUtils.getStmtsFromDir(this._service, this._projectPath);
+        const projectPath = path.join(entryPath, '..');
+        this._projectStmt = PyteaUtils.getStmtsFromDir(this._service, projectPath);
 
         this._pushTimeLog('Translate project scripts');
 
@@ -233,12 +208,13 @@ export class PyteaService {
         const builtinSet = this._builtinSet ?? TorchBackend.runBuiltin(builtins, 'builtins');
         this._builtinSet = builtinSet;
 
-        const entryName = path.basename(this._entryPath, path.extname(this._entryPath));
+        const entryPath = this._options!.entryPath;
+        const entryName = path.basename(entryPath, path.extname(entryPath));
         const stmt = this._projectStmt?.get(entryName);
 
         if (!stmt) {
             this._mainStmt = undefined;
-            this._console.error(`cannot parse entry file '${this._entryPath}'`);
+            this._console.error(`cannot parse entry file '${entryPath}'`);
             return;
         }
 
@@ -272,11 +248,13 @@ export class PyteaService {
 
         // TODO: consistent pyteaLibPath
         const builtinSet = TorchBackend.runBuiltin(builtins, 'builtins');
-        const entryName = path.basename(this._entryPath, path.extname(this._entryPath));
+
+        const entryPath = this._options!.entryPath;
+        const entryName = path.basename(entryPath, path.extname(entryPath));
 
         const stmt = this._projectStmt?.get(entryName);
         if (!stmt) {
-            this._console.error(`cannot parse entry file '${this._entryPath}'`);
+            this._console.error(`cannot parse entry file '${entryPath}'`);
             return false;
         }
 
