@@ -1,8 +1,17 @@
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
-
 import { fetchAddr, sanitizeAddr } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
-import { ShValue, SVAddr, SVBool, SVFloat, SVFunc, SVInt, SVNone, SVString, SVType } from '../backend/sharpValues';
+import {
+    CodeSource,
+    ShValue,
+    SVAddr,
+    SVBool,
+    SVFloat,
+    SVFunc,
+    SVInt,
+    SVNone,
+    SVString,
+    SVType,
+} from '../backend/sharpValues';
 import { ExpBool, ExpNum, ExpString } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
 import { PyteaService } from '../service/pyteaService';
@@ -10,7 +19,7 @@ import { LCImpl } from '.';
 import { LCBase } from './libcall';
 
 export namespace BuiltinsLCImpl {
-    export function inject_argument(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function inject_argument(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -194,7 +203,7 @@ export namespace BuiltinsLCImpl {
     }
 
     // return current subcommand
-    export function set_subcommand(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function set_subcommand(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx

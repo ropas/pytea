@@ -9,9 +9,7 @@
 
 import { Map, Record } from 'immutable';
 
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
-
-import { ShValue, SVAddr, SVType } from './sharpValues';
+import { CodeSource, ShValue, SVAddr, SVType } from './sharpValues';
 
 interface ShEnvProps {
     readonly addrMap: Map<string, SVAddr>; // negative address is builtin values
@@ -110,13 +108,13 @@ export class ShHeap extends Record(shHeapDefaults) implements ShHeapProps {
     }
 
     // return new address and malloced heap
-    malloc(source?: ParseNode): [SVAddr, ShHeap] {
+    malloc(source?: CodeSource): [SVAddr, ShHeap] {
         const addr = this.addrMax;
         return [SVAddr.create(addr + 1, source), this.set('addrMax', addr + 1)];
     }
 
     // malloc with value assignment
-    allocNew(value: ShValue, source?: ParseNode): [SVAddr, ShHeap] {
+    allocNew(value: ShValue, source?: CodeSource): [SVAddr, ShHeap] {
         const [addr, heap] = this.malloc(source);
         return [addr, heap.setVal(addr, value)];
     }
@@ -161,13 +159,12 @@ export class ShHeap extends Record(shHeapDefaults) implements ShHeapProps {
         let heap: ShHeap = this;
 
         function markVal(value: ShValue): void {
-            value.attrs.forEach((v) => markVal(v));
-
             switch (value.type) {
                 case SVType.Addr:
                     mark(value);
                     break;
                 case SVType.Object:
+                    value.attrs.forEach((v) => markVal(v));
                     value.indices.forEach((v) => markVal(v));
                     value.keyValues.forEach((v) => markVal(v));
                     break;

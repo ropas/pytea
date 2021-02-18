@@ -9,10 +9,10 @@
 
 import { List, Map, Record } from 'immutable';
 
+import { Range } from 'pyright-internal/common/textRange';
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { ThStmt, TSFunDef, TSPass } from '../frontend/torchStatements';
-import { formatParseNode } from '../service/pyteaUtils';
 import { fetchAddr } from './backUtils';
 import { Context } from './context';
 import { ShEnv, ShHeap } from './sharpEnvironments';
@@ -77,10 +77,18 @@ export function getNextSVId(): number {
     return ++_svId;
 }
 
+export type CodeSource = ParseNode | CodeRange;
+export interface CodeRange {
+    // file index (managed from PyteaService)
+    fileId: number;
+
+    // code range
+    range: Range;
+}
+
 interface ShValueBase {
     readonly type: SVType;
-    readonly attrs: Map<string, ShValue>;
-    readonly source?: ParseNode;
+    readonly source?: CodeSource;
 }
 
 export namespace ShValue {
@@ -165,7 +173,6 @@ interface SVAddrProps extends ShValueBase {
 const svAddrDefaults: SVAddrProps = {
     type: SVType.Addr,
     addr: -1,
-    attrs: Map(),
     source: undefined,
 };
 
@@ -176,7 +183,7 @@ export class SVAddr extends Record(svAddrDefaults) implements SVAddrProps {
         values ? super(values) : super();
     }
 
-    static create(addr: number, source?: ParseNode): SVAddr {
+    static create(addr: number, source?: CodeSource): SVAddr {
         const value: SVAddr = new SVAddr({
             addr,
             source,
@@ -201,7 +208,6 @@ interface SVIntProps extends ShValueBase {
 const svIntDefaults: SVIntProps = {
     type: SVType.Int,
     value: 0,
-    attrs: Map(), // TODO: default methods
     source: undefined,
 };
 
@@ -212,7 +218,7 @@ export class SVInt extends Record(svIntDefaults) implements SVIntProps {
         values ? super(values) : super();
     }
 
-    static create(intValue: number | ExpNum, source?: ParseNode): SVInt {
+    static create(intValue: number | ExpNum, source?: CodeSource): SVInt {
         const value: SVInt = new SVInt({
             value: intValue,
             source,
@@ -233,7 +239,6 @@ interface SVFloatProps extends ShValueBase {
 const svFloatDefaults: SVFloatProps = {
     type: SVType.Float,
     value: 0,
-    attrs: Map(), // TODO: default methods
     source: undefined,
 };
 
@@ -244,7 +249,7 @@ export class SVFloat extends Record(svFloatDefaults) implements SVFloatProps {
         values ? super(values) : super();
     }
 
-    static create(floatValue: number | ExpNum, source?: ParseNode): SVFloat {
+    static create(floatValue: number | ExpNum, source?: CodeSource): SVFloat {
         const value: SVFloat = new SVFloat({
             value: floatValue,
             source,
@@ -272,7 +277,6 @@ interface SVStringProps extends ShValueBase {
 const svStringDefaults: SVStringProps = {
     type: SVType.String,
     value: '',
-    attrs: Map(), // TODO: default methods
     source: undefined,
 };
 
@@ -283,7 +287,7 @@ export class SVString extends Record(svStringDefaults) implements SVStringProps 
         values ? super(values) : super();
     }
 
-    static create(strValue: string | ExpString, source?: ParseNode): SVString {
+    static create(strValue: string | ExpString, source?: CodeSource): SVString {
         const value: SVString = new SVString({
             value: strValue,
             source,
@@ -304,7 +308,6 @@ interface SVBoolProps extends ShValueBase {
 const svBoolDefaults: SVBoolProps = {
     type: SVType.Bool,
     value: false,
-    attrs: Map(), // TODO: default methods
     source: undefined,
 };
 
@@ -315,7 +318,7 @@ export class SVBool extends Record(svBoolDefaults) implements SVBoolProps {
         values ? super(values) : super();
     }
 
-    static create(boolValue: boolean | ExpBool, source?: ParseNode): SVBool {
+    static create(boolValue: boolean | ExpBool, source?: CodeSource): SVBool {
         const value: SVBool = new SVBool({
             value: boolValue,
             source,
@@ -357,7 +360,7 @@ export class SVObject extends Record(svObjectProps) implements SVObjectProps {
     }
 
     // from now on, object creation should be bind with address.
-    static create(heap: ShHeap, source?: ParseNode): [SVObject, SVAddr, ShHeap] {
+    static create(heap: ShHeap, source?: CodeSource): [SVObject, SVAddr, ShHeap] {
         const [addr, newHeap] = heap.malloc(source);
         const value: SVObject = new SVObject({
             id: getNextSVId(),
@@ -369,7 +372,7 @@ export class SVObject extends Record(svObjectProps) implements SVObjectProps {
     }
 
     // if address is fixed, use it and set addr after.
-    static createWithAddr(addr: SVAddr, source?: ParseNode): SVObject {
+    static createWithAddr(addr: SVAddr, source?: CodeSource): SVObject {
         const value: SVObject = new SVObject({
             id: getNextSVId(),
             addr,
@@ -431,7 +434,7 @@ export class SVObject extends Record(svObjectProps) implements SVObjectProps {
 export class SVSize extends SVObject {
     shape!: ExpShape;
 
-    static createSize(ctx: Context<any>, shape: ExpShape, source?: ParseNode): SVSize {
+    static createSize(ctx: Context<any>, shape: ExpShape, source?: CodeSource): SVSize {
         const sizeMro = fetchAddr(
             (fetchAddr(ctx.env.getId('tuple'), ctx.heap) as SVObject).getAttr('__mro__'),
             ctx.heap
@@ -504,7 +507,6 @@ const svFuncDefaults: SVFuncProps = {
     name: '',
     params: List(),
     defaults: Map(),
-    attrs: Map(), // TODO: default methods
     funcBody: TSPass.get(),
     hasClosure: false,
     funcEnv: undefined,
@@ -521,7 +523,7 @@ export class SVFunc extends Record(svFuncDefaults) implements SVFuncProps {
         values ? super(values) : super();
     }
 
-    static create(name: string, params: List<string>, funcBody: ThStmt, funcEnv: ShEnv, source?: ParseNode): SVFunc {
+    static create(name: string, params: List<string>, funcBody: ThStmt, funcEnv: ShEnv, source?: CodeSource): SVFunc {
         const value: SVFunc = new SVFunc({
             id: getNextSVId(),
             name,
@@ -577,7 +579,6 @@ interface SVNoneProps extends ShValueBase {
 
 const svNoneDefaults: SVNoneProps = {
     type: SVType.None,
-    attrs: Map(),
     source: undefined,
 };
 
@@ -589,7 +590,7 @@ export class SVNone extends Record(svNoneDefaults) implements SVNoneProps {
         values ? super(values) : super();
     }
 
-    static create(source?: ParseNode): SVNone {
+    static create(source?: CodeSource): SVNone {
         if (!source) return SVNone._none;
         const value: SVNone = new SVNone({
             source,
@@ -609,7 +610,6 @@ interface SVNotImplProps extends ShValueBase {
 
 const svNotImplDefaults: SVNotImplProps = {
     type: SVType.NotImpl,
-    attrs: Map(),
     reason: undefined,
     source: undefined,
 };
@@ -622,7 +622,7 @@ export class SVNotImpl extends Record(svNotImplDefaults) implements SVNotImplPro
         values ? super(values) : super();
     }
 
-    static create(reason?: string, source?: ParseNode): SVNotImpl {
+    static create(reason?: string, source?: CodeSource): SVNotImpl {
         if (!reason && !source) {
             return this._notImpl;
         }
@@ -644,7 +644,6 @@ interface SVUndefProps extends ShValueBase {
 
 const svUndefDefaults: SVUndefProps = {
     type: SVType.Undef,
-    attrs: Map(),
     source: undefined,
 };
 
@@ -656,7 +655,7 @@ export class SVUndef extends Record(svUndefDefaults) implements SVUndefProps {
         values ? super(values) : super();
     }
 
-    static create(source?: ParseNode): SVUndef {
+    static create(source?: CodeSource): SVUndef {
         if (!source) {
             return SVUndef._undef;
         }
@@ -674,15 +673,21 @@ export class SVUndef extends Record(svUndefDefaults) implements SVUndefProps {
 interface SVErrorProps extends ShValueBase {
     readonly type: SVType.Error;
     readonly reason: string;
+    readonly level: SVErrorLevel;
 }
 
 const svErrorDefaults: SVErrorProps = {
     type: SVType.Error,
     reason: 'unexpected error',
-    attrs: Map(),
+    level: SVErrorLevel.Error,
     source: undefined,
 };
 
+export const enum SVErrorLevel {
+    Error,
+    Warning,
+    Log,
+}
 export class SVError extends Record(svErrorDefaults) implements SVErrorProps {
     readonly type!: SVType.Error;
 
@@ -690,17 +695,41 @@ export class SVError extends Record(svErrorDefaults) implements SVErrorProps {
         values ? super(values) : super();
     }
 
-    static create(reason: string, source?: ParseNode): SVError {
+    static create(reason: string, level: SVErrorLevel, source?: CodeSource): SVError {
         const value: SVError = new SVError({
             reason,
+            level,
             source,
         });
         return value;
     }
 
+    static error(reason: string, source?: CodeSource): SVError {
+        return this.create(reason, SVErrorLevel.Error, source);
+    }
+
+    static warn(reason: string, source?: CodeSource): SVError {
+        return this.create(reason, SVErrorLevel.Warning, source);
+    }
+
+    static log(reason: string, source?: CodeSource): SVError {
+        return this.create(reason, SVErrorLevel.Log, source);
+    }
+
     toString(): string {
-        const pos = formatParseNode(this.source);
-        return `SVError< ${this.reason} > ${pos}`;
+        // const pos = formatParseNode(this.source);
+        return `SVError<${svErrorLevelToString(this.level)}: "${this.reason}">`;
+    }
+}
+
+export function svErrorLevelToString(level: SVErrorLevel): string {
+    switch (level) {
+        case SVErrorLevel.Error:
+            return 'Error';
+        case SVErrorLevel.Warning:
+            return 'Warning';
+        case SVErrorLevel.Log:
+            return 'Log';
     }
 }
 

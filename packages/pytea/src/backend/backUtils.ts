@@ -6,7 +6,7 @@
  *
  * Utility functions for She interpreter.
  */
-import { ExpressionNode, ParseNode } from 'pyright-internal/parser/parseNodes';
+import { ExpressionNode } from 'pyright-internal/parser/parseNodes';
 
 import { TEBopType, TEUopType } from '../frontend/torchStatements';
 import { ConstraintSet } from './constraintSet';
@@ -14,10 +14,12 @@ import { Constraint, ConstraintType } from './constraintType';
 import { Context, ContextSet } from './context';
 import { ShEnv, ShHeap } from './sharpEnvironments';
 import {
+    CodeSource,
     ShValue,
     SVAddr,
     SVBool,
     SVError,
+    SVErrorLevel,
     SVFloat,
     SVInt,
     SVLiteral,
@@ -179,7 +181,7 @@ export function isSameAddr(val1: ShValue, val2: ShValue, heap: ShHeap): boolean 
 }
 
 // if one cannot say value is truthy or falsy, return a constraint if cannot determine it.
-export function isTruthy<T>(ctx: Context<T>, value: ShValue, source?: ParseNode): boolean | Constraint {
+export function isTruthy<T>(ctx: Context<T>, value: ShValue, source?: CodeSource): boolean | Constraint {
     const { heap, ctrSet } = ctx;
 
     switch (value.type) {
@@ -249,7 +251,7 @@ export namespace SymOpUtils {
     }
 
     // left.value and right.value should be non-symbolic
-    export function binOpLiteral(left: SVNumeric, right: SVNumeric, bop: TEBopType, source?: ParseNode): ShValue {
+    export function binOpLiteral(left: SVNumeric, right: SVNumeric, bop: TEBopType, source?: CodeSource): ShValue {
         const leftVal = left.value as number | boolean;
         const rightVal = right.value as number | boolean;
         const leftNum = +leftVal;
@@ -310,7 +312,7 @@ export namespace SymOpUtils {
             case TEBopType.In:
             case TEBopType.NotIn:
             default:
-                return SVError.create('value is not iterable', source);
+                return SVError.create('value is not iterable', SVErrorLevel.Warning, source);
         }
 
         if (resultType === SVType.Bool) {
@@ -323,7 +325,7 @@ export namespace SymOpUtils {
     }
 
     // cast boolean to number or number to boolean before use it.
-    export function binOpNum(left: SVNumber, right: SVNumber, bop: TEBopType, source?: ParseNode): ShValue {
+    export function binOpNum(left: SVNumber, right: SVNumber, bop: TEBopType, source?: CodeSource): ShValue {
         let resultType: SVType;
         let resultValue: ExpNum | ExpBool;
 
@@ -394,7 +396,7 @@ export namespace SymOpUtils {
             case TEBopType.In:
             case TEBopType.NotIn:
             default:
-                return SVError.create('value is not iterable', source);
+                return SVError.create('value is not iterable', SVErrorLevel.Warning, source);
         }
 
         if (resultType === SVType.Bool) {
@@ -410,7 +412,7 @@ export namespace SymOpUtils {
         left: string,
         right: string,
         bop: TEBopType,
-        source?: ParseNode
+        source?: CodeSource
     ): ShValue | undefined {
         switch (bop) {
             case TEBopType.Add:
@@ -531,7 +533,7 @@ export namespace SymOpUtils {
         }
     }
 
-    export function unaryOp(base: SVNumeric, uop: TEUopType, source?: ExpressionNode): ShValue {
+    export function unaryOp(base: SVNumeric, uop: TEUopType, source?: CodeSource): ShValue {
         let resultType: SVNumericType;
         let result: number | boolean | ExpNum | ExpBool;
 
@@ -542,7 +544,7 @@ export namespace SymOpUtils {
                     result = -base.value;
                 } else if (base.type === SVType.Bool) {
                     // already casted. does not happen.
-                    return SVError.create('do bool2int cast before calling unaryOp Neg', source);
+                    return SVError.warn('do bool2int cast before calling unaryOp Neg', source);
                 } else {
                     // Int/Float
                     result = ExpNum.uop(NumUopType.Neg, base.value, source);
@@ -555,7 +557,7 @@ export namespace SymOpUtils {
                 } else if (base.type === SVType.Bool) {
                     result = ExpBool.not(base.value as ExpBool, source);
                 } else {
-                    return SVError.create('do bool2int cast before calling unaryOp Not', source);
+                    return SVError.warn('do bool2int cast before calling unaryOp Not', source);
                 }
                 break;
         }

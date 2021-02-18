@@ -8,8 +8,7 @@
  * See doc/IR-format.md for more information
  */
 
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
-
+import { CodeSource } from '../backend/sharpValues';
 import { TEBinOp, TEConst, TEConstType, TEType, TEUopType, ThExpr, ThStmt, TSSeq, TSType } from './torchStatements';
 
 export namespace IRWriter {
@@ -120,8 +119,13 @@ export namespace IRWriter {
         }
     }
 
-    export function showSourcePos(node?: ParseNode): string {
+    export function showSourcePos(node?: CodeSource): string {
         if (!node) return '';
+        if ('fileId' in node) {
+            const { start, end } = node.range;
+            return `[${start.line}:${start.character}-${end.line}:${end.character}]`;
+        }
+
         return `[${node.start}:${node.start + node.length}]`;
     }
 

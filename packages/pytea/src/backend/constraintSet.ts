@@ -9,8 +9,6 @@
 import chalk from 'chalk';
 import { List, Map, Record, Set } from 'immutable';
 
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
-
 import { PyteaService } from '../service/pyteaService';
 import { absIndexByLen, sanitizeSource } from './backUtils';
 import { ConstraintSolver, expToCtr } from './constraintSolver';
@@ -33,7 +31,7 @@ import {
 import { Context } from './context';
 import { isStructuallyEq, simplifyConstraint, simplifyExp } from './expUtils';
 import { NumRange } from './range';
-import { ShValue, SVType } from './sharpValues';
+import { CodeSource, ShValue, SVType } from './sharpValues';
 import {
     BoolOpType,
     ExpBool,
@@ -59,40 +57,40 @@ import {
 } from './symExpressions';
 
 export interface ConstraintGen {
-    genSymInt(name: string, source?: ParseNode): SymInt;
-    genSymFloat(name: string, source?: ParseNode): SymFloat;
-    genSymBool(name: string, source?: ParseNode): SymBool;
-    genSymString(name: string, source?: ParseNode): SymString;
-    genSymShape(name: string, rank: ExpNum, source?: ParseNode): SymShape;
-    genSymIntGte(name: string, min: number, source?: ParseNode): CSReturn<SymInt>;
-    genSymFloatGte(name: string, min: number, source?: ParseNode): CSReturn<SymFloat>;
-    genShaped(name: string, rank: number, dims?: (ExpNum | number)[], source?: ParseNode): CSReturn<ExpShapeConst>;
+    genSymInt(name: string, source?: CodeSource): SymInt;
+    genSymFloat(name: string, source?: CodeSource): SymFloat;
+    genSymBool(name: string, source?: CodeSource): SymBool;
+    genSymString(name: string, source?: CodeSource): SymString;
+    genSymShape(name: string, rank: ExpNum, source?: CodeSource): SymShape;
+    genSymIntGte(name: string, min: number, source?: CodeSource): CSReturn<SymInt>;
+    genSymFloatGte(name: string, min: number, source?: CodeSource): CSReturn<SymFloat>;
+    genShaped(name: string, rank: number, dims?: (ExpNum | number)[], source?: CodeSource): CSReturn<ExpShapeConst>;
 
-    genFromBool(exp: ExpBool, source?: ParseNode): CtrExpBool;
+    genFromBool(exp: ExpBool, source?: CodeSource): CtrExpBool;
     genEquality(
         type: ConstraintType.Equal | ConstraintType.NotEqual,
         left: SymExp,
         right: SymExp,
-        source?: ParseNode
+        source?: CodeSource
     ): EqualityConstraint;
     genNumCompare(
         type: CompareConstraintType,
         left: ExpNum,
         right: ExpNum,
-        source?: ParseNode
+        source?: CodeSource
     ): NumConstraint | EqualityConstraint;
 
-    genAnd(left: Constraint, right: Constraint, source?: ParseNode): CtrAnd;
-    genOr(left: Constraint, right: Constraint, source?: ParseNode): CtrOr;
-    genNot(constraint: Constraint, source?: ParseNode): CtrNot;
-    genBroad(left: ExpShape, right: ExpShape, source?: ParseNode): CtrBroad;
+    genAnd(left: Constraint, right: Constraint, source?: CodeSource): CtrAnd;
+    genOr(left: Constraint, right: Constraint, source?: CodeSource): CtrOr;
+    genNot(constraint: Constraint, source?: CodeSource): CtrNot;
+    genBroad(left: ExpShape, right: ExpShape, source?: CodeSource): CtrBroad;
     genForall(
         symbol: SymInt,
         range: [number | ExpNum, number | ExpNum],
         constraint: Constraint,
-        source?: ParseNode
+        source?: CodeSource
     ): CtrForall;
-    genFail(reason: string, source?: ParseNode): CtrFail;
+    genFail(reason: string, source?: CodeSource): CtrFail;
 }
 
 // ID Manager is shared for all paths.
@@ -125,8 +123,6 @@ interface ConstraintSetProps {
 
     readonly ctrIdCache: Set<ConstraintIndex>;
     readonly rangeCache: Map<SymbolIndex, NumRange>;
-    readonly shapeCtrCache: Map<SymbolIndex, List<Constraint>>; // constraints related with SymShape
-    readonly shapeCache: Map<SymbolIndex, List<ExpNum>>; // if rank of SymShape is defined someday, make shapes by shapeCtrCache
     readonly stringCache: Map<SymbolIndex, string>;
     readonly nonStringCache: Map<SymbolIndex, Set<string>>;
     readonly valid: boolean | undefined;
@@ -140,8 +136,6 @@ const constraintSetDefaults: ConstraintSetProps = {
     pathCtr: List(),
     ctrIdCache: Set(),
     rangeCache: Map(),
-    shapeCtrCache: Map(),
-    shapeCache: Map(),
     stringCache: Map(),
     nonStringCache: Map(),
     valid: true,
@@ -260,7 +254,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
 
     /// ConstraintGen Implementations.
 
-    genSymInt(name: string, source?: ParseNode): SymInt {
+    genSymInt(name: string, source?: CodeSource): SymInt {
         const id = this._getNextSymId();
         return {
             type: SymbolType.Int,
@@ -270,7 +264,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         };
     }
 
-    genSymFloat(name: string, source?: ParseNode): SymFloat {
+    genSymFloat(name: string, source?: CodeSource): SymFloat {
         const id = this._getNextSymId();
         return {
             type: SymbolType.Float,
@@ -280,7 +274,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         };
     }
 
-    genSymBool(name: string, source?: ParseNode): SymBool {
+    genSymBool(name: string, source?: CodeSource): SymBool {
         const id = this._getNextSymId();
         return {
             type: SymbolType.Bool,
@@ -290,7 +284,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         };
     }
 
-    genSymString(name: string, source?: ParseNode): SymString {
+    genSymString(name: string, source?: CodeSource): SymString {
         const id = this._getNextSymId();
         return {
             type: SymbolType.String,
@@ -300,7 +294,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         };
     }
 
-    genSymShape(name: string, rank: ExpNum, source?: ParseNode): SymShape {
+    genSymShape(name: string, rank: ExpNum, source?: CodeSource): SymShape {
         const id = this._getNextSymId();
         return {
             type: SymbolType.Shape,
@@ -311,7 +305,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         };
     }
 
-    genSymIntGte(name: string, min: number, source?: ParseNode): CSReturn<SymInt> {
+    genSymIntGte(name: string, min: number, source?: CodeSource): CSReturn<SymInt> {
         const newSym = this.genSymInt(name, source);
         const comp = this.genNumCompare(
             ConstraintType.LessThanOrEqual,
@@ -322,7 +316,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         return [newSym, this.guarantee(comp)];
     }
 
-    genSymFloatGte(name: string, min: number, source?: ParseNode): CSReturn<SymFloat> {
+    genSymFloatGte(name: string, min: number, source?: CodeSource): CSReturn<SymFloat> {
         const newSym = this.genSymFloat(name, source);
         const comp = this.genNumCompare(
             ConstraintType.LessThanOrEqual,
@@ -335,7 +329,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
 
     // This method clearly differs from `ExpShape.fromConst`.
     // It automatically generates constraints and push it to constraint set.
-    genShaped(name: string, rank: number, dims?: (ExpNum | number)[], source?: ParseNode): CSReturn<ExpShapeConst> {
+    genShaped(name: string, rank: number, dims?: (ExpNum | number)[], source?: CodeSource): CSReturn<ExpShapeConst> {
         if (rank < 0) {
             throw `making shape '${name} got negative rank ${rank}`;
         }
@@ -383,7 +377,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
     }
 
     // boolean to integer cast
-    castBoolToInt(exp: boolean | ExpBool, source?: ParseNode): CSReturn<number | ExpNum> {
+    castBoolToInt(exp: boolean | ExpBool, source?: CodeSource): CSReturn<number | ExpNum> {
         if (typeof exp === 'boolean') {
             return [+exp, this];
         }
@@ -412,7 +406,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
     }
 
     // integer to boolean cast
-    castNumToBool(exp: number | ExpNum, source?: ParseNode): CSReturnE<boolean | ExpBool> {
+    castNumToBool(exp: number | ExpNum, source?: CodeSource): CSReturnE<boolean | ExpBool> {
         if (typeof exp === 'number') {
             return [!!exp, this];
         }
@@ -438,7 +432,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
 
     /// CONSTRAINT GENERATOR
 
-    genFromBool(exp: ExpBool, source?: ParseNode): CtrExpBool {
+    genFromBool(exp: ExpBool, source?: CodeSource): CtrExpBool {
         const id = this._getNextCtrId();
         return {
             type: ConstraintType.ExpBool,
@@ -453,7 +447,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         type: ConstraintType.Equal | ConstraintType.NotEqual,
         left: SymExp,
         right: SymExp,
-        source?: ParseNode
+        source?: CodeSource
     ): EqualityConstraint {
         if (left.expType === SEType.Num && right.expType === SEType.Num) {
             return this.genNumCompare(type, left, right, source) as EqualityConstraint;
@@ -475,7 +469,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         type: CompareConstraintType,
         left: number | ExpNum,
         right: number | ExpNum,
-        source?: ParseNode
+        source?: CodeSource
     ): NumConstraint | EqualityConstraint {
         const id = this._getNextCtrId();
         left = typeof left === 'number' ? ExpNum.fromConst(left) : left;
@@ -491,7 +485,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         return constraint;
     }
 
-    genAnd(left: Constraint, right: Constraint, source?: ParseNode): CtrAnd {
+    genAnd(left: Constraint, right: Constraint, source?: CodeSource): CtrAnd {
         // TODO: check cache.
         const id = this._getNextCtrId();
         const constraint: CtrAnd = {
@@ -505,7 +499,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         return constraint;
     }
 
-    genOr(left: Constraint, right: Constraint, source?: ParseNode): CtrOr {
+    genOr(left: Constraint, right: Constraint, source?: CodeSource): CtrOr {
         const id = this._getNextCtrId();
         const constraint: CtrOr = {
             type: ConstraintType.Or,
@@ -518,7 +512,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         return constraint;
     }
 
-    genNot(constraint: Constraint, source?: ParseNode): CtrNot {
+    genNot(constraint: Constraint, source?: CodeSource): CtrNot {
         // TODO: unfold constraint.
         const id = this._getNextCtrId();
         const notCtr: CtrNot = {
@@ -531,7 +525,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         return notCtr;
     }
 
-    genBroad(left: ExpShape, right: ExpShape, source?: ParseNode): CtrBroad {
+    genBroad(left: ExpShape, right: ExpShape, source?: CodeSource): CtrBroad {
         // TODO: unfold constraint.
         const id = this._getNextCtrId();
         const constraint: CtrBroad = {
@@ -549,7 +543,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         symbol: SymInt,
         range: [number | ExpNum, number | ExpNum],
         constraint: Constraint,
-        source?: ParseNode
+        source?: CodeSource
     ): CtrForall {
         const id = this._getNextCtrId();
 
@@ -568,7 +562,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         };
     }
 
-    genFail(reason: string, source?: ParseNode): CtrFail {
+    genFail(reason: string, source?: CodeSource): CtrFail {
         const id = this._getNextCtrId();
         const failCtr: CtrFail = {
             type: ConstraintType.Fail,
@@ -703,11 +697,8 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
             case ShapeOpType.Const:
                 return exp.dims;
             case ShapeOpType.Symbol:
-                if (this.shapeCache.has(exp.symbol.id)) {
-                    return this.shapeCache.get(exp.symbol.id)!.toArray();
-                } else {
-                    return;
-                }
+                // TODO: cache shape
+                return;
             case ShapeOpType.Set: {
                 const base = this.getCachedShape(exp.baseShape);
                 const axis = this.getCachedRange(exp.axis);

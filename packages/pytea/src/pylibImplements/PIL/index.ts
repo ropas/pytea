@@ -1,15 +1,13 @@
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
-
-import { LCImpl } from '..';
 import { fetchAddr } from '../../backend/backUtils';
 import { Context, ContextSet } from '../../backend/context';
 import { fetchSize, simplifyShape } from '../../backend/expUtils';
-import { ShValue, SVSize, SVNone, SVType } from '../../backend/sharpValues';
+import { CodeSource, ShValue, SVNone, SVSize, SVType } from '../../backend/sharpValues';
 import { ExpNum, ExpShape } from '../../backend/symExpressions';
+import { LCImpl } from '..';
 import { LCBase } from '../libcall';
 
 export namespace PILLCImpl {
-    export function blend(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function blend(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -52,7 +50,7 @@ export namespace PILLCImpl {
             .return(SVNone.create());
     }
 
-    export function fromarray(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function fromarray(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(

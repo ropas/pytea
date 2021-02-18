@@ -7,9 +7,8 @@
  * Definitions and types of symbolic variables and expressions
  */
 
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
-
 import { ConstraintSet } from './constraintSet';
+import { CodeSource } from './sharpValues';
 
 /// Base types. import and use these types.
 
@@ -60,7 +59,7 @@ export interface SymbolBase {
     readonly type: SymbolType;
     readonly id: SymbolIndex;
     readonly name: string;
-    source?: ParseNode;
+    source?: CodeSource;
 }
 
 export interface SymInt extends SymbolBase {
@@ -96,7 +95,7 @@ export const enum SEType {
 export interface SymExpBase {
     expType: SEType;
     opType: ShapeOpType | NumOpType | StringOpType | BoolOpType;
-    source?: ParseNode;
+    source?: CodeSource;
 }
 
 //// BOOLEAN EXPRESSION
@@ -467,7 +466,7 @@ export namespace SymExp {
 }
 
 export namespace ExpBool {
-    export function fromConst(value: boolean, source?: ParseNode): ExpBoolConst {
+    export function fromConst(value: boolean, source?: CodeSource): ExpBoolConst {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.Const,
@@ -485,7 +484,7 @@ export namespace ExpBool {
         };
     }
 
-    export function eq(left: SymExp, right: SymExp, source?: ParseNode): ExpBoolEq {
+    export function eq(left: SymExp, right: SymExp, source?: CodeSource): ExpBoolEq {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.Equal,
@@ -495,7 +494,7 @@ export namespace ExpBool {
         };
     }
 
-    export function neq(left: SymExp, right: SymExp, source?: ParseNode): ExpBoolNeq {
+    export function neq(left: SymExp, right: SymExp, source?: CodeSource): ExpBoolNeq {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.NotEqual,
@@ -504,7 +503,7 @@ export namespace ExpBool {
             source,
         };
     }
-    export function lt(left: ExpNum | number, right: ExpNum | number, source?: ParseNode): ExpBoolLt {
+    export function lt(left: ExpNum | number, right: ExpNum | number, source?: CodeSource): ExpBoolLt {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.LessThan,
@@ -513,7 +512,7 @@ export namespace ExpBool {
             source,
         };
     }
-    export function lte(left: ExpNum | number, right: ExpNum | number, source?: ParseNode): ExpBoolLte {
+    export function lte(left: ExpNum | number, right: ExpNum | number, source?: CodeSource): ExpBoolLte {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.LessThanOrEqual,
@@ -523,7 +522,7 @@ export namespace ExpBool {
         };
     }
 
-    export function not(baseBool: ExpBool, source?: ParseNode): ExpBoolNot {
+    export function not(baseBool: ExpBool, source?: CodeSource): ExpBoolNot {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.Not,
@@ -532,7 +531,7 @@ export namespace ExpBool {
         };
     }
 
-    export function and(left: ExpBool, right: ExpBool, source?: ParseNode): ExpBoolAnd {
+    export function and(left: ExpBool, right: ExpBool, source?: CodeSource): ExpBoolAnd {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.And,
@@ -542,7 +541,7 @@ export namespace ExpBool {
         };
     }
 
-    export function or(left: ExpBool, right: ExpBool, source?: ParseNode): ExpBoolOr {
+    export function or(left: ExpBool, right: ExpBool, source?: CodeSource): ExpBoolOr {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.Or,
@@ -577,7 +576,7 @@ export namespace ExpBool {
 }
 
 export namespace ExpNum {
-    export function toExp(value: number | ExpNum, source?: ParseNode): ExpNum {
+    export function toExp(value: number | ExpNum, source?: CodeSource): ExpNum {
         if (typeof value === 'number') {
             return ExpNum.fromConst(value, source);
         } else {
@@ -585,7 +584,7 @@ export namespace ExpNum {
         }
     }
 
-    export function fromConst(value: number, source?: ParseNode): ExpNumConst {
+    export function fromConst(value: number, source?: CodeSource): ExpNumConst {
         return {
             expType: SEType.Num,
             opType: NumOpType.Const,
@@ -607,7 +606,7 @@ export namespace ExpNum {
         bopType: NumBopType,
         left: ExpNum | number,
         right: ExpNum | number,
-        source?: ParseNode
+        source?: CodeSource
     ): ExpNumBop {
         if (typeof left === 'number') {
             left = ExpNum.fromConst(left);
@@ -625,7 +624,7 @@ export namespace ExpNum {
         };
     }
 
-    export function index(baseShape: ExpShape, index: ExpNum | number, source?: ParseNode): ExpNumIndex {
+    export function index(baseShape: ExpShape, index: ExpNum | number, source?: CodeSource): ExpNumIndex {
         return {
             expType: SEType.Num,
             opType: NumOpType.Index,
@@ -635,7 +634,7 @@ export namespace ExpNum {
         };
     }
 
-    export function max(values: (ExpNum | number)[], source?: ParseNode): ExpNumMax {
+    export function max(values: (ExpNum | number)[], source?: CodeSource): ExpNumMax {
         return {
             expType: SEType.Num,
             opType: NumOpType.Max,
@@ -644,7 +643,7 @@ export namespace ExpNum {
         };
     }
 
-    export function min(values: (ExpNum | number)[], source?: ParseNode): ExpNumMin {
+    export function min(values: (ExpNum | number)[], source?: CodeSource): ExpNumMin {
         return {
             expType: SEType.Num,
             opType: NumOpType.Min,
@@ -653,7 +652,7 @@ export namespace ExpNum {
         };
     }
 
-    export function numel(shape: ExpShape, source?: ParseNode): ExpNumNumel {
+    export function numel(shape: ExpShape, source?: CodeSource): ExpNumNumel {
         return {
             expType: SEType.Num,
             opType: NumOpType.Numel,
@@ -662,7 +661,7 @@ export namespace ExpNum {
         };
     }
 
-    export function uop(uopType: NumUopType, baseValue: number | ExpNum, source?: ParseNode): ExpNumUop {
+    export function uop(uopType: NumUopType, baseValue: number | ExpNum, source?: CodeSource): ExpNumUop {
         if (typeof baseValue === 'number') {
             baseValue = ExpNum.fromConst(baseValue);
         }
@@ -728,7 +727,7 @@ export namespace ExpNum {
 }
 
 export namespace ExpShape {
-    export function fromConst(rank: number, dims: (number | ExpNum)[], source?: ParseNode): ExpShapeConst {
+    export function fromConst(rank: number, dims: (number | ExpNum)[], source?: CodeSource): ExpShapeConst {
         return {
             expType: SEType.Shape,
             opType: ShapeOpType.Const,
@@ -751,7 +750,7 @@ export namespace ExpShape {
         baseShape: ExpShape,
         axis: number | ExpNum,
         dim: number | ExpNum,
-        source?: ParseNode
+        source?: CodeSource
     ): ExpShapeSet {
         return {
             expType: SEType.Shape,
@@ -767,7 +766,7 @@ export namespace ExpShape {
         baseShape: ExpShape,
         start?: ExpNum | number,
         end?: ExpNum | number,
-        source?: ParseNode
+        source?: CodeSource
     ): ExpShapeSlice {
         return {
             expType: SEType.Shape,
@@ -779,7 +778,7 @@ export namespace ExpShape {
         };
     }
 
-    export function concat(left: ExpShape, right: ExpShape, source?: ParseNode): ExpShapeConcat {
+    export function concat(left: ExpShape, right: ExpShape, source?: CodeSource): ExpShapeConcat {
         return {
             expType: SEType.Shape,
             opType: ShapeOpType.Concat,
@@ -789,7 +788,7 @@ export namespace ExpShape {
         };
     }
 
-    export function broadcast(left: ExpShape, right: ExpShape, source?: ParseNode): ExpShapeBroadcast {
+    export function broadcast(left: ExpShape, right: ExpShape, source?: CodeSource): ExpShapeBroadcast {
         return {
             expType: SEType.Shape,
             opType: ShapeOpType.Broadcast,
@@ -889,7 +888,7 @@ export namespace ExpShape {
 }
 
 export namespace ExpString {
-    export function toExp(value: string | ExpString, source?: ParseNode): ExpString {
+    export function toExp(value: string | ExpString, source?: CodeSource): ExpString {
         if (typeof value === 'string') {
             return ExpString.fromConst(value, source);
         } else if (source) {
@@ -899,7 +898,7 @@ export namespace ExpString {
         }
     }
 
-    export function fromConst(value: string, source?: ParseNode): ExpStringConst {
+    export function fromConst(value: string, source?: CodeSource): ExpStringConst {
         return {
             expType: SEType.String,
             opType: StringOpType.Const,
@@ -921,7 +920,7 @@ export namespace ExpString {
         baseString: ExpString,
         start?: ExpNum | number,
         end?: ExpNum | number,
-        source?: ParseNode
+        source?: CodeSource
     ): ExpStringSlice {
         return {
             expType: SEType.String,
@@ -933,7 +932,7 @@ export namespace ExpString {
         };
     }
 
-    export function concat(left: ExpString | string, right: ExpString | string, source?: ParseNode): ExpStringConcat {
+    export function concat(left: ExpString | string, right: ExpString | string, source?: CodeSource): ExpStringConcat {
         return {
             expType: SEType.String,
             opType: StringOpType.Concat,

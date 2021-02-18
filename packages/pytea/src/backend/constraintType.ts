@@ -7,10 +7,7 @@
  * Definitions and types of constraints.
  */
 
-import { formatParseNode } from '../service/pyteaUtils';
-
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
-
+import { CodeSource } from './sharpValues';
 import { ExpBool, ExpNum, ExpShape, SymExp, SymInt } from './symExpressions';
 
 export const enum ConstraintType {
@@ -45,7 +42,7 @@ export type ConstraintIndex = number;
 export interface ConstraintBase {
     type: ConstraintType;
     id: ConstraintIndex;
-    source?: ParseNode;
+    source?: CodeSource;
 }
 
 export interface CtrExpBool extends ConstraintBase {
@@ -128,7 +125,7 @@ export type NumConstraint = CtrLt | CtrLte;
 export type BoolConstraint = CtrNot | CtrAnd | CtrOr;
 export type EqualityConstraint = CtrEq | CtrNeq;
 
-export function ctrToStr(ctr: Constraint, noSource?: boolean): string {
+export function ctrToStr(ctr: Constraint): string {
     let str: string;
     switch (ctr.type) {
         case ConstraintType.ExpBool:
@@ -141,13 +138,13 @@ export function ctrToStr(ctr: Constraint, noSource?: boolean): string {
             str = `(${SymExp.toString(ctr.left)} != ${SymExp.toString(ctr.right)})`;
             break;
         case ConstraintType.And:
-            str = `(${ctrToStr(ctr.left as Constraint, true)} && ${ctrToStr(ctr.right as Constraint, true)})`;
+            str = `(${ctrToStr(ctr.left as Constraint)} && ${ctrToStr(ctr.right as Constraint)})`;
             break;
         case ConstraintType.Or:
-            str = `(${ctrToStr(ctr.left as Constraint, true)} || ${ctrToStr(ctr.right as Constraint, true)})`;
+            str = `(${ctrToStr(ctr.left as Constraint)} || ${ctrToStr(ctr.right as Constraint)})`;
             break;
         case ConstraintType.Not:
-            str = `~(${ctrToStr(ctr.constraint as Constraint, true)})`;
+            str = `~(${ctrToStr(ctr.constraint as Constraint)})`;
             break;
         case ConstraintType.LessThan:
             str = `(${SymExp.toString(ctr.left)} < ${SymExp.toString(ctr.right)})`;
@@ -158,7 +155,7 @@ export function ctrToStr(ctr: Constraint, noSource?: boolean): string {
         case ConstraintType.Forall:
             str = `forall[${ctr.symbol.name} in (${SymExp.toString(ctr.range[0])}:${SymExp.toString(
                 ctr.range[1]
-            )})](${ctrToStr(ctr.constraint, true)})`;
+            )})](${ctrToStr(ctr.constraint)})`;
             break;
         case ConstraintType.Broadcastable:
             str = `broadcastable(${SymExp.toString(ctr.left)}, ${SymExp.toString(ctr.right)})`;
@@ -168,10 +165,5 @@ export function ctrToStr(ctr: Constraint, noSource?: boolean): string {
             break;
     }
 
-    if (noSource) {
-        return str;
-    } else {
-        const src = formatParseNode(ctr.source);
-        return `${str} - ${src}`;
-    }
+    return str;
 }

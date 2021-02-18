@@ -6,8 +6,6 @@
  *
  * Direct call of shape operations in context.
  */
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
-
 import { fetchAddr, sanitizeAddr } from '../backend/backUtils';
 import { Constraint } from '../backend/constraintType';
 import { Context, ContextSet } from '../backend/context';
@@ -20,14 +18,14 @@ import {
     simplifyNum,
     simplifyShape,
 } from '../backend/expUtils';
-import { ShValue, SVInt, SVSize, SVType } from '../backend/sharpValues';
+import { CodeSource, ShValue, SVInt, SVSize, SVType } from '../backend/sharpValues';
 import { ExpNum, ExpShape, NumBopType, NumUopType } from '../backend/symExpressions';
 import { LCImpl } from '.';
 import { LCBase } from './libcall';
 
 export namespace ShapeLCImpl {
     // get (tensor, axis, repeat_count). returns new tensor repeated by repeat_count through axis.
-    export function repeat(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function repeat(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -69,7 +67,7 @@ export namespace ShapeLCImpl {
         return posPath.join(negPath);
     }
 
-    export function size_getitem(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function size_getitem(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -98,7 +96,7 @@ export namespace ShapeLCImpl {
         return ctx.toSetWith(SVInt.create(idx, source));
     }
 
-    export function size_len(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function size_len(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx
@@ -126,7 +124,7 @@ export namespace ShapeLCImpl {
     // implementation slice of torch.Tensor.__getitem__
     // axis range is already checked from tensor.__getitem__
     // params: [inputShape, axis, index]
-    export function tensorGetItem(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function tensorGetItem(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(

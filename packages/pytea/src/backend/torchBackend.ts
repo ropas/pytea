@@ -8,7 +8,7 @@
  */
 import { List } from 'immutable';
 
-import { ExpressionNode, ParseNode } from 'pyright-internal/parser/parseNodes';
+import { ExpressionNode } from 'pyright-internal/parser/parseNodes';
 
 import {
     LibCallType,
@@ -43,17 +43,18 @@ import {
 } from '../frontend/torchStatements';
 import { BuiltinsLCImpl } from '../pylibImplements/builtins';
 import { evalLibCall } from '../pylibImplements/evaluator';
-import { formatParseNode } from '../service/pyteaUtils';
 import { sanitizeAddrSet, SymOpUtils } from './backUtils';
 import * as BackUtils from './backUtils';
 import { Context, ContextSet, CtxExpr, CtxStmt } from './context';
 import { ShEnv } from './sharpEnvironments';
 import {
+    CodeSource,
     ShContFlag,
     ShValue,
     SVAddr,
     SVBool,
     SVError,
+    SVErrorLevel,
     SVFloat,
     SVFunc,
     SVInt,
@@ -188,7 +189,7 @@ export namespace TorchBackend {
         ctx: Context<T>,
         classObj: SVObject,
         args: ShValue[],
-        source?: ParseNode,
+        source?: CodeSource,
         kwargs?: { [paramName: string]: ShValue }
     ): ContextSet<ShValue> {
         const init = BackUtils.fetchAddr(classObj.getAttr('__call__'), ctx.heap);
@@ -203,7 +204,7 @@ export namespace TorchBackend {
         ctx: Context<T>,
         qualPath: string,
         args: ShValue[],
-        source?: ParseNode,
+        source?: CodeSource,
         kwargs?: { [paramName: string]: ShValue }
     ): ContextSet<ShValue> {
         const addr = ctx.imported.getId(qualPath);
@@ -224,7 +225,7 @@ export namespace TorchBackend {
         ctx: Context<T>,
         f: SVFunc | undefined,
         args: ShValue[],
-        source?: ParseNode,
+        source?: CodeSource,
         kwargs?: { [paramName: string]: ShValue }
     ): ContextSet<ShValue> {
         const { env, heap } = ctx;
@@ -348,7 +349,7 @@ export namespace TorchBackend {
         ctxSet: ContextSet<T>,
         f: SVFunc,
         args: ShValue[],
-        source?: ParseNode,
+        source?: CodeSource,
         kwargs?: { [paramName: string]: ShValue }
     ): ContextSet<ShValue> {
         return ctxSet.flatMap((ctx) => functionCall(ctx, f, args, source, kwargs));
@@ -386,7 +387,7 @@ export namespace TorchBackend {
         ctx: Context<T>,
         object: ShValue,
         name: string,
-        source?: ParseNode
+        source?: CodeSource
     ): ContextSet<ShValue> {
         const objVal = BackUtils.fetchAddr(object, ctx.heap);
 
@@ -400,12 +401,16 @@ export namespace TorchBackend {
         }
 
         // if name == '__dict__', return dictionary of attrs
-        if (name === '__dict__') {
-            let [dictObj, dictAddr, newHeap] = SVObject.create(ctx.heap, source);
-            for (const [attrName, attrVal] of objVal.attrs.entries()) {
+        if (name === '__dict__' && objVal.type === SVType.Object) {
+            const obj = SVObject.create(ctx.heap, source);
+            const [, dictAddr, newHeap] = obj;
+            let dictObj = obj[0];
+
+            for (const [attrName, attrVal] of objVal?.attrs.entries()) {
                 dictObj = dictObj.setKeyVal(attrName, attrVal);
             }
             dictObj = dictObj.setAttr('$length', SVInt.create(dictObj.keyValues.size, source));
+
             let dictType = BackUtils.fetchAddr(ctx.env.getId('dict'), newHeap);
             if (dictType?.type === SVType.Object) {
                 // class _Primitives defines self.mro = (self, object)
@@ -417,10 +422,13 @@ export namespace TorchBackend {
             return ctx.setHeap(newHeap.setVal(dictAddr, dictObj)).toSetWith(dictObj);
         }
 
-        const attr = objVal.attrs.get(name);
+        const attr = objVal.type === SVType.Object ? objVal.attrs.get(name) : undefined;
 
         if (attr === undefined) {
-            const getAttr = BackUtils.fetchAddr(objVal.attrs.get('__getattr__'), ctx.heap);
+            const getAttr =
+                objVal.type === SVType.Object
+                    ? BackUtils.fetchAddr(objVal.attrs.get('__getattr__'), ctx.heap)
+                    : undefined;
             let mro: (number | undefined)[];
 
             if (getAttr && getAttr.type === SVType.Func) {
@@ -438,7 +446,7 @@ export namespace TorchBackend {
                     if (!superClass) continue;
                     classes.push(superClass);
 
-                    const attr = superClass.attrs.get(name);
+                    const attr = 'attrs' in superClass ? superClass.attrs.get(name) : undefined;
                     if (attr) {
                         const mayMethod = BackUtils.fetchAddr(attr, ctx.heap);
 
@@ -456,7 +464,10 @@ export namespace TorchBackend {
 
                 // if not found, track __getattr__
                 for (const superClass of classes) {
-                    let getAttr = BackUtils.fetchAddr(superClass.attrs.get('__getattr__'), ctx.heap);
+                    let getAttr =
+                        superClass.type === SVType.Object
+                            ? BackUtils.fetchAddr(superClass.attrs.get('__getattr__'), ctx.heap)
+                            : undefined;
                     if (getAttr && getAttr.type === SVType.Func) {
                         if (objVal.type === SVType.Object) {
                             getAttr = getAttr.bound(objVal.addr);
@@ -488,7 +499,7 @@ export namespace TorchBackend {
         ctx: Context<T>,
         object: ShValue,
         index: number | ExpNum,
-        source?: ParseNode
+        source?: CodeSource
     ): ContextSet<ShValue> {
         const objVal = BackUtils.fetchAddr(object, ctx.heap);
 
@@ -517,7 +528,7 @@ export namespace TorchBackend {
         ctx: Context<T>,
         object: ShValue,
         key: string,
-        source?: ParseNode
+        source?: CodeSource
     ): ContextSet<ShValue> {
         const objVal = BackUtils.fetchAddr(object, ctx.heap);
 
@@ -710,18 +721,17 @@ export namespace TorchBackend {
                     let length: number | ExpNum;
 
                     if (len === undefined || len.type === SVType.Error || len.type === SVType.NotImpl) {
-                        const ctx2 = ctx
-                            .genIntGte('for$len', 0, stmt.loopVal.source)
-                            .addLogValue(
-                                SVError.create(
-                                    `WARNING: loop length is not an int type: got ${
-                                        len ? svTypeToString(len.type) : undefined
-                                    }. use symbolic length`,
-                                    stmt.loopVal.source
-                                )
-                            );
+                        const ctx2 = ctx.genIntGte('for$len', 0, stmt.loopVal.source);
                         length = ctx2.retVal;
-                        ctx = ctx2.setRetVal(ctx.retVal);
+
+                        ctx = ctx2
+                            .warnWithMsg(
+                                `loop length is not an integer type: got ${
+                                    len ? svTypeToString(len.type) : undefined
+                                }. this length will be replaced to symbolic value.`,
+                                stmt.loopVal.source
+                            )
+                            .setRetVal(ctx.retVal);
                     } else if (len.type !== SVType.Int) {
                         return ctx
                             .failWithMsg(`length is not an int type: got ${svTypeToString(len.type)}`, exp.source)
@@ -1194,7 +1204,7 @@ export namespace TorchBackend {
                             if (value.type === SVType.Int || value.type === SVType.Float) {
                                 const castVal = ctx.ctrSet.castNumToBool(value.value);
                                 if (typeof castVal === 'string') {
-                                    return ctx.toSetWith(SVError.create(castVal, expr.source));
+                                    return ctx.warnWithMsg(castVal, expr.source).toSet();
                                 }
                                 newValue = SVBool.create(castVal[0], value.source);
                                 newCtx = ctx.setCtrSet(castVal[1]);
@@ -1219,7 +1229,7 @@ export namespace TorchBackend {
                 return ctx.toSetWith(SVBool.create(value.type === SVType.None, expr.source));
             }
 
-            return ctx.toSetWith(SVError.create('unimplemented unary syntax', expr.source));
+            return ctx.warnWithMsg('unimplemented unary syntax', expr.source).toSet();
         });
     }
 
@@ -1288,13 +1298,13 @@ export namespace TorchBackend {
         ctx: Context<T>,
         obj: SVObject,
         idx: number | ExpNum,
-        source?: ParseNode
+        source?: CodeSource
     ): ShValue | undefined {
         // TODO: compromise idx is not a constant
         // TODO: typecheck that obj is tensor.
         const idxRng = ctx.ctrSet.getCachedRange(idx);
         if (!idxRng || !idxRng.isConst()) {
-            return SVError.create(`cannot infer index ${SymExp.toString(idx)} statically`, source);
+            return SVError.warn(`cannot infer index ${SymExp.toString(idx)} statically`, source);
         }
 
         const idNum = idxRng.start;
@@ -1305,7 +1315,7 @@ export namespace TorchBackend {
             if (objLen && objLen.type === SVType.Int) {
                 const lenRng = ctx.ctrSet.getCachedRange(objLen.value);
                 if (!lenRng || !lenRng.isConst() || lenRng.start <= 0) {
-                    return SVError.create(
+                    return SVError.warn(
                         `cannot infer object length ${SymExp.toString(objLen.value)} statically`,
                         source
                     );
@@ -1322,13 +1332,13 @@ export namespace TorchBackend {
         ctx: Context<T>,
         obj: SVObject,
         key: string | ExpString,
-        source?: ParseNode
+        source?: CodeSource
     ): ShValue | undefined {
         // TODO: compromise idx is not a constant
         // TODO: typecheck that obj is tensor.
         const cachedKey = ctx.ctrSet.getCachedString(key);
         if (cachedKey === undefined) {
-            return SVError.create(`cannot infer key ${SymExp.toString(key)} statically`, source);
+            return SVError.create(`cannot infer key ${SymExp.toString(key)} statically`, SVErrorLevel.Warning, source);
         }
 
         return obj.getKeyVal(cachedKey);

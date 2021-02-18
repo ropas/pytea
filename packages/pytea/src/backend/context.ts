@@ -11,7 +11,6 @@ import { List, Map, Record } from 'immutable';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import { formatParseNode } from '../service/pyteaUtils';
 import { fetchAddr } from './backUtils';
 import { ConstraintSet } from './constraintSet';
 import {
@@ -32,7 +31,7 @@ import {
 import { genTensor } from './expUtils';
 import { NumRange } from './range';
 import { ShEnv, ShHeap } from './sharpEnvironments';
-import { ShContFlag, ShValue, SVError, SVFunc, SVType } from './sharpValues';
+import { CodeSource, ShContFlag, ShValue, SVError, SVErrorLevel, SVFunc, SVType } from './sharpValues';
 import {
     ExpBool,
     ExpNum,
@@ -64,8 +63,8 @@ interface ContextProps<T> {
     ctrSet: ConstraintSet;
     retVal: T;
 
-    // SVFunc is python function call, string is libcall name. ParseNode is source.
-    callStack: List<[SVFunc | string, ParseNode | undefined]>;
+    // SVFunc is python function call, string is libcall name.
+    callStack: List<[SVFunc | string, CodeSource | undefined]>;
     logs: List<ShValue>;
     imported: ShEnv; // qualPath (relative to project root or site-packages) to address.
     relPath: string; // relative path to entry file. starts with entry file name.
@@ -75,10 +74,6 @@ interface ContextProps<T> {
 }
 
 interface ContextMethods<T> {
-    // log exports
-    callStackToString(): string;
-    logsToString(): string;
-
     // make set
     toSet(): ContextSet<T>;
     toSetWith<A>(retVal: A): ContextSet<A>;
@@ -91,114 +86,118 @@ interface ContextMethods<T> {
     setRelPath(relPath: string): Context<T>;
     setImported(imported: ShEnv): Context<T>;
 
-    getAttrDeep(value: ShValue, attr: string, source?: ParseNode): ContextSet<ShValue>;
-    getIndiceDeep(value: ShValue, index: number, source?: ParseNode): ContextSet<ShValue>;
-    getKeyValDeep(value: ShValue, key: string, source?: ParseNode): ContextSet<ShValue>;
+    getAttrDeep(value: ShValue, attr: string, source?: CodeSource): ContextSet<ShValue>;
+    getIndiceDeep(value: ShValue, index: number, source?: CodeSource): ContextSet<ShValue>;
+    getKeyValDeep(value: ShValue, key: string, source?: CodeSource): ContextSet<ShValue>;
 
-    addLog(message: string, source?: ParseNode): Context<T>;
+    addLog(message: string, source?: CodeSource): Context<T>;
     addLogValue(log: ShValue): Context<T>;
     pushCallStack(stack: [SVFunc | string, ParseNode | undefined]): Context<T>;
     popCallStack(): Context<T>;
 
     // these two methods does not cut off paths. just log warnings
     warn(warning: SVError): Context<SVError>;
-    warnWithMsg(message: string, source?: ParseNode): Context<SVError>;
+    warnWithMsg(message: string, source?: CodeSource): Context<SVError>;
 
     // these two methods cut off paths
     fail(error: SVError): Context<SVError>;
-    failWithMsg(message: string, source?: ParseNode): Context<SVError>;
+    failWithMsg(message: string, source?: CodeSource): Context<SVError>;
 
     // symbolic variable generator
-    genSymInt(name: string, source?: ParseNode): SymInt;
-    genSymFloat(name: string, source?: ParseNode): SymFloat;
-    genSymBool(name: string, source?: ParseNode): SymBool;
-    genSymString(name: string, source?: ParseNode): SymString;
-    genSymShape(name: string, rank: ExpNum, source?: ParseNode): SymShape;
+    genSymInt(name: string, source?: CodeSource): SymInt;
+    genSymFloat(name: string, source?: CodeSource): SymFloat;
+    genSymBool(name: string, source?: CodeSource): SymBool;
+    genSymString(name: string, source?: CodeSource): SymString;
+    genSymShape(name: string, rank: ExpNum, source?: CodeSource): SymShape;
 
     // return ExpNumSymbol that is greater than `value`;
-    genIntGte(name: string, value: number | ExpNum, source?: ParseNode): Context<ExpNumSymbol>;
-    genFloatGte(name: string, value: number | ExpNum, source?: ParseNode): Context<ExpNumSymbol>;
+    genIntGte(name: string, value: number | ExpNum, source?: CodeSource): Context<ExpNumSymbol>;
+    genFloatGte(name: string, value: number | ExpNum, source?: CodeSource): Context<ExpNumSymbol>;
 
     // generate constant-ranked shape. all the dimensions is new symbolic number gte 0. should check rank >= 0 before call it.
     // partialDims is additional constant part of dimensions
-    genConstRankedShape(rank: number, source?: ParseNode, partialDims?: Map<number, ExpNum>): ContextSet<ExpShapeConst>;
+    genConstRankedShape(
+        rank: number,
+        source?: CodeSource,
+        partialDims?: Map<number, ExpNum>
+    ): ContextSet<ExpShapeConst>;
 
     // generate ranked shape. all the dimensions is new symbolic number gte 0.
     // partialDims is additional constant part of dimensions
     // if rank has upper-bound, return slice of upper-bound-ranked shape. (for optimization)
     // in production, ranked has force-upper bound of some number (e.g. 6)
-    genRankedShape(rank: number | ExpNum, source?: ParseNode): ContextSet<ExpShape>;
+    genRankedShape(rank: number | ExpNum, source?: CodeSource): ContextSet<ExpShape>;
 
     // constraint generator
-    genBool(pred: ExpBool | boolean, source?: ParseNode): Constraint;
+    genBool(pred: ExpBool | boolean, source?: CodeSource): Constraint;
     genEq(
         left: SymExp | number | string | boolean,
         right: SymExp | number | string | boolean,
-        source?: ParseNode
+        source?: CodeSource
     ): CtrEq;
-    genNeq(left: SymExp | number | string, right: SymExp | number | string, source?: ParseNode): CtrNeq;
-    genLt(left: ExpNum | number, right: ExpNum | number, source?: ParseNode): CtrLt;
-    genLte(left: ExpNum | number, right: ExpNum | number, source?: ParseNode): CtrLte;
-    genAnd(left: Constraint, right: Constraint, source?: ParseNode): CtrAnd;
-    genOr(left: Constraint, right: Constraint, source?: ParseNode): CtrOr;
-    genNot(constraint: Constraint, source?: ParseNode): CtrNot;
+    genNeq(left: SymExp | number | string, right: SymExp | number | string, source?: CodeSource): CtrNeq;
+    genLt(left: ExpNum | number, right: ExpNum | number, source?: CodeSource): CtrLt;
+    genLte(left: ExpNum | number, right: ExpNum | number, source?: CodeSource): CtrLte;
+    genAnd(left: Constraint, right: Constraint, source?: CodeSource): CtrAnd;
+    genOr(left: Constraint, right: Constraint, source?: CodeSource): CtrOr;
+    genNot(constraint: Constraint, source?: CodeSource): CtrNot;
     genForall(
         symbol: SymInt,
         range: [number | ExpNum, number | ExpNum],
         constraint: Constraint,
-        source?: ParseNode
+        source?: CodeSource
     ): CtrForall;
-    genBroadcastable(left: ExpShape, right: ExpShape, source?: ParseNode): CtrBroad;
-    genFail(reason: string, source?: ParseNode): CtrFail;
+    genBroadcastable(left: ExpShape, right: ExpShape, source?: CodeSource): CtrBroad;
+    genFail(reason: string, source?: CodeSource): CtrFail;
 
     // shape operations
 
     // make `sizable` to shape, if `sizable` may be iterable object of integer.
     // if parse error is not critical, return parse error messages
-    parseSize(iterable: ShValue, source?: ParseNode): ContextSet<ExpShape | string>;
+    parseSize(iterable: ShValue, source?: CodeSource): ContextSet<ExpShape | string>;
 
     // matmul between shapes which rank is greater than 1
     // if rank is greater than 2, it follows the matrix multiplication broadcasting rule of numpy.
-    shMatmul(left: ExpShape, right: ExpShape, source?: ParseNode): ContextSet<ExpShape>;
+    shMatmul(left: ExpShape, right: ExpShape, source?: CodeSource): ContextSet<ExpShape>;
 
     // return broadcasted shape
-    shBroadcast(left: ExpShape, right: ExpShape, source?: ParseNode): ContextSet<ExpShape>;
+    shBroadcast(left: ExpShape, right: ExpShape, source?: CodeSource): ContextSet<ExpShape>;
 
     // return shape without `axis`-th. `axis` is 0-based
-    shReduce(shape: ExpShape, axis: ExpNum | number, source?: ParseNode): ContextSet<ExpShape>;
+    shReduce(shape: ExpShape, axis: ExpNum | number, source?: CodeSource): ContextSet<ExpShape>;
 
     // slice shape along `axis`. ranges is 0-based and exclusive
     shSubtensor(
         shape: ExpShape,
         ranges: [(ExpNum | number)?, (ExpNum | number)?],
         axis: ExpNum | number,
-        source?: ParseNode
+        source?: CodeSource
     ): ContextSet<ExpShape>;
 
     // reshape `shape` into `dims`
-    shReshape(shape: ExpShape, dims: (ExpNum | number)[], source?: ParseNode): ContextSet<ExpShape>;
+    shReshape(shape: ExpShape, dims: (ExpNum | number)[], source?: CodeSource): ContextSet<ExpShape>;
 
     // permute dimensions of `shape` by `axes`. `axes` is 0-based
-    shPermute(shape: ExpShape, axes: (ExpNum | number)[], source?: ParseNode): ContextSet<ExpShape>;
+    shPermute(shape: ExpShape, axes: (ExpNum | number)[], source?: CodeSource): ContextSet<ExpShape>;
 
     // concat `shapes` along `axis`. `axis` is 0-based
-    shConcat(shapes: ExpShape[], axis: ExpNum | number, source?: ParseNode): ContextSet<ExpShape>;
+    shConcat(shapes: ExpShape[], axis: ExpNum | number, source?: CodeSource): ContextSet<ExpShape>;
 
     // make new dimension and stack `shapes` along `axis`. `axis` is 0-based
-    shStack(shapes: ExpShape[], axis: ExpNum | number, source?: ParseNode): ContextSet<ExpShape>;
+    shStack(shapes: ExpShape[], axis: ExpNum | number, source?: CodeSource): ContextSet<ExpShape>;
 
     // repeat `shape` by `count` times and stack along `axis`. `axis` is 0-based
-    shRepeat(shape: ExpShape, axis: ExpNum | number, count: ExpNum | number, source?: ParseNode): ContextSet<ExpShape>;
+    shRepeat(shape: ExpShape, axis: ExpNum | number, count: ExpNum | number, source?: CodeSource): ContextSet<ExpShape>;
 
     // constraint injector
     // failed immediately if `ctr` is false. (soft-constraint)
-    require(ctr: Constraint | Constraint[], failMsg?: string, source?: ParseNode): ContextSet<T | SVError>;
+    require(ctr: Constraint | Constraint[], failMsg?: string, source?: CodeSource): ContextSet<T | SVError>;
 
     // add admitted constraints (hard-constraint)
     guarantee(ctr: Constraint | Constraint[]): Context<T>;
 
     // return both if-path and else-path.
-    ifThenElse(ctr: Constraint, source?: ParseNode): [ContextSet<T>, ContextSet<T>];
+    ifThenElse(ctr: Constraint, source?: CodeSource): [ContextSet<T>, ContextSet<T>];
 
     // immediate linear SMT : generates conservative range.
     getCachedRange(num: number | ExpNum): NumRange | undefined; // return conservative range
@@ -218,19 +217,19 @@ export interface ContextSet<T> {
     flatMap<A>(mapper: (ctx: Context<T>) => ContextSet<A>): ContextSet<A>;
 
     return<A>(retVal: A): ContextSet<A>;
-    fail(errMsg: string, source?: ParseNode): ContextSet<SVError>;
+    fail(errMsg: string, source?: CodeSource): ContextSet<SVError>;
     join<A>(ctxSet: ContextSet<A>): ContextSet<A | T>;
 
-    require(ctr: Constraint | Constraint[], failMsg?: string, source?: ParseNode): ContextSet<T | SVError>;
+    require(ctr: Constraint | Constraint[], failMsg?: string, source?: CodeSource): ContextSet<T | SVError>;
     guarantee(ctr: Constraint | Constraint[]): ContextSet<T>;
-    ifThenElse(ctr: Constraint, source?: ParseNode): [ContextSet<T>, ContextSet<T>];
+    ifThenElse(ctr: Constraint, source?: CodeSource): [ContextSet<T>, ContextSet<T>];
 
     getList(): List<Context<T>>;
     getFailed(): List<Context<SVError>>;
     getStopped(): List<Context<SVError>>;
 
     isEmpty(): boolean;
-    addLog(message: string, source?: ParseNode): ContextSet<T>;
+    addLog(message: string, source?: CodeSource): ContextSet<T>;
     addLogValue(value: ShValue): ContextSet<T>;
 }
 
@@ -254,35 +253,6 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
 
     constructor(values?: Partial<ContextProps<T>>) {
         values ? super(values) : super();
-    }
-
-    logsToString(): string {
-        return this.logs
-            .map((log) => {
-                const posStr = formatParseNode(log.source);
-
-                if (log.type === SVType.Error) {
-                    return `${log.reason} - ${posStr}`;
-                } else {
-                    return `${log.toString()} - ${posStr}`;
-                }
-            })
-            .join('\n');
-    }
-
-    callStackToString(): string {
-        return this.callStack
-            .filter(([f, _]) => {
-                // filter callKV libcall
-                if (typeof f === 'string') {
-                    return f !== 'callKV';
-                } else {
-                    return f.name !== 'callKV';
-                }
-            })
-            .map(([func, node]) => `${typeof func === 'string' ? func : func.name} - ${formatParseNode(node)}`)
-            .reverse()
-            .join('\n');
     }
 
     setEnv(env: ShEnv): Context<T> {
@@ -311,15 +281,15 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         return this.set('imported', imported);
     }
 
-    getAttrDeep(value: ShValue, attr: string, source?: ParseNode): ContextSet<ShValue> {
+    getAttrDeep(value: ShValue, attr: string, source?: CodeSource): ContextSet<ShValue> {
         return TorchBackend.getAttrDeep(this, value, attr, source);
     }
 
-    getIndiceDeep(value: ShValue, index: number | ExpNum, source?: ParseNode): ContextSet<ShValue> {
+    getIndiceDeep(value: ShValue, index: number | ExpNum, source?: CodeSource): ContextSet<ShValue> {
         return TorchBackend.getIndiceDeep(this, value, index, source);
     }
 
-    getKeyValDeep(value: ShValue, key: string, source?: ParseNode): ContextSet<ShValue> {
+    getKeyValDeep(value: ShValue, key: string, source?: CodeSource): ContextSet<ShValue> {
         return TorchBackend.getKeyValDeep(this, value, key, source);
     }
 
@@ -327,8 +297,8 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     warn(warning: SVError): Context<SVError> {
         return this.setRetVal(warning).addLogValue(warning);
     }
-    warnWithMsg(message: string, source?: ParseNode): Context<SVError> {
-        const warning = SVError.create(`WARNING: ${message}`, source);
+    warnWithMsg(message: string, source?: CodeSource): Context<SVError> {
+        const warning = SVError.create(message, SVErrorLevel.Warning, source);
         return this.setRetVal(warning).addLogValue(warning);
     }
 
@@ -341,8 +311,8 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         return genTensor(ctx, ExpShape.fromSymbol(shape), source);
     }
     // return fully symbolic shaped tensor with warning log.
-    warnTensorWithMsg(message: string, source?: ParseNode): ContextSet<ShValue> {
-        const warning = SVError.create(`WARNING: ${message}`, source);
+    warnTensorWithMsg(message: string, source?: CodeSource): ContextSet<ShValue> {
+        const warning = SVError.create(message, SVErrorLevel.Warning, source);
         return this.warnTensor(warning);
     }
 
@@ -350,19 +320,19 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     fail(error: SVError): Context<SVError> {
         return this.set('failed', error).set('failId', getFailedId()).addLogValue(error).setRetVal(error);
     }
-    failWithMsg(message: string, source?: ParseNode): Context<SVError> {
-        return this.fail(SVError.create(`ERROR: ${message},`, source));
+    failWithMsg(message: string, source?: CodeSource): Context<SVError> {
+        return this.fail(SVError.create(message, SVErrorLevel.Error, source));
     }
 
-    addLog(message: string, source?: ParseNode): Context<T> {
-        return this.set('logs', this.logs.push(SVError.create(`LOG: ${message}`, source)));
+    addLog(message: string, source?: CodeSource): Context<T> {
+        return this.set('logs', this.logs.push(SVError.create(message, SVErrorLevel.Log, source)));
     }
 
     addLogValue(log: ShValue): Context<T> {
         return this.set('logs', this.logs.push(log));
     }
 
-    pushCallStack(stack: [SVFunc | string, ParseNode | undefined]): Context<T> {
+    pushCallStack(stack: [SVFunc | string, CodeSource | undefined]): Context<T> {
         return this.set('callStack', this.callStack.push(stack));
     }
 
@@ -389,31 +359,31 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     }
 
     // symbolic variable generator
-    genSymInt(name: string, source?: ParseNode): SymInt {
+    genSymInt(name: string, source?: CodeSource): SymInt {
         return this.ctrSet.genSymInt(name, source);
     }
-    genSymFloat(name: string, source?: ParseNode): SymFloat {
+    genSymFloat(name: string, source?: CodeSource): SymFloat {
         return this.ctrSet.genSymFloat(name, source);
     }
-    genSymBool(name: string, source?: ParseNode): SymBool {
+    genSymBool(name: string, source?: CodeSource): SymBool {
         return this.ctrSet.genSymBool(name, source);
     }
-    genSymString(name: string, source?: ParseNode): SymString {
+    genSymString(name: string, source?: CodeSource): SymString {
         return this.ctrSet.genSymString(name, source);
     }
-    genSymShape(name: string, rank: ExpNum, source?: ParseNode): SymShape {
+    genSymShape(name: string, rank: ExpNum, source?: CodeSource): SymShape {
         return this.ctrSet.genSymShape(name, rank, source);
     }
 
     // return ExpNumSymbol that is greater than `value`;
-    genIntGte(name: string, value: number | ExpNum, source?: ParseNode): Context<ExpNumSymbol> {
+    genIntGte(name: string, value: number | ExpNum, source?: CodeSource): Context<ExpNumSymbol> {
         const num = this.genSymInt(name, source);
         const exp = ExpNum.fromSymbol(num);
         const pos = this.genLte(value, exp, source);
         return this.guarantee(pos).setRetVal(exp);
     }
 
-    genFloatGte(name: string, value: number | ExpNum, source?: ParseNode): Context<ExpNumSymbol> {
+    genFloatGte(name: string, value: number | ExpNum, source?: CodeSource): Context<ExpNumSymbol> {
         const num = this.genSymFloat(name, source);
         const exp = ExpNum.fromSymbol(num);
         const pos = this.genLte(value, exp, source);
@@ -424,7 +394,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     // partialDims is additional constant part of dimensions
     genConstRankedShape(
         rank: number,
-        source?: ParseNode,
+        source?: CodeSource,
         partialDims?: Map<number, ExpNum>
     ): ContextSet<ExpShapeConst> {
         if (rank < 0)
@@ -472,7 +442,11 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     // partialDims is additional constant part of dimensions
     // if rank has upper-bound, return slice of upper-bound-ranked shape. (for optimization)
     // in production, ranked has force-upper bound of some number (e.g. 6)
-    genRankedShape(rank: number | ExpNum, source?: ParseNode, partialDims?: Map<number, ExpNum>): ContextSet<ExpShape> {
+    genRankedShape(
+        rank: number | ExpNum,
+        source?: CodeSource,
+        partialDims?: Map<number, ExpNum>
+    ): ContextSet<ExpShape> {
         if (typeof rank === 'number') {
             return this.genConstRankedShape(rank, source, partialDims);
         }
@@ -527,7 +501,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     }
 
     // constraint generator
-    genBool(pred: ExpBool | boolean, source?: ParseNode): Constraint {
+    genBool(pred: ExpBool | boolean, source?: CodeSource): Constraint {
         return this.ctrSet.genEquality(
             ConstraintType.Equal,
             SymExp.fromConst(pred),
@@ -539,7 +513,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     genEq(
         left: SymExp | number | string | boolean,
         right: SymExp | number | string | boolean,
-        source?: ParseNode
+        source?: CodeSource
     ): CtrEq {
         return this.ctrSet.genEquality(
             ConstraintType.Equal,
@@ -552,7 +526,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     genNeq(
         left: SymExp | number | string | boolean,
         right: SymExp | number | string | boolean,
-        source?: ParseNode
+        source?: CodeSource
     ): CtrNeq {
         return this.ctrSet.genEquality(
             ConstraintType.NotEqual,
@@ -562,7 +536,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         ) as CtrNeq;
     }
 
-    genLt(left: ExpNum | number, right: ExpNum | number, source?: ParseNode): CtrLt {
+    genLt(left: ExpNum | number, right: ExpNum | number, source?: CodeSource): CtrLt {
         return this.ctrSet.genNumCompare(
             ConstraintType.LessThan,
             SymExp.fromConst(left) as ExpNum,
@@ -571,7 +545,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         ) as CtrLt;
     }
 
-    genLte(left: ExpNum | number, right: ExpNum | number, source?: ParseNode): CtrLte {
+    genLte(left: ExpNum | number, right: ExpNum | number, source?: CodeSource): CtrLte {
         return this.ctrSet.genNumCompare(
             ConstraintType.LessThanOrEqual,
             SymExp.fromConst(left) as ExpNum,
@@ -580,19 +554,19 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         ) as CtrLte;
     }
 
-    genAnd(left: Constraint, right: Constraint, source?: ParseNode): CtrAnd {
+    genAnd(left: Constraint, right: Constraint, source?: CodeSource): CtrAnd {
         return this.ctrSet.genAnd(left, right, source);
     }
 
-    genOr(left: Constraint, right: Constraint, source?: ParseNode): CtrOr {
+    genOr(left: Constraint, right: Constraint, source?: CodeSource): CtrOr {
         return this.ctrSet.genOr(left, right, source);
     }
 
-    genNot(constraint: Constraint, source?: ParseNode): CtrNot {
+    genNot(constraint: Constraint, source?: CodeSource): CtrNot {
         return this.ctrSet.genNot(constraint, source);
     }
 
-    genBroadcastable(left: ExpShape, right: ExpShape, source?: ParseNode): CtrBroad {
+    genBroadcastable(left: ExpShape, right: ExpShape, source?: CodeSource): CtrBroad {
         return this.ctrSet.genBroad(left, right, source);
     }
 
@@ -600,18 +574,18 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         symbol: SymInt,
         range: [number | ExpNum, number | ExpNum],
         constraint: Constraint,
-        source?: ParseNode
+        source?: CodeSource
     ): CtrForall {
         return this.ctrSet.genForall(symbol, range, constraint, source);
     }
 
-    genFail(reason: string, source?: ParseNode): CtrFail {
+    genFail(reason: string, source?: CodeSource): CtrFail {
         return this.ctrSet.genFail(reason, source);
     }
 
     // make `sizable` to shape, if `sizable` may be iterable object of integer.
     // if parse error is not critical, return parse error messages
-    parseSize(iterable: ShValue, source?: ParseNode): ContextSet<ExpShape | string> {
+    parseSize(iterable: ShValue, source?: CodeSource): ContextSet<ExpShape | string> {
         const sizeObj = fetchAddr(iterable, this.heap);
         if (sizeObj?.type !== SVType.Object) {
             return this.toSetWith('value is not iterable; cannot parse to size.');
@@ -626,18 +600,18 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     }
 
     // shape operations
-    shBroadcast(left: ExpShape, right: ExpShape, source?: ParseNode): ContextSet<ExpShape> {
+    shBroadcast(left: ExpShape, right: ExpShape, source?: CodeSource): ContextSet<ExpShape> {
         return this.require([this.genBroadcastable(left, right, source)], 'shape is not broadcastable', source).return(
             ExpShape.broadcast(left, right, source)
         );
     }
 
-    shReduce(shape: ExpShape, axis: ExpNum | number, source?: ParseNode): ContextSet<ExpShape> {
+    shReduce(shape: ExpShape, axis: ExpNum | number, source?: CodeSource): ContextSet<ExpShape> {
         // TODO: implement this.
         return this.setRetVal(shape).toSet();
     }
 
-    shMatmul(left: ExpShape, right: ExpShape, source?: ParseNode): ContextSet<ExpShape> {
+    shMatmul(left: ExpShape, right: ExpShape, source?: CodeSource): ContextSet<ExpShape> {
         const ctx = this;
         const leftRank = ExpShape.getRank(left);
         const rightRank = ExpShape.getRank(right);
@@ -674,33 +648,38 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         shape: ExpShape,
         ranges: [(ExpNum | number)?, (ExpNum | number)?],
         axis: ExpNum | number,
-        source?: ParseNode
+        source?: CodeSource
     ): ContextSet<ExpShape> {
         // TODO: implement this.
         return this.setRetVal(shape).toSet();
     }
 
-    shReshape(shape: ExpShape, dims: (ExpNum | number)[], source?: ParseNode): ContextSet<ExpShape> {
+    shReshape(shape: ExpShape, dims: (ExpNum | number)[], source?: CodeSource): ContextSet<ExpShape> {
         // TODO: implement this.
         return this.setRetVal(shape).toSet();
     }
 
-    shPermute(shape: ExpShape, axes: (ExpNum | number)[], source?: ParseNode): ContextSet<ExpShape> {
+    shPermute(shape: ExpShape, axes: (ExpNum | number)[], source?: CodeSource): ContextSet<ExpShape> {
         // TODO: implement this.
         return this.setRetVal(shape).toSet();
     }
 
-    shConcat(shapes: ExpShape[], axis: ExpNum | number, source?: ParseNode): ContextSet<ExpShape> {
+    shConcat(shapes: ExpShape[], axis: ExpNum | number, source?: CodeSource): ContextSet<ExpShape> {
         // TODO: implement this.
         return this.setRetVal(shapes[0]).toSet();
     }
 
-    shStack(shapes: ExpShape[], axis: ExpNum | number, source?: ParseNode): ContextSet<ExpShape> {
+    shStack(shapes: ExpShape[], axis: ExpNum | number, source?: CodeSource): ContextSet<ExpShape> {
         // TODO: implement this.
         return this.setRetVal(shapes[0]).toSet();
     }
 
-    shRepeat(shape: ExpShape, axis: ExpNum | number, count: ExpNum | number, source?: ParseNode): ContextSet<ExpShape> {
+    shRepeat(
+        shape: ExpShape,
+        axis: ExpNum | number,
+        count: ExpNum | number,
+        source?: CodeSource
+    ): ContextSet<ExpShape> {
         // TODO: implement this.
         const rank = ExpShape.getRank(shape);
         const axisCtr = this.genAnd(this.genLte(0, axis, source), this.genLt(axis, rank, source), source);
@@ -718,7 +697,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         });
     }
 
-    require(ctr: Constraint | Constraint[], failMsg?: string, source?: ParseNode): ContextSet<T | SVError> {
+    require(ctr: Constraint | Constraint[], failMsg?: string, source?: CodeSource): ContextSet<T | SVError> {
         if (Array.isArray(ctr)) {
             return this.toSet().require(ctr, failMsg, source);
         } else {
@@ -734,7 +713,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         }
     }
 
-    ifThenElse(ctr: Constraint, source?: ParseNode): [ContextSet<T>, ContextSet<T>] {
+    ifThenElse(ctr: Constraint, source?: CodeSource): [ContextSet<T>, ContextSet<T>] {
         return this.toSet().ifThenElse(ctr, source);
     }
 
@@ -848,7 +827,7 @@ export class ContextSetImpl<T> implements ContextSet<T> {
         );
     }
 
-    fail(errMsg: string, source?: ParseNode): ContextSet<SVError> {
+    fail(errMsg: string, source?: CodeSource): ContextSet<SVError> {
         return new ContextSetImpl(
             List(),
             this._ctxList
@@ -856,7 +835,7 @@ export class ContextSetImpl<T> implements ContextSet<T> {
                     !ctx.hasPathCtr();
                 })
                 .map((ctx) => {
-                    const err = SVError.create(errMsg, source);
+                    const err = SVError.create(errMsg, SVErrorLevel.Error, source);
                     return ctx.fail(err);
                 })
                 .concat(this._failed),
@@ -865,7 +844,7 @@ export class ContextSetImpl<T> implements ContextSet<T> {
                     ctx.hasPathCtr();
                 })
                 .map((ctx) => {
-                    const err = SVError.create(errMsg, source);
+                    const err = SVError.create(errMsg, SVErrorLevel.Error, source);
                     return ctx.fail(err);
                 })
                 .concat(this._stopped)
@@ -894,7 +873,7 @@ export class ContextSetImpl<T> implements ContextSet<T> {
         );
     }
 
-    require(ctr: Constraint | Constraint[], failMsg?: string, source?: ParseNode): ContextSet<T | SVError> {
+    require(ctr: Constraint | Constraint[], failMsg?: string, source?: CodeSource): ContextSet<T | SVError> {
         // immediate constraint check
         const ctrList: Constraint[] = Array.isArray(ctr) ? ctr : [ctr];
 
@@ -921,7 +900,7 @@ export class ContextSetImpl<T> implements ContextSet<T> {
         });
     }
 
-    ifThenElse(ctr: Constraint, source?: ParseNode): [ContextSet<T>, ContextSet<T>] {
+    ifThenElse(ctr: Constraint, source?: CodeSource): [ContextSet<T>, ContextSet<T>] {
         const ifPath: Context<T>[] = [];
         const elsePath: Context<T>[] = [];
 
@@ -947,7 +926,7 @@ export class ContextSetImpl<T> implements ContextSet<T> {
         return this._ctxList.isEmpty();
     }
 
-    addLog(message: string, source?: ParseNode): ContextSet<T> {
+    addLog(message: string, source?: CodeSource): ContextSet<T> {
         return this.map((ctx) => ctx.addLog(message, source));
     }
     addLogValue(value: ShValue): ContextSet<T> {

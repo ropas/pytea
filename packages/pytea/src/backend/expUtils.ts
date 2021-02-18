@@ -1,12 +1,19 @@
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
+/*
+ * expUtils.ts
+ * Copyright (c) Seoul National University.
+ * Licensed under the MIT license.
+ * Author: Ho Young Jhoo (mersshs@gmail.com)
+ *
+ * Simple expression comparer and calculator
+ */
 
-import { absIndexByLen, fetchAddr, trackMro } from './backUtils';
+import { fetchAddr, trackMro } from './backUtils';
 import { ConstraintSet } from './constraintSet';
 import { Constraint, ConstraintType } from './constraintType';
 import { Context, ContextSet } from './context';
 import { Fraction } from './fraction';
 import { ShEnv, ShHeap } from './sharpEnvironments';
-import { ShValue, SVAddr, SVSize, SVType } from './sharpValues';
+import { CodeSource, ShValue, SVAddr, SVSize, SVType } from './sharpValues';
 import {
     BoolOpType,
     ExpBool,
@@ -902,7 +909,7 @@ export function simplifyConstraint(ctrSet: ConstraintSet, ctr: Constraint): Cons
     }
 }
 
-export function ceilDiv(left: ExpNum | number, right: ExpNum | number, source?: ParseNode): ExpNumBop {
+export function ceilDiv(left: ExpNum | number, right: ExpNum | number, source?: CodeSource): ExpNumBop {
     if (typeof left === 'number') {
         left = ExpNum.fromConst(left);
     }
@@ -1092,7 +1099,7 @@ export function isStructuallyEq(left?: SymExp, right?: SymExp): boolean {
     }
 }
 
-export function genTensor<T>(ctx: Context<T>, shape: ExpShape, source?: ParseNode): ContextSet<ShValue> {
+export function genTensor<T>(ctx: Context<T>, shape: ExpShape, source?: CodeSource): ContextSet<ShValue> {
     shape = simplifyShape(ctx.ctrSet, shape);
 
     return TorchBackend.libClassInit(ctx, 'torch.Tensor', [SVSize.createSize(ctx, shape, source)], source);
@@ -1117,7 +1124,7 @@ export function fetchSize(mayAddr: ShValue | undefined, heap: ShHeap): SVSize | 
 export function strLen(
     ctx: Context<any>,
     str: string | ExpString,
-    source?: ParseNode
+    source?: CodeSource
 ): number | ExpNum | Context<ExpNum> {
     if (typeof str === 'string') {
         return str.length;
@@ -1164,7 +1171,7 @@ export function strLen(
 export function absExpIndexByLen(
     index: number | ExpNum,
     rank: number | ExpNum,
-    source?: ParseNode,
+    source?: CodeSource,
     ctrSet?: ConstraintSet
 ): number | ExpNum {
     if (typeof index === 'number') {
@@ -1220,7 +1227,7 @@ export function absExpIndexByLen(
 export function reluLen(
     a: number | ExpNum,
     b: number | ExpNum,
-    source?: ParseNode,
+    source?: CodeSource,
     ctrSet?: ConstraintSet
 ): number | ExpNum {
     if (typeof a === 'number' && typeof b === 'number') return b - a >= 0 ? b - a : 0;

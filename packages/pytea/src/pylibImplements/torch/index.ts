@@ -1,13 +1,9 @@
-import { exists } from 'fs-extra';
-
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
-
-import { LCImpl } from '..';
 import { fetchAddr } from '../../backend/backUtils';
 import { Constraint } from '../../backend/constraintType';
 import { Context, ContextSet } from '../../backend/context';
 import { ceilDiv, fetchSize, genTensor, simplifyNum } from '../../backend/expUtils';
 import {
+    CodeSource,
     ShValue,
     SVAddr,
     SVBool,
@@ -29,10 +25,11 @@ import {
     ShapeOpType,
 } from '../../backend/symExpressions';
 import { TorchBackend } from '../../backend/torchBackend';
+import { LCImpl } from '..';
 import { LCBase } from '../libcall';
 
 export namespace TorchLCImpl {
-    export function tensorInit(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function tensorInit(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -82,7 +79,7 @@ export namespace TorchLCImpl {
         });
     }
 
-    export function identityShape(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function identityShape(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx.warnTensorWithMsg(
@@ -106,7 +103,7 @@ export namespace TorchLCImpl {
     }
 
     // return broadcasted tensor
-    export function broadcast(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function broadcast(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -134,7 +131,7 @@ export namespace TorchLCImpl {
     }
 
     // implementation of torch.matmul
-    export function matmul(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function matmul(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -237,7 +234,7 @@ export namespace TorchLCImpl {
     }
 
     // implementation of torch.mm
-    export function mm(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function mm(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -284,7 +281,7 @@ export namespace TorchLCImpl {
     }
 
     // implementation of torch.mm
-    export function bmm(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function bmm(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -338,7 +335,7 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function item(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function item(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx.warnTensorWithMsg(
@@ -369,7 +366,7 @@ export namespace TorchLCImpl {
     }
 
     // implementation of torch.Tensor.repeat
-    export function repeat(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function repeat(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -476,7 +473,7 @@ export namespace TorchLCImpl {
         });
     }
 
-    export function copyOut(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function copyOut(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -501,11 +498,11 @@ export namespace TorchLCImpl {
         return (tensor ? ctx.setHeap(heap.setVal(out, tensor)) : ctx).setRetVal(out).toSet();
     }
 
-    export function callTensor(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function callTensor(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         return TorchBackend.libClassInit(ctx, 'torch.Tensor', ctx.retVal.params, source);
     }
 
-    export function transpose(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function transpose(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -609,7 +606,7 @@ export namespace TorchLCImpl {
         return dimPPNext.join(dimPNNext).join(dimNPNext).join(dimNNNext);
     }
 
-    export function reduce(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function reduce(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -686,7 +683,7 @@ export namespace TorchLCImpl {
     }
 
     // TODO: currently, assumed -1 is given only via constant rank tuple.
-    export function view(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function view(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -855,7 +852,7 @@ export namespace TorchLCImpl {
             .flatMap((ctx) => genTensor(ctx, shape, source));
     }
 
-    export function conv2d(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function conv2d(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 7) {
             return ctx.warnTensorWithMsg(
@@ -1008,7 +1005,7 @@ export namespace TorchLCImpl {
             .flatMap((ctx) => genTensor(ctx, ExpShape.fromConst(4, [dim0, dim1, dim2, dim3], source), source));
     }
 
-    export function pool2d(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function pool2d(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 6) {
             return ctx.warnTensorWithMsg(
@@ -1156,7 +1153,7 @@ export namespace TorchLCImpl {
     }
 
     // TODO: Implement batch_norm and let BatchNormNd call it.
-    export function batchnorm2d(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function batchnorm2d(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 2) {
             return ctx.warnTensorWithMsg(
@@ -1198,7 +1195,7 @@ export namespace TorchLCImpl {
     //     ctr += [broadcastable(x1, x2)]
     // else
     //     ctr += [x1.rank == x2.rank && broadcastable(x1, x2)]
-    export function cosine_similarity(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function cosine_similarity(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 3) {
             return ctx.warnTensorWithMsg(
@@ -1290,7 +1287,7 @@ export namespace TorchLCImpl {
     }
 
     // conditions of elements in "target" is not considered.
-    export function cross_entropy(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function cross_entropy(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -1357,7 +1354,7 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function checkSameShape(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function checkSameShape(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -1392,7 +1389,7 @@ export namespace TorchLCImpl {
 
     // Assumption: "tensors" is a constantRanked sequence, and each element is available.
     // TODO: handle empty tensor.
-    export function cat(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function cat(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -1461,7 +1458,7 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function unsqueeze(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function unsqueeze(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 2) {
             return ctx.warnTensorWithMsg(
@@ -1502,7 +1499,7 @@ export namespace TorchLCImpl {
             .flatMap((ctx) => genTensor(ctx, returnShape, source));
     }
 
-    export function diag(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function diag(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 2) {
             return ctx.warnTensorWithMsg(
@@ -1571,7 +1568,7 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function flatten(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function flatten(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 1) {
             return ctx.warnTensorWithMsg(
@@ -1639,7 +1636,7 @@ export namespace TorchLCImpl {
             .flatMap((ctx) => genTensor(ctx, returnShape, source));
     }
 
-    export function embedding(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function embedding(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 2) {
             return ctx.warnTensorWithMsg(
@@ -1667,13 +1664,11 @@ export namespace TorchLCImpl {
         const weightLastShape = ExpShape.slice(weightShape, 1, undefined, source);
         const returnShape = ExpShape.concat(inputShape, weightLastShape, source);
 
-        return ctx
-            .require([ctx.genEq(2, weightRank, source)])
-            .flatMap((ctx) => genTensor(ctx, returnShape, source));
+        return ctx.require([ctx.genEq(2, weightRank, source)]).flatMap((ctx) => genTensor(ctx, returnShape, source));
     }
 
     // TODO: `broadcastable` is not the sufficient condition for this code
-    export function layer_norm(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function layer_norm(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 4) {
             return ctx.warnTensorWithMsg(
@@ -1700,7 +1695,7 @@ export namespace TorchLCImpl {
         return ctx.shBroadcast(inputShape, normShape, source).flatMap((ctx) => genTensor(ctx, ctx.retVal, source));
     }
 
-    export function pad(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function pad(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -1781,7 +1776,7 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function adaptive(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function adaptive(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -1846,7 +1841,7 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function genDatasetLen(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function genDatasetLen(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx.warnTensorWithMsg(
@@ -1858,7 +1853,7 @@ export namespace TorchLCImpl {
         return ctx.setRetVal(SVNotImpl.create('not implemented', source)).toSet();
     }
 
-    export function datasetGetItem(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function datasetGetItem(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -1870,7 +1865,7 @@ export namespace TorchLCImpl {
         return ctx.setRetVal(SVNotImpl.create('not implemented', source)).toSet();
     }
 
-    export function warnTensorWithMsg(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function warnTensorWithMsg(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx.warnTensorWithMsg(
@@ -1890,7 +1885,7 @@ export namespace TorchLCImpl {
     }
 
     // implementation of torch.nn.functional.interpolate
-    export function interpolate(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function interpolate(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(

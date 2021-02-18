@@ -118,7 +118,57 @@
                 "fileMatch": "pyteaconfig.json",
                 "url": "./schemas/pyteaconfig.schema.json"
             }
-        ]
+        ],
+        "viewsContainers": {
+			"activitybar": [
+				{
+					"id": "pytea-analysis",
+					"title": "Pytea Analysis",
+					"icon": "images/sidebar.svg"
+				}
+			],
+            "panel": [
+				{
+					"id": "pytea-explorer",
+					"title": "Pytea",
+					"icon": "images/sidebar.svg"
+				}
+			]
+		},
+		"views": {
+			"pytea-analysis": [
+                {
+					"id": "executionPaths",
+					"name": "Execution Paths"
+				},
+                {
+					"id": "variables",
+					"name": "Variables"
+				},
+				{
+					"id": "callStack",
+					"name": "Call Stack"
+				},
+                {
+					"id": "softConstraints",
+					"name": "Soft Constraints"
+				},
+                {
+					"id": "pathConstraints",
+					"name": "Path Constraints"
+				},
+                {
+					"id": "hardConstraints",
+					"name": "Hard Constraints"
+				}
+			],
+            "pytea-explorer": [
+				{
+					"id": "analyzerLog",
+					"name": "Analyzer Log"
+				}
+			]
+        }
     },
     "scripts": {
         "clean": "shx rm -rf ./dist ./out",

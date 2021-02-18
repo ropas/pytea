@@ -1,15 +1,13 @@
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
-
-import { LCImpl } from '..';
 import { fetchAddr } from '../../backend/backUtils';
 import { Context, ContextSet } from '../../backend/context';
 import { fetchSize, genTensor, simplifyShape } from '../../backend/expUtils';
-import { ShValue, SVSize, SVType } from '../../backend/sharpValues';
+import { CodeSource, ShValue, SVSize, SVType } from '../../backend/sharpValues';
 import { ExpNum, ExpShape, NumBopType } from '../../backend/symExpressions';
+import { LCImpl } from '..';
 import { LCBase } from '../libcall';
 
 export namespace TorchvisionLCImpl {
-    export function crop(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function crop(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -76,7 +74,7 @@ export namespace TorchvisionLCImpl {
             });
     }
 
-    export function to_pil_image(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function to_pil_image(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(

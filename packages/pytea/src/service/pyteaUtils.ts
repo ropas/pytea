@@ -25,11 +25,31 @@ import {
     normalizePath,
 } from 'pyright-internal/common/pathUtils';
 import { convertOffsetToPosition } from 'pyright-internal/common/positionUtils';
-import { ParseNode, ParseNodeType } from 'pyright-internal/parser/parseNodes';
+import { ParseNodeType } from 'pyright-internal/parser/parseNodes';
 
+import { fetchAddr } from '../backend/backUtils';
+import {
+    Constraint,
+    ConstraintType,
+    CtrAnd,
+    CtrBroad,
+    CtrEq,
+    CtrExpBool,
+    CtrFail,
+    CtrForall,
+    CtrLt,
+    CtrLte,
+    CtrNeq,
+    CtrNot,
+    CtrOr,
+} from '../backend/constraintType';
 import { ContextSet } from '../backend/context';
+import { ShHeap } from '../backend/sharpEnvironments';
+import { CodeRange, CodeSource, ShValue, SVSize, SVType } from '../backend/sharpValues';
+import { ExpBool, ExpNum, ExpShape, ExpString, SymExp, SymInt, SymVal } from '../backend/symExpressions';
 import { TorchIRFrontend } from '../frontend/torchFrontend';
 import { ThStmt } from '../frontend/torchStatements';
+import { FilePathStore } from './executionPaths';
 import { PyteaOptions } from './pyteaOptions';
 
 export class NodeConsole implements ConsoleInterface {
@@ -172,9 +192,9 @@ export function buildPyteaOption(
     return options as PyteaOptions;
 }
 
-// return every .py filenames
+// search every directory recursively and return every .py file paths (relative to projectPath)
 // e.g.) ['LibCall.py', 'torch/__init__.py', ...]
-export function getTorchLibFileNames(baseDirPath: string, configOptions: ConfigOptions): string[] {
+export function getScriptRelPaths(projectPath: string, configOptions: ConfigOptions): string[] {
     const fileNames: string[] = [];
     const venvPath = configOptions.venvPath
         ? combinePaths(configOptions.projectRoot, configOptions.venvPath)
@@ -203,7 +223,7 @@ export function getTorchLibFileNames(baseDirPath: string, configOptions: ConfigO
         });
     }
 
-    iterDir(baseDirPath, '');
+    iterDir(projectPath, '');
 
     return fileNames;
 }
@@ -225,14 +245,14 @@ export function filePathToQualId(path: string): string {
     return dotPaths;
 }
 
-// return 'module qualPath => ThStmt'
+// return 'module qualPath => [file full path, ThStmt]'
 // e.g.) "torch.functional" => <some statement>
-export function getStmtsFromDir(service: AnalyzerService, dirPath: string): Map<string, ThStmt> {
+export function getStmtsFromDir(service: AnalyzerService, dirPath: string): Map<string, [string, ThStmt]> {
     // Always enable "test mode".
     const parser = new TorchIRFrontend();
     const configOptions = service.getConfigOptions();
 
-    const libFileNames = getTorchLibFileNames(dirPath, configOptions);
+    const libFileNames = getScriptRelPaths(dirPath, configOptions);
     const libFilePaths = libFileNames.map((fn) => path.resolve(dirPath, fn));
 
     const program = service.backgroundAnalysisProgram.program;
@@ -244,7 +264,7 @@ export function getStmtsFromDir(service: AnalyzerService, dirPath: string): Map<
     }
 
     // analyze single pytorch entry file
-    const libMap: Map<string, ThStmt> = new Map();
+    const libMap: Map<string, [string, ThStmt]> = new Map();
     for (const fpId in libFilePaths) {
         const fp = libFilePaths[fpId];
         const fn = libFileNames[fpId];
@@ -274,7 +294,7 @@ export function getStmtsFromDir(service: AnalyzerService, dirPath: string): Map<
         if (!stmt) {
             console.log(`library script parse error: ${fp}`);
         } else {
-            libMap.set(filePathToQualId(fn), stmt);
+            libMap.set(filePathToQualId(fn), [fp, stmt]);
         }
     }
 
@@ -360,23 +380,256 @@ export function exportConstraintSet<T>(result: ContextSet<T>, path: string): voi
     fs.writeFileSync(path, jsonStr);
 }
 
-export function formatParseNode(node?: ParseNode): string {
-    if (!node) {
-        return 'internal';
+// if value is address, return fetchAddr(value, heap)
+// if that object has attr 'shape' and that is SVSize, return `Tensor ${value.size}`
+export function reducedToString(value: ShValue, heap: ShHeap): string {
+    const obj = fetchAddr(value, heap);
+    if (obj) {
+        if (obj.type === SVType.Object) {
+            const shape = obj.getAttr('shape');
+            if (shape instanceof SVSize) {
+                return `Tensor ${SymExp.toString(shape.shape)}`;
+            }
+        }
+
+        return obj.toString();
+    } else {
+        return value.toString();
     }
-    let moduleNode = node;
-    while (moduleNode.nodeType !== ParseNodeType.Module) {
-        moduleNode = moduleNode.parent!;
+}
+
+// make ParseNode to CodeRange
+export namespace CodeSourcePositioner {
+    // export function cleanContextSet<T>(ctxSet: ContextSet<T>, pathStore: FilePathStore): ContextSet<T> {
+    //     return ctxSet.map((ctx) => cleanContext(ctx, pathStore));
+    // }
+
+    // export function cleanContext<T>(ctx: Context<T>, pathStore: FilePathStore): Context<T> {
+    //     const { env, heap, ctrSet, callStack, logs, imported, failed, retVal } = ctx;
+
+    //     ctx = ctx
+    //         .set('env', cleanEnv(env, pathStore))
+    //         .set('heap', cleanHeap(heap, pathStore))
+    //         .set('ctrSet', cleanConstraintSet(ctrSet, pathStore))
+    //         .set(
+    //             'logs',
+    //             logs.map((value) => cleanShValue(value, pathStore))
+    //         )
+    //         .set('imported', cleanEnv(imported, pathStore));
+
+    //     ctx = ctx.set(
+    //         'callStack',
+    //         callStack.map(([func, source]) => [
+    //             typeof func === 'string' ? func : cleanShValue(func, pathStore),
+    //             cleanSource(source, pathStore),
+    //         ]) as typeof callStack
+    //     );
+
+    //     if (failed) {
+    //         ctx = ctx.set('failed', cleanShValue(failed, pathStore));
+    //     }
+
+    //     // force assume that source holder is Shvalue
+    //     if ('source' in retVal) {
+    //         ctx = (ctx.setRetVal(cleanShValue(retVal, pathStore)) as unknown) as Context<T>;
+    //     }
+
+    //     return ctx;
+    // }
+
+    // export function cleanEnv(env: ShEnv, pathStore: FilePathStore): ShEnv {
+    //     return env.set(
+    //         'addrMap',
+    //         env.addrMap.map((addr) => cleanShValue(addr, pathStore))
+    //     );
+    // }
+
+    // export function cleanHeap(heap: ShHeap, pathStore: FilePathStore): ShHeap {
+    //     return heap.set(
+    //         'valMap',
+    //         heap.valMap.map((value) => cleanShValue(value, pathStore))
+    //     );
+    // }
+
+    // export function cleanShValue(value: SVAddr, pathStore: FilePathStore): SVAddr;
+    // export function cleanShValue(value: SVError, pathStore: FilePathStore): SVError;
+    // export function cleanShValue(value: ShValue, pathStore: FilePathStore): ShValue {
+    //     switch (value.type) {
+    //         case SVType.Addr:
+    //             return SVAddr.create(value.addr, cleanSource(value.source, pathStore));
+    //         case SVType.Int:
+    //             return SVInt.create(cleanSymExp(value.value, pathStore), cleanSource(value.source, pathStore));
+    //         case SVType.Float:
+    //             return SVFloat.create(cleanSymExp(value.value, pathStore), cleanSource(value.source, pathStore));
+    //         case SVType.String:
+    //             return SVString.create(cleanSymExp(value.value, pathStore), cleanSource(value.source, pathStore));
+    //         case SVType.Bool:
+    //             return SVBool.create(cleanSymExp(value.value, pathStore), cleanSource(value.source, pathStore));
+    //         case SVType.Object: {
+    //             const attrs = {
+    //                 type: value.type,
+    //                 id: value.id,
+    //                 attrs: value.attrs.map(val => cleanShValue(val, pathStore)),
+    //                 indices: value.indices.map(val => cleanShValue(val, pathStore)),
+    //                 keyValues: value.keyValues.map(val => cleanShValue(val, pathStore)),
+    //                 addr: cleanShValue(value.addr, pathStore),
+    //                 shape: value.shape ? cleanSymExp(value.shape, pathStore) : value.shape,
+    //                 source: cleanSource(value.source, pathStore)
+    //             }
+
+    //             if (value instanceof SVSize) {
+    //                 return new SVSize(attrs)
+    //             }
+    //             return new SVObject(attrs)
+    //         }
+    //         case SVType.Func:
+    //             return SVFunc.create(value.addr, cleanSource(value.source, pathStore));
+    //         case SVType.None:
+    //             return SVNone.create(value.addr, cleanSource(value.source, pathStore));
+    //         case SVType.NotImpl:
+    //             return SVNotImpl.create(value.addr, cleanSource(value.source, pathStore));
+    //         case SVType.Undef:
+    //             return SVUndef.create(value.addr, cleanSource(value.source, pathStore));
+    //         case SVType.Error:
+    //             return SVError.create(value.reason, value.level, cleanSource(value.source, pathStore));
+    //         default:
+    //             return value;
+    //     }
+    // }
+
+    export function cleanConstraint(ctr: Constraint, pathStore: FilePathStore): Constraint {
+        switch (ctr.type) {
+            case ConstraintType.ExpBool:
+                return {
+                    ...ctr,
+                    exp: cleanSymExp(ctr.exp, pathStore),
+                    source: cleanSource(ctr.source, pathStore),
+                } as CtrExpBool;
+            case ConstraintType.Equal:
+                return {
+                    ...ctr,
+                    left: cleanSymExp(ctr.left, pathStore),
+                    right: cleanSymExp(ctr.right, pathStore),
+                    source: cleanSource(ctr.source, pathStore),
+                } as CtrEq;
+            case ConstraintType.NotEqual:
+                return {
+                    ...ctr,
+                    left: cleanSymExp(ctr.left, pathStore),
+                    right: cleanSymExp(ctr.right, pathStore),
+                    source: cleanSource(ctr.source, pathStore),
+                } as CtrNeq;
+            case ConstraintType.And:
+                return {
+                    ...ctr,
+                    left: cleanConstraint(ctr.left, pathStore),
+                    right: cleanConstraint(ctr.right, pathStore),
+                    source: cleanSource(ctr.source, pathStore),
+                } as CtrAnd;
+            case ConstraintType.Or:
+                return {
+                    ...ctr,
+                    left: cleanConstraint(ctr.left, pathStore),
+                    right: cleanConstraint(ctr.right, pathStore),
+                    source: cleanSource(ctr.source, pathStore),
+                } as CtrOr;
+            case ConstraintType.Not:
+                return {
+                    ...ctr,
+                    constraint: cleanConstraint(ctr.constraint, pathStore),
+                    source: cleanSource(ctr.source, pathStore),
+                } as CtrNot;
+            case ConstraintType.LessThan:
+                return {
+                    ...ctr,
+                    left: cleanSymExp(ctr.left, pathStore),
+                    right: cleanSymExp(ctr.right, pathStore),
+                    source: cleanSource(ctr.source, pathStore),
+                } as CtrLt;
+            case ConstraintType.LessThanOrEqual:
+                return {
+                    ...ctr,
+                    left: cleanSymExp(ctr.left, pathStore),
+                    right: cleanSymExp(ctr.right, pathStore),
+                    source: cleanSource(ctr.source, pathStore),
+                } as CtrLte;
+            case ConstraintType.Forall:
+                return {
+                    ...ctr,
+                    symbol: cleanSymbol(ctr.symbol, pathStore),
+                    range: [cleanSymExp(ctr.range[0], pathStore), cleanSymExp(ctr.range[1], pathStore)],
+                    constraint: cleanConstraint(ctr.constraint, pathStore),
+                    source: cleanSource(ctr.source, pathStore),
+                } as CtrForall;
+            case ConstraintType.Broadcastable:
+                return {
+                    ...ctr,
+                    left: cleanSymExp(ctr.left, pathStore),
+                    right: cleanSymExp(ctr.right, pathStore),
+                    source: cleanSource(ctr.source, pathStore),
+                } as CtrBroad;
+            case ConstraintType.Fail:
+                return {
+                    ...ctr,
+                    source: cleanSource(ctr.source, pathStore),
+                } as CtrFail;
+        }
     }
 
-    const fileInfo = getFileInfo(moduleNode)!;
+    export function cleanSymExp(exp: number | ExpNum, pathStore: FilePathStore): number | ExpNum;
+    export function cleanSymExp(exp: boolean | ExpBool, pathStore: FilePathStore): boolean | ExpBool;
+    export function cleanSymExp(exp: string | ExpString, pathStore: FilePathStore): string | ExpString;
+    export function cleanSymExp(exp: ExpShape, pathStore: FilePathStore): ExpShape;
+    export function cleanSymExp(exp: SymExp, pathStore: FilePathStore): SymExp;
+    export function cleanSymExp(
+        exp: number | boolean | string | SymExp,
+        pathStore: FilePathStore
+    ): number | boolean | string | SymExp {
+        if (typeof exp === 'object') {
+            // force cast
+            const retVal: any = { ...exp };
 
-    const filePath = fileInfo.filePath;
-    const lines = fileInfo.lines;
-    const start = convertOffsetToPosition(node.start, lines);
-    const end = convertOffsetToPosition(node.start + node.length, lines);
+            // recursively remove source
+            Object.entries(retVal).forEach(([key, value]) => {
+                if (key === 'source') {
+                    retVal.source = cleanSource(retVal.source, pathStore);
+                }
+                if (Array.isArray(value)) {
+                    retVal[key] = value.map((v) => cleanSymExp(v, pathStore));
+                } else if (typeof value === 'object') {
+                    retVal[key] = cleanSymExp(value as SymExp, pathStore);
+                }
+            });
 
-    const relPath = path.relative(process.cwd(), filePath);
+            return retVal;
+        }
 
-    return `[${start.line + 1}:${start.character} - ${end.line + 1}:${end.character}] @ ${relPath}`;
+        return exp;
+    }
+
+    export function cleanSymbol(symbol: SymInt, pathStore: FilePathStore): SymInt;
+    export function cleanSymbol(symbol: SymVal, pathStore: FilePathStore): SymVal {
+        const source = cleanSource(symbol.source, pathStore);
+        return { ...symbol, source };
+    }
+
+    export function cleanSource(source: CodeSource | undefined, pathStore: FilePathStore): CodeRange | undefined {
+        if (!source) return source;
+        if ('fileId' in source) return source;
+
+        let moduleNode = source;
+        while (moduleNode.nodeType !== ParseNodeType.Module) {
+            moduleNode = moduleNode.parent!;
+        }
+
+        const fileInfo = getFileInfo(moduleNode)!;
+
+        const filePath = fileInfo.filePath;
+        const lines = fileInfo.lines;
+        const start = convertOffsetToPosition(source.start, lines);
+        const end = convertOffsetToPosition(source.start + source.length, lines);
+        const fileId = pathStore.addPath(filePath);
+
+        return { fileId, range: { start, end } };
+    }
 }

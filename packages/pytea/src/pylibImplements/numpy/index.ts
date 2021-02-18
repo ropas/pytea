@@ -1,18 +1,16 @@
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
-
-import { LCImpl } from '..';
 import { fetchAddr } from '../../backend/backUtils';
-import { Constraint } from '../../backend/constraintType';
 import { ConstraintSet } from '../../backend/constraintSet';
+import { Constraint } from '../../backend/constraintType';
 import { Context, ContextSet } from '../../backend/context';
 import { absExpIndexByLen, fetchSize, isSize, simplifyBool, simplifyNum, simplifyShape } from '../../backend/expUtils';
-import { ShValue, SVAddr, SVObject, SVSize, SVNone, SVType } from '../../backend/sharpValues';
+import { CodeSource, ShValue, SVAddr, SVNone, SVObject, SVSize, SVType } from '../../backend/sharpValues';
 import { BoolOpType, ExpBool, ExpNum, ExpShape, NumBopType, NumOpType } from '../../backend/symExpressions';
 import { TorchBackend } from '../../backend/torchBackend';
+import { LCImpl } from '..';
 import { LCBase } from '../libcall';
 
 export namespace NumpyLCImpl {
-    export function ndarrayInit(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function ndarrayInit(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         // A replica of torch.tensorInit() in torch/index.ts
         // internally, numpy.ndarray shares structure with torch.Tensor.
 
@@ -68,7 +66,7 @@ export namespace NumpyLCImpl {
     }
 
     // A replica of torch.identityShape() in torch/index.ts
-    export function identityShape(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function identityShape(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx.warnTensorWithMsg(
@@ -92,7 +90,7 @@ export namespace NumpyLCImpl {
     }
 
     // A replica of torch.broadcast() in torch/index.ts
-    export function broadcast(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function broadcast(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -120,7 +118,7 @@ export namespace NumpyLCImpl {
     }
 
     // A replica of torch.matmul() in torch/index.ts
-    export function matmul(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function matmul(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -223,7 +221,7 @@ export namespace NumpyLCImpl {
     }
 
     // get `(arrAddr: ndarray, imgAddr: PIL Image)`, set shape of `arr` to SVSize with shape of `img`
-    export function fromImage(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function fromImage(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -266,7 +264,7 @@ export namespace NumpyLCImpl {
 
     // Assumption: "tensors" is a constantRanked sequence, and each element is available.
     // TODO: handle empty tensor.
-    export function concatenate(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function concatenate(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -344,7 +342,7 @@ export namespace NumpyLCImpl {
             });
     }
 
-    export function copyOut(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function copyOut(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -379,7 +377,7 @@ export namespace NumpyLCImpl {
             .return(SVNone.create(source));
     }
 
-    export function reduce(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function reduce(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 4) {
             return ctx.warnTensorWithMsg(
@@ -440,7 +438,7 @@ export namespace NumpyLCImpl {
         if (axisSV.type === SVType.None) {
             if (keepdimsVal) {
                 if (rankValue !== undefined) {
-                    let dims: number[] = [];
+                    const dims: number[] = [];
                     for (let i = 0; i < rankValue; i++) {
                         dims.push(1);
                     }
@@ -488,7 +486,7 @@ export namespace NumpyLCImpl {
         }
         // 3) axis is a tuple of ints.
         else {
-            let axes = getExpNumTuple(axisSV, ctx.ctrSet);
+            const axes = getExpNumTuple(axisSV, ctx.ctrSet);
             if (typeof axes === 'string') {
                 return ctx.failWithMsg(`from 'LibCall.numpy.reduce': ${axes}`, source).toSet();
             }
@@ -508,7 +506,7 @@ export namespace NumpyLCImpl {
             const shapes: ExpShape[] = [];
             let lastDim: number | ExpNum = -1;
             for (let i = 0; i < constAxes.length; i++) {
-                let dim = constAxes[i];
+                const dim = constAxes[i];
                 shapes.push(ExpShape.slice(selfShape, ExpNum.bop(NumBopType.Add, lastDim, 1, source), dim, source));
                 if (keepdimsVal) {
                     shapes.push(ExpShape.fromConst(1, [1], source));
@@ -529,7 +527,7 @@ export namespace NumpyLCImpl {
         }
     }
 
-    function genNdarray<T>(ctx: Context<T>, shape: ExpShape, source?: ParseNode): ContextSet<ShValue> {
+    function genNdarray<T>(ctx: Context<T>, shape: ExpShape, source?: CodeSource): ContextSet<ShValue> {
         const newShape = simplifyShape(ctx.ctrSet, shape);
 
         return TorchBackend.libClassInit(ctx, 'numpy.ndarray', [SVSize.createSize(ctx, newShape, source)], source);
@@ -537,7 +535,7 @@ export namespace NumpyLCImpl {
 
     // return tuple of ExpNums from SVObject.
     function getExpNumTuple(obj: SVObject, ctrSet: ConstraintSet): (number | ExpNum)[] | string {
-        let length = obj.getAttr('$length');
+        const length = obj.getAttr('$length');
         if (length === undefined || !(length.type === SVType.Int)) {
             return `attribute '$length' is not an int`;
         }
@@ -554,7 +552,7 @@ export namespace NumpyLCImpl {
             if (elem === undefined || elem.type !== SVType.Int) {
                 return `an element of tuple is not an int`;
             }
-            let num = elem.value;
+            const num = elem.value;
             intTuple.push(num);
         }
         return intTuple;

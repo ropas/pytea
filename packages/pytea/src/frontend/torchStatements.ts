@@ -6,7 +6,9 @@
  *
  * Expressions and statements for PyTea internal languages.
  */
-import { ExpressionNode, ParseNode } from 'pyright-internal/parser/parseNodes';
+import { ExpressionNode } from 'pyright-internal/parser/parseNodes';
+
+import { CodeSource } from '../backend/sharpValues';
 
 export type ThLeftExpr = TEName | TEAttr | TESubscr;
 export type ThExpr = TEConst | TEObject | TETuple | TECall | TELibCall | TEBinOp | TEUnaryOp | ThLeftExpr;
@@ -106,12 +108,12 @@ export function isNumericBop(bop: TEBopType): boolean {
 
 interface ThExprBase {
     etype: TEType;
-    source?: ParseNode;
+    source?: CodeSource;
 }
 
 interface ThStmtBase {
     stype: TSType;
-    source?: ParseNode;
+    source?: CodeSource;
 }
 
 const _indentMult = 2;
@@ -181,7 +183,7 @@ export namespace TEConst {
     export function create(
         constType: TEConstType,
         value: number | string | boolean | undefined,
-        source?: ParseNode
+        source?: CodeSource
     ): TEConst {
         return {
             etype: TEType.Const,
@@ -191,23 +193,23 @@ export namespace TEConst {
         };
     }
 
-    export function genStr(value: string, source?: ParseNode): TEConst {
+    export function genStr(value: string, source?: CodeSource): TEConst {
         return TEConst.create(TEConstType.String, value, source);
     }
 
-    export function genInt(value: number, source?: ParseNode): TEConst {
+    export function genInt(value: number, source?: CodeSource): TEConst {
         return TEConst.create(TEConstType.Int, value, source);
     }
 
-    export function genFloat(value: number, source?: ParseNode): TEConst {
+    export function genFloat(value: number, source?: CodeSource): TEConst {
         return TEConst.create(TEConstType.Float, value, source);
     }
 
-    export function genBool(value: boolean, source?: ParseNode): TEConst {
+    export function genBool(value: boolean, source?: CodeSource): TEConst {
         return TEConst.create(TEConstType.Bool, value, source);
     }
 
-    export function genNone(source?: ParseNode): TEConst {
+    export function genNone(source?: CodeSource): TEConst {
         return TEConst.create(TEConstType.None, undefined, source);
     }
 
@@ -352,7 +354,7 @@ export interface TELibCall extends ThExprBase {
     params: [string, ThExpr][];
 }
 export namespace TELibCall {
-    export function create(type: LibCallType, params: [string, ThExpr][], source?: ParseNode): TELibCall {
+    export function create(type: LibCallType, params: [string, ThExpr][], source?: CodeSource): TELibCall {
         return {
             etype: TEType.LibCall,
             type,
@@ -459,7 +461,7 @@ export interface TSPass extends ThStmtBase {
 }
 export namespace TSPass {
     const _pass: TSPass = { stype: TSType.Pass };
-    export function get(source?: ParseNode): TSPass {
+    export function get(source?: CodeSource): TSPass {
         if (!source) {
             return _pass;
         }
@@ -498,7 +500,7 @@ export interface TSSeq extends ThStmtBase {
     right: ThStmt;
 }
 export namespace TSSeq {
-    export function create(left: ThStmt, right: ThStmt, source?: ParseNode): TSSeq {
+    export function create(left: ThStmt, right: ThStmt, source?: CodeSource): TSSeq {
         return {
             stype: TSType.Seq,
             left,
@@ -518,7 +520,7 @@ export interface TSAssign extends ThStmtBase {
     right: ThExpr;
 }
 export namespace TSAssign {
-    export function create(left: ThLeftExpr, right: ThExpr, source?: ParseNode): TSAssign {
+    export function create(left: ThLeftExpr, right: ThExpr, source?: CodeSource): TSAssign {
         return {
             stype: TSType.Assign,
             left,
@@ -539,7 +541,7 @@ export interface TSIf extends ThStmtBase {
     elseStmt: ThStmt;
 }
 export namespace TSIf {
-    export function create(cond: ThExpr, thenStmt: ThStmt, elseStmt: ThStmt, source?: ParseNode): TSIf {
+    export function create(cond: ThExpr, thenStmt: ThStmt, elseStmt: ThStmt, source?: CodeSource): TSIf {
         return {
             stype: TSType.If,
             cond,
@@ -565,7 +567,7 @@ export interface TSForIn extends ThStmtBase {
     loopBody: ThStmt;
 }
 export namespace TSForIn {
-    export function create(ident: string, loopVal: ThExpr, loopBody: ThStmt, source?: ParseNode): TSForIn {
+    export function create(ident: string, loopVal: ThExpr, loopBody: ThStmt, source?: CodeSource): TSForIn {
         return {
             stype: TSType.ForIn,
             ident,
@@ -589,7 +591,7 @@ export interface TSReturn extends ThStmtBase {
     expr: ThExpr;
 }
 export namespace TSReturn {
-    export function create(expr: ThExpr, source?: ParseNode): TSReturn {
+    export function create(expr: ThExpr, source?: CodeSource): TSReturn {
         return {
             stype: TSType.Return,
             expr,
@@ -606,7 +608,7 @@ export interface TSContinue extends ThStmtBase {
     stype: TSType.Continue;
 }
 export namespace TSContinue {
-    export function create(source?: ParseNode): TSContinue {
+    export function create(source?: CodeSource): TSContinue {
         return {
             stype: TSType.Continue,
             source,
@@ -622,7 +624,7 @@ export interface TSBreak extends ThStmtBase {
     stype: TSType.Break;
 }
 export namespace TSBreak {
-    export function create(source?: ParseNode): TSBreak {
+    export function create(source?: CodeSource): TSBreak {
         return {
             stype: TSType.Break,
             source,
@@ -641,7 +643,7 @@ export interface TSLet extends ThStmtBase {
     scope: ThStmt;
 }
 export namespace TSLet {
-    export function create(name: string, scope: ThStmt, expr?: ThExpr, source?: ParseNode): TSLet {
+    export function create(name: string, scope: ThStmt, expr?: ThExpr, source?: CodeSource): TSLet {
         return {
             stype: TSType.Let,
             name,
@@ -669,7 +671,7 @@ export interface TSFunDef extends ThStmtBase {
     hasClosure: boolean;
 }
 export namespace TSFunDef {
-    export function create(name: string, params: string[], body: ThStmt, scope: ThStmt, source?: ParseNode): TSFunDef {
+    export function create(name: string, params: string[], body: ThStmt, scope: ThStmt, source?: CodeSource): TSFunDef {
         return {
             stype: TSType.FunDef,
             name,

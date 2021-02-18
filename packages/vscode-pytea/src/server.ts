@@ -39,13 +39,10 @@ import { ConsoleInterface, ConsoleWithLogLevel, LogLevel, NullConsole } from 'py
 import { isString } from 'pyright-internal/common/core';
 import { createDeferred } from 'pyright-internal/common/deferred';
 import { Diagnostic as AnalyzerDiagnostic, DiagnosticCategory } from 'pyright-internal/common/diagnostic';
-import { DiagnosticRule } from 'pyright-internal/common/diagnosticRules';
 import { createFromRealFileSystem, FileSystem } from 'pyright-internal/common/fileSystem';
 import { convertPathToUri, convertUriToPath, resolvePaths } from 'pyright-internal/common/pathUtils';
-import { Position } from 'pyright-internal/common/textRange';
 import { ServerOptions, ServerSettings } from 'pyright-internal/languageServerBase';
 import { AnalyzerServiceExecutor } from 'pyright-internal/languageService/analyzerServiceExecutor';
-import { convertHoverResults } from 'pyright-internal/languageService/hoverProvider';
 import { Localizer } from 'pyright-internal/localization/localize';
 
 import { PyteaCommandController } from './commandController';
@@ -357,34 +354,6 @@ export class PyteaServer {
             this.updateSettingsForAllWorkspaces();
         });
 
-        this._connection.onHover(async (params, token) => {
-            const filePath = convertUriToPath(params.textDocument.uri);
-
-            const position: Position = {
-                line: params.position.line,
-                character: params.position.character,
-            };
-
-            // TODO: add pytea result.
-            // const workspace = await this.getWorkspaceForFile(filePath);
-
-            this.console.info(`hover ${params.position.line}`);
-            // const hoverResults = workspace.serviceInstance.getHoverForPosition(
-            //     filePath,
-            //     position,
-            //     this._hoverContentFormat,
-            //     token
-            // );
-            // return convertHoverResults(this._hoverContentFormat, hoverResults);
-            return {
-                contents: {
-                    kind: MarkupKind.PlainText,
-                    value: `test: ${filePath} ${position.line}`,
-                },
-                range: { start: position, end: position },
-            };
-        });
-
         this._connection.onInitialized(() => {
             if (this._hasWorkspaceFoldersCapability) {
                 this._connection.workspace.onDidChangeWorkspaceFolders((event) => {
@@ -429,6 +398,8 @@ export class PyteaServer {
                 progress.reporter.done();
                 source.dispose();
             }
+
+            return 'test';
         });
     }
 
@@ -437,7 +408,6 @@ export class PyteaServer {
 
         const capabilities = params.capabilities;
         this._hasWorkspaceFoldersCapability = !!capabilities.workspace?.workspaceFolders;
-        this._hoverContentFormat = this._getCompatibleMarkupKind(capabilities.textDocument?.hover?.contentFormat);
 
         // Create a service instance for each of the workspace folders.
         if (params.workspaceFolders) {
@@ -454,7 +424,6 @@ export class PyteaServer {
         const result: InitializeResult = {
             capabilities: {
                 textDocumentSync: TextDocumentSyncKind.Incremental,
-                hoverProvider: { workDoneProgress: true },
                 executeCommandProvider: {
                     commands: [],
                     workDoneProgress: true,
@@ -553,6 +522,12 @@ export class PyteaServer {
         });
     }
 
+    protected getDocumentationUrlForDiagnosticRule(rule: string): string | undefined {
+        // For now, return the same URL for all rules. We can separate these
+        // in the future.
+        return 'https://github.com/microsoft/pyright/blob/master/docs/configuration.md';
+    }
+
     private _getCompatibleMarkupKind(clientSupportedFormats: MarkupKind[] | undefined) {
         const serverSupportedFormats = [MarkupKind.PlainText, MarkupKind.Markdown];
 
@@ -563,12 +538,6 @@ export class PyteaServer {
         }
 
         return MarkupKind.PlainText;
-    }
-
-    protected getDocumentationUrlForDiagnosticRule(rule: string): string | undefined {
-        // For now, return the same URL for all rules. We can separate these
-        // in the future.
-        return 'https://github.com/microsoft/pyright/blob/master/docs/configuration.md';
     }
 
     private _convertDiagnostics(diags: AnalyzerDiagnostic[]): Diagnostic[] {

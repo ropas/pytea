@@ -11,23 +11,21 @@ import chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
-import { CancellationToken, MarkupKind } from 'vscode-languageserver/node';
 
+import { getFileInfo } from 'pyright-internal/analyzer/analyzerNodeInfo';
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { ConsoleInterface, StandardConsole } from 'pyright-internal/common/console';
-import { Position } from 'pyright-internal/common/textRange';
-import { HoverResults } from 'pyright-internal/languageService/hoverProvider';
+import { convertOffsetToPosition } from 'pyright-internal/common/positionUtils';
+import { ParseNode, ParseNodeType } from 'pyright-internal/parser/parseNodes';
 
-import { fetchAddr } from '../backend/backUtils';
-import { ContextSet } from '../backend/context';
-import { ShHeap } from '../backend/sharpEnvironments';
-import { ShContFlag, ShValue, SVAddr, SVSize, SVString, SVType } from '../backend/sharpValues';
-import { SymExp } from '../backend/symExpressions';
+import { Context, ContextSet } from '../backend/context';
+import { CodeSource, ShContFlag, ShValue, SVAddr, SVString, SVType } from '../backend/sharpValues';
 import { TorchBackend } from '../backend/torchBackend';
 import { IRWriter } from '../frontend/IRReaderWriter';
 import { ThStmt } from '../frontend/torchStatements';
+import { FilePathStore } from './executionPaths';
 import { defaultOptions, PyCmdArgs, PyteaOptions } from './pyteaOptions';
-import * as PyteaUtils from './pyteaUtils';
+import { getStmtsFromDir, reducedToString } from './pyteaUtils';
 
 let _globalService: PyteaService | undefined;
 
@@ -37,8 +35,10 @@ export class PyteaService {
 
     private _console: ConsoleInterface;
 
-    private _libStmt: Map<string, ThStmt>;
-    private _projectStmt?: Map<string, ThStmt>;
+    private _stmtPaths: FilePathStore;
+    private _libStmt: Map<string, [string, ThStmt]>;
+    private _projectStmt?: Map<string, [string, ThStmt]>;
+
     private _mainStmt?: ThStmt;
     private _builtinSet?: ContextSet<SVAddr>;
 
@@ -57,6 +57,7 @@ export class PyteaService {
         this._service = service;
 
         this._libStmt = new Map();
+        this._stmtPaths = new FilePathStore();
     }
 
     get options(): PyteaOptions | undefined {
@@ -161,7 +162,10 @@ export class PyteaService {
             this._options?.pyteaLibPath &&
             !(this._options?.extractIR === true)
         ) {
-            this._libStmt = PyteaUtils.getStmtsFromDir(this._service, this._options.pyteaLibPath);
+            this._libStmt = getStmtsFromDir(this._service, this._options.pyteaLibPath);
+            this._libStmt.forEach(([path]) => {
+                this._stmtPaths.addPath(path);
+            });
             this._pushTimeLog('Translate library scripts');
         }
     }
@@ -186,7 +190,10 @@ export class PyteaService {
 
         // translate project scripts
         const projectPath = path.join(entryPath, '..');
-        this._projectStmt = PyteaUtils.getStmtsFromDir(this._service, projectPath);
+        this._projectStmt = getStmtsFromDir(this._service, projectPath);
+        this._projectStmt.forEach(([path]) => {
+            this._stmtPaths.addPath(path);
+        });
 
         this._pushTimeLog('Translate project scripts');
 
@@ -199,25 +206,27 @@ export class PyteaService {
             return;
         }
 
-        const builtins = this._libStmt.get('builtins');
-        if (!builtins) {
+        const builtinsPair = this._libStmt.get('builtins');
+        if (!builtinsPair) {
             this._console.error('cannot find PyTea implemenation of Python builtins.');
             return;
         }
+        const builtins = builtinsPair[1];
 
         const builtinSet = this._builtinSet ?? TorchBackend.runBuiltin(builtins, 'builtins');
         this._builtinSet = builtinSet;
 
         const entryPath = this._options!.entryPath;
         const entryName = path.basename(entryPath, path.extname(entryPath));
-        const stmt = this._projectStmt?.get(entryName);
+        const stmtPair = this._projectStmt?.get(entryName);
 
-        if (!stmt) {
+        if (!stmtPair) {
             this._mainStmt = undefined;
             this._console.error(`cannot parse entry file '${entryPath}'`);
             return;
         }
 
+        const stmt = stmtPair[1];
         this._pushTimeLog('Running builtin libraries');
 
         this._mainStmt = stmt;
@@ -232,44 +241,6 @@ export class PyteaService {
         this._pushTimeLog('Running entry file');
 
         return result;
-    }
-
-    checkUnittest(passOrFail: boolean): boolean {
-        if (!this.validate()) {
-            this._console.error('failed to validate PyTea service.');
-            return false;
-        }
-
-        const builtins = this._libStmt.get('builtins');
-        if (!builtins) {
-            this._console.error('cannot find PyTea implemenation of Python builtins.');
-            return false;
-        }
-
-        // TODO: consistent pyteaLibPath
-        const builtinSet = TorchBackend.runBuiltin(builtins, 'builtins');
-
-        const entryPath = this._options!.entryPath;
-        const entryName = path.basename(entryPath, path.extname(entryPath));
-
-        const stmt = this._projectStmt?.get(entryName);
-        if (!stmt) {
-            this._console.error(`cannot parse entry file '${entryPath}'`);
-            return false;
-        }
-
-        this._pushTimeLog('Running builtin libraries');
-
-        const startSet = builtinSet.map((ctx) => {
-            // set __name__ to '__main__'
-            const [nameAddr, newHeap] = ctx.heap.allocNew(SVString.create('__main__'));
-            return ctx.setRelPath(entryName).setEnv(ctx.env.setId('__name__', nameAddr)).setHeap(newHeap);
-        });
-        const result = TorchBackend.run(startSet, stmt);
-
-        this._pushTimeLog('Running entry file');
-
-        return this._unittestLog(passOrFail, result);
     }
 
     printLog(result: ContextSet<ShValue | ShContFlag>): void {
@@ -294,7 +265,7 @@ export class PyteaService {
     extractIR(resultPath: string): void {
         let sourceMap = '';
         this._projectStmt?.forEach((stmt, path) => {
-            sourceMap = sourceMap + (sourceMap ? '\n' : '') + IRWriter.makeIRString(stmt, path);
+            sourceMap = sourceMap + (sourceMap ? '\n' : '') + IRWriter.makeIRString(stmt[1], path);
         });
         fs.writeFileSync(resultPath, sourceMap);
     }
@@ -309,28 +280,50 @@ export class PyteaService {
     // boolean value indicates imported from __init__
     getImportModuleStmt(qualPath: string): [ThStmt | undefined, boolean] {
         const initPath = qualPath + '.__init__';
+        let pair: [string, ThStmt] | undefined;
+        let fromInit = false;
+
         if (this._projectStmt?.has(qualPath)) {
-            return [this._projectStmt.get(qualPath), false];
+            pair = this._projectStmt.get(qualPath);
         } else if (this._projectStmt?.has(initPath)) {
-            return [this._projectStmt.get(initPath), true];
+            pair = this._projectStmt.get(initPath);
+            fromInit = true;
         } else if (this._libStmt.has(qualPath)) {
-            return [this._libStmt.get(qualPath), false];
+            pair = this._libStmt.get(qualPath);
         } else if (this._libStmt.has(initPath)) {
-            return [this._libStmt.get(initPath), true];
+            pair = this._libStmt.get(initPath);
+            fromInit = true;
         }
 
-        return [undefined, false];
+        return [pair ? pair[1] : undefined, fromInit];
     }
 
-    getHoverForPosition(
-        filePath: string,
-        position: Position,
-        format: MarkupKind,
-        token: CancellationToken
-    ): HoverResults | undefined {
-        // TODO: hover for tensor shape
-        return;
-        //return this._program.getHoverForPosition(filePath, position, format, token);
+    formatParseNodeRange(node: ParseNode): string {
+        let moduleNode = node;
+        while (moduleNode.nodeType !== ParseNodeType.Module) {
+            moduleNode = moduleNode.parent!;
+        }
+
+        const fileInfo = getFileInfo(moduleNode)!;
+
+        const filePath = fileInfo.filePath;
+        const lines = fileInfo.lines;
+        const start = convertOffsetToPosition(node.start, lines);
+        const end = convertOffsetToPosition(node.start + node.length, lines);
+
+        return `[${start.line + 1}:${start.character} - ${end.line + 1}:${end.character}] (${filePath})`;
+    }
+
+    formatCodeSource(node?: CodeSource): string {
+        if (!node) return 'internal';
+
+        // check ParseNode or not
+        if (!('fileId' in node)) {
+            return this.formatParseNodeRange(node);
+        } else {
+            const { start, end } = node.range;
+            return `[${start.line + 1}:${start.character} - ${end.line + 1}:${end.character}]`;
+        }
     }
 
     private _noneLog(result: ContextSet<ShValue | ShContFlag>): void {
@@ -345,9 +338,7 @@ export class PyteaService {
         failed.forEach((ctx, i) => {
             const source = ctx.retVal.source;
 
-            this._console.info(
-                `failed path #${i + 1}: ${ctx.retVal.reason} - ${PyteaUtils.formatParseNode(source)}\n\n`
-            );
+            this._console.info(`failed path #${i + 1}: ${ctx.retVal.reason} - ${this.formatCodeSource(source)}\n\n`);
         });
 
         this._pushTimeLog('printing results');
@@ -386,14 +377,14 @@ export class PyteaService {
                     `REDUCED HEAP: (size: ${ctx.heap.valMap.count()})\n` +
                     module.attrs
                         .map((v, k) => {
-                            return `  ${k} => ${this._reducedToString(v, ctx.heap)}`;
+                            return `  ${k} => ${reducedToString(v, ctx.heap)}`;
                         })
                         .join('\n');
             }
 
             this._console.info(
                 chalk.green(`success path #${i + 1}`) +
-                    `\n\nLOGS:\n${ctx.logsToString()}\n\nCONSTRAINTS:\n${ctx.ctrSet.toString()}\n\n${heapLog}`
+                    `\n\nLOGS:\n${this._logsToString(ctx)}\n\nCONSTRAINTS:\n${ctx.ctrSet.toString()}\n\n${heapLog}`
             );
         });
 
@@ -405,18 +396,18 @@ export class PyteaService {
             const heapLog = ctx.env.addrMap
                 .filter((v) => v.addr >= 0)
                 .map((addr, key) => {
-                    return `  ${key} => ${this._reducedToString(addr, ctx.heap)}`;
+                    return `  ${key} => ${reducedToString(addr, ctx.heap)}`;
                 })
                 .join('\n');
 
             this._console.info(
                 chalk.yellow(`stopped path #${i + 1}`) +
-                    `: ${ctx.retVal.reason} - ${PyteaUtils.formatParseNode(source)}\n\n` +
-                    `LOGS:\n${ctx.logsToString()}\n\n` +
+                    `: ${ctx.retVal.reason} - ${this.formatCodeSource(source)}\n\n` +
+                    `LOGS:\n${this._logsToString(ctx)}\n\n` +
                     'CONSTRAINTS:\n' +
                     ctx.ctrSet.toString() +
                     '\n\nCALL STACK:\n' +
-                    ctx.callStackToString() +
+                    this._callStackToString(ctx) +
                     `\n\nREDUCED HEAP (${ctx.heap.valMap.count()}):\n${heapLog}`
             );
         });
@@ -427,18 +418,18 @@ export class PyteaService {
             const heapLog = ctx.env.addrMap
                 .filter((v) => v.addr >= 0)
                 .map((addr, key) => {
-                    return `  ${key} => ${this._reducedToString(addr, ctx.heap)}`;
+                    return `  ${key} => ${reducedToString(addr, ctx.heap)}`;
                 })
                 .join('\n');
 
             this._console.info(
                 chalk.red(`failed path #${i + 1}`) +
-                    `: ${ctx.retVal.reason} - ${PyteaUtils.formatParseNode(source)}\n\n` +
-                    `LOGS:\n${ctx.logsToString()}\n\n` +
+                    `: ${ctx.retVal.reason} - ${this.formatCodeSource(source)}\n\n` +
+                    `LOGS:\n${this._logsToString(ctx)}\n\n` +
                     'CONSTRAINTS:\n' +
                     ctx.ctrSet.toString() +
                     '\n\nCALL STACK:\n' +
-                    ctx.callStackToString() +
+                    this._callStackToString(ctx) +
                     `\n\nREDUCED HEAP (${ctx.heap.valMap.count()}):\n${heapLog}`
             );
         });
@@ -468,7 +459,7 @@ export class PyteaService {
         success.forEach((ctx, i) => {
             this._console.info(
                 chalk.green(`success path #${i + 1}`) +
-                    `\nLOGS:\n${ctx.logsToString()}\n` +
+                    `\nLOGS:\n${this._logsToString(ctx)}\n` +
                     `CONSTRAINTS:\n${ctx.ctrSet.toString()}\n` +
                     `ENV:\n${ctx.env.toString()}\n` +
                     `HEAP (size: ${ctx.heap.valMap.count()}):\n${ctx.heap.filter((_, key) => key >= 0).toString()}\n`
@@ -480,12 +471,12 @@ export class PyteaService {
 
             this._console.info(
                 chalk.yellow(`stopped path #${i + 1}`) +
-                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${PyteaUtils.formatParseNode(source)}\n` +
-                    `LOGS:\n${ctx.logsToString()}\n` +
+                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${this.formatCodeSource(source)}\n` +
+                    `LOGS:\n${this._logsToString(ctx)}\n` +
                     'CONSTRAINTS:\n' +
                     ctx.ctrSet.toString() +
                     '\n\nCALL STACK:\n' +
-                    ctx.callStackToString() +
+                    this._callStackToString(ctx) +
                     `\nENV:\n${ctx.env.toString()}\n` +
                     `\nHEAP (${ctx.heap.valMap.count()}):\n${ctx.heap.filter((_, key) => key >= 0).toString()}`
             );
@@ -496,12 +487,12 @@ export class PyteaService {
 
             this._console.info(
                 chalk.red(`failed path #${i + 1}`) +
-                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${PyteaUtils.formatParseNode(source)}\n` +
-                    `LOGS:\n${ctx.logsToString()}\n` +
+                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${this.formatCodeSource(source)}\n` +
+                    `LOGS:\n${this._logsToString(ctx)}\n` +
                     'CONSTRAINTS:\n' +
                     ctx.ctrSet.toString() +
                     '\n\nCALL STACK:\n' +
-                    ctx.callStackToString() +
+                    this._callStackToString(ctx) +
                     `\nENV:\n${ctx.env.toString()}\n` +
                     `\nHEAP (${ctx.heap.valMap.count()}):\n${ctx.heap.filter((_, key) => key >= 0).toString()}`
             );
@@ -538,7 +529,7 @@ export class PyteaService {
                     `REDUCED HEAP: (size: ${ctx.heap.valMap.count()})\n` +
                     module.attrs
                         .map((v, k) => {
-                            return `  ${k} => ${this._reducedToString(v, ctx.heap)}`;
+                            return `  ${k} => ${reducedToString(v, ctx.heap)}`;
                         })
                         .join('\n');
             }
@@ -546,9 +537,9 @@ export class PyteaService {
             ctx.logs.forEach((value, i) => {
                 if (value.type === SVType.Error) {
                     this._console.info(
-                        `success path #${
-                            i + 1
-                        }\n\nLOGS:${ctx.logsToString()}\n\nCONSTRAINTS:\n${ctx.ctrSet.toString()}\n\n${heapLog}`
+                        `success path #${i + 1}\n\nLOGS:${this._logsToString(
+                            ctx
+                        )}\n\nCONSTRAINTS:\n${ctx.ctrSet.toString()}\n\n${heapLog}`
                     );
                     hasSVError = true;
                 }
@@ -562,24 +553,6 @@ export class PyteaService {
         }
     }
 
-    // if value is address, return fetchAddr(value, heap)
-    // if that object has attr 'shape' and that is SVSize, return `Tensor ${value.size}`
-    private _reducedToString(value: ShValue, heap: ShHeap): string {
-        const obj = fetchAddr(value, heap);
-        if (obj) {
-            if (obj.type === SVType.Object) {
-                const shape = obj.getAttr('shape');
-                if (shape instanceof SVSize) {
-                    return `Tensor ${SymExp.toString(shape.shape)}`;
-                }
-            }
-
-            return obj.toString();
-        } else {
-            return value.toString();
-        }
-    }
-
     private _clearTimeLog(): void {
         this._currTime = performance.now();
         this._timeLog = [];
@@ -589,5 +562,34 @@ export class PyteaService {
         const temp = this._currTime;
         this._currTime = performance.now();
         this._timeLog.push([logName, this._currTime - temp]);
+    }
+
+    private _logsToString(ctx: Context<unknown>): string {
+        return ctx.logs
+            .map((log) => {
+                const posStr = this.formatCodeSource(log.source);
+
+                if (log.type === SVType.Error) {
+                    return `${log.reason} - ${posStr}`;
+                } else {
+                    return `${log.toString()} - ${posStr}`;
+                }
+            })
+            .join('\n');
+    }
+
+    private _callStackToString(ctx: Context<unknown>): string {
+        return ctx.callStack
+            .filter(([f, _]) => {
+                // filter callKV libcall
+                if (typeof f === 'string') {
+                    return f !== 'callKV';
+                } else {
+                    return f.name !== 'callKV';
+                }
+            })
+            .map(([func, node]) => `${typeof func === 'string' ? func : func.name} - ${this.formatCodeSource(node)}`)
+            .reverse()
+            .join('\n');
     }
 }

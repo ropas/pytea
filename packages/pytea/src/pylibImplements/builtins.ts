@@ -1,9 +1,8 @@
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
-
 import { fetchAddr, sanitizeAddr, trackMro } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
 import { isInstanceOf, strLen } from '../backend/expUtils';
 import {
+    CodeSource,
     PrimitiveType,
     ShValue,
     SVAddr,
@@ -24,7 +23,7 @@ import { LCImpl } from '.';
 import { LCBase } from './libcall';
 
 export namespace BuiltinsLCImpl {
-    export function superGetAttr(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function superGetAttr(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -63,7 +62,7 @@ export namespace BuiltinsLCImpl {
         });
     }
 
-    export function isinstance(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function isinstance(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -85,7 +84,7 @@ export namespace BuiltinsLCImpl {
         return ctx.toSetWith(SVBool.create(result, source));
     }
 
-    export function cast(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function cast(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -210,7 +209,7 @@ export namespace BuiltinsLCImpl {
         return ctx.setRetVal(SVNotImpl.create('not implemented', source)).toSet();
     }
 
-    export function list_append(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function list_append(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -281,7 +280,7 @@ export namespace BuiltinsLCImpl {
         });
     }
 
-    export function dict_items(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function dict_items(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx
@@ -316,7 +315,7 @@ export namespace BuiltinsLCImpl {
     }
 
     // TODO: fix this to support non-string typed key
-    export function dict_setitem(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function dict_setitem(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -348,7 +347,7 @@ export namespace BuiltinsLCImpl {
     }
 
     // TODO: fix this to support non-string typed key
-    export function dict_getitem(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function dict_getitem(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -382,7 +381,7 @@ export namespace BuiltinsLCImpl {
     }
 
     // TODO: fix this to support non-string typed key
-    export function dict_pop(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function dict_pop(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -416,7 +415,7 @@ export namespace BuiltinsLCImpl {
         return ctx.toSetWith(retVal);
     }
 
-    export function len(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function len(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx
@@ -456,7 +455,7 @@ export namespace BuiltinsLCImpl {
     }
 
     // inclusive randint (a <= retVal <= b)
-    export function randInt(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function randInt(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -522,7 +521,7 @@ export namespace BuiltinsLCImpl {
     }
 
     // exclusive randfloat (a <= retVal < b)
-    export function randFloat(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function randFloat(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -588,7 +587,7 @@ export namespace BuiltinsLCImpl {
     }
 
     // get `(objectAddr, size)`, set object to SVSize with shape `size`
-    export function setSize(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function setSize(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -622,11 +621,11 @@ export namespace BuiltinsLCImpl {
         });
     }
 
-    export function exit(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function exit(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         return ctx.failWithMsg('explicit process exit function call', source).toSet();
     }
 
-    export function warn(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function warn(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const warnObj = fetchAddr(ctx.retVal.params[0], ctx.heap);
         const warnMsg =
             warnObj?.type === SVType.String && typeof warnObj.value === 'string'
@@ -636,7 +635,7 @@ export namespace BuiltinsLCImpl {
     }
 
     // explicit setIndice by value
-    export function setIndice(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function setIndice(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -664,7 +663,7 @@ export namespace BuiltinsLCImpl {
     }
 
     // explicit setAttr by value
-    export function setAttr(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function setAttr(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx

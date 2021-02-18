@@ -1,11 +1,20 @@
 import { List, Map as IMMap } from 'immutable';
 
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
-
 import * as BackUtils from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
 import { ShEnv } from '../backend/sharpEnvironments';
-import { ShValue, SVAddr, SVFunc, SVInt, SVNone, SVObject, SVString, SVType, SVUndef } from '../backend/sharpValues';
+import {
+    CodeSource,
+    ShValue,
+    SVAddr,
+    SVFunc,
+    SVInt,
+    SVNone,
+    SVObject,
+    SVString,
+    SVType,
+    SVUndef,
+} from '../backend/sharpValues';
 import { SymExp } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
 import { LibCallType, TEConst, TEObject, TSLet, TSReturn } from '../frontend/torchStatements';
@@ -25,13 +34,13 @@ export namespace LCBase {
     export interface ExplicitParams {
         params: ShValue[];
     }
-    export function explicit(ctx: Context<ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function explicit(ctx: Context<ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         // placeholder. explicit call is evaluated in evalLibCall.
         return ctx.warnWithMsg('unimplemented libcall', source).toSet();
     }
 
     // return new class object of `object`
-    export function objectClass(ctx: Context<ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function objectClass(ctx: Context<ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const { heap } = ctx;
 
         const [tempClass, objectAddr, newHeap] = SVObject.create(heap, source);
@@ -51,7 +60,7 @@ export namespace LCBase {
         assignTo?: string;
     }
     // import is JS reserved keyword.
-    export function thImport(ctx: Context<ImportParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function thImport(ctx: Context<ImportParams>, source?: CodeSource): ContextSet<ShValue> {
         const service = PyteaService.getGlobalService();
         if (!service) {
             return ctx.failWithMsg('PyTea service uninitialized.', source).toSet();
@@ -173,7 +182,7 @@ export namespace LCBase {
         });
     }
 
-    export function genList(ctx: Context<ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function genList(ctx: Context<ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const { heap } = ctx;
         const params = ctx.retVal.params;
 
@@ -199,7 +208,7 @@ export namespace LCBase {
         return ctx.setHeap(newHeap.setVal(objAddr, obj)).toSetWith(objAddr);
     }
 
-    export function genDict(ctx: Context<ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function genDict(ctx: Context<ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         // TODO: genDict
         const { heap } = ctx;
         const params = ctx.retVal.params;
@@ -249,7 +258,7 @@ export namespace LCBase {
         $kwargsName?: string;
         $keyOnlyNum?: number;
     }
-    export function setDefault(ctx: Context<SetDefaultParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function setDefault(ctx: Context<SetDefaultParams>, source?: CodeSource): ContextSet<ShValue> {
         const { $func, defaults, $varargsName, $kwargsName, $keyOnlyNum } = ctx.retVal;
 
         let newFunc = $func;
@@ -265,13 +274,13 @@ export namespace LCBase {
         args: ShValue[];
         $kwargs: { [paramName: string]: ShValue };
     }
-    export function callKV(ctx: Context<CallKVParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function callKV(ctx: Context<CallKVParams>, source?: CodeSource): ContextSet<ShValue> {
         const { $func, args, $kwargs } = ctx.retVal;
 
         return TorchBackend.functionCall(ctx, $func, args, source, $kwargs);
     }
 
-    export function DEBUG(ctx: Context<ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function DEBUG(ctx: Context<ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const heap = ctx.heap;
         const params = ctx.retVal.params;
 
@@ -294,7 +303,7 @@ export namespace LCBase {
         $module: SVAddr; // points SVObject
         globalVar: string;
     }
-    export function exportGlobal(ctx: Context<ExportGlobalParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function exportGlobal(ctx: Context<ExportGlobalParams>, source?: CodeSource): ContextSet<ShValue> {
         const addr = ctx.retVal.$module;
         const obj = ctx.heap.getVal(addr) as SVObject;
         const global = ctx.env.getId(ctx.retVal.globalVar) as SVAddr;
@@ -308,10 +317,10 @@ export namespace LCBase {
         bind: boolean;
         selfAddr?: SVAddr;
     }
-    export function getAttr(ctx: Context<GetAttrParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function getAttr(ctx: Context<GetAttrParams>, source?: CodeSource): ContextSet<ShValue> {
         const { bind, selfAddr, name, self, baseClass } = ctx.retVal;
 
-        const selfAttr = self.attrs.get(name);
+        const selfAttr = self.type === SVType.Object ? self.attrs.get(name) : undefined;
         if (selfAttr) {
             return ctx.setRetVal(selfAttr).toSet();
         }
@@ -344,7 +353,7 @@ export namespace LCBase {
     export interface RaiseParams {
         value: ShValue;
     }
-    export function raise(ctx: Context<RaiseParams>, source?: ParseNode): ContextSet<ShValue> {
+    export function raise(ctx: Context<RaiseParams>, source?: CodeSource): ContextSet<ShValue> {
         const raisedVal = BackUtils.fetchAddr(ctx.retVal.value, ctx.heap);
 
         if (raisedVal?.type === SVType.Object) {
