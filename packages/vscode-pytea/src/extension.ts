@@ -147,6 +147,16 @@ export function activate(context: ExtensionContext) {
     // client can be deactivated on extension deactivation.
     context.subscriptions.push(disposable);
 
+    const restartCommand = PyteaCommands.restartServer;
+    context.subscriptions.push(
+        commands.registerCommand(restartCommand, (...args: any[]) => {
+            languageClient.sendRequest<string>('workspace/executeCommand', {
+                command: restartCommand,
+                arguments: args,
+            });
+        })
+    );
+
     const analyzeFileCommand = PyteaCommands.analyzeFile;
     context.subscriptions.push(
         commands.registerTextEditorCommand(
@@ -157,22 +167,13 @@ export function activate(context: ExtensionContext) {
                     arguments: [editor.document.uri.toString(), ...args],
                 };
                 console.log(`execute analyze ${editor.document.uri.toString()}`);
-                languageClient.sendRequest<TextEdit[] | undefined>('workspace/executeCommand', cmd);
-            }
-        )
-    );
-
-    const restartCommand = PyteaCommands.restartServer;
-    context.subscriptions.push(
-        commands.registerCommand(restartCommand, (...args: any[]) => {
-            languageClient
-                .sendRequest<string>('workspace/executeCommand', { command: restartCommand, arguments: args })
-                .then((response) => {
+                languageClient.sendRequest<string>('workspace/executeCommand', cmd).then((response) => {
                     window.showInformationMessage(response);
                     console.log(response);
-                    new TestView(context, response);
+                    // new TestView(context, response);
                 });
-        })
+            }
+        )
     );
 }
 
@@ -259,37 +260,4 @@ function installPythonPathChangedListener(
     });
 
     pythonPathChangedListenerMap.set(uriString, uriString);
-}
-
-export class TestView {
-    constructor(context: ExtensionContext, msg: string) {
-        const view = window.createTreeView('variables', {
-            treeDataProvider: aNodeWithIdTreeDataProvider(msg),
-            showCollapseAll: true,
-        });
-        context.subscriptions.push(view);
-    }
-}
-
-function aNodeWithIdTreeDataProvider(msg: string): TreeDataProvider<{ key: string }> {
-    return {
-        getChildren: (element?: { key: string }): { key: string }[] => {
-            if (!element) return [{ key: msg }];
-            else if (element.key.length > 20) return [];
-            else return [{ key: msg.repeat(element.key.length + 1) }];
-        },
-        getTreeItem: (element: { key: string }): TreeItem => {
-            const treeItem = getTreeItem(element.key);
-            treeItem.id = element.key;
-            return treeItem;
-        },
-    };
-}
-
-function getTreeItem(key: string): TreeItem {
-    return {
-        label: <any>{ label: key },
-        tooltip: `Tooltip for ${key}`,
-        collapsibleState: TreeItemCollapsibleState.Collapsed,
-    };
 }

@@ -6,17 +6,19 @@
  * Format results (Execution Paths) to communicate between language server and client
  */
 
-import { Constraint } from '../backend/constraintType';
 import { Context } from '../backend/context';
-import { ShContFlag, ShValue, SVError, SVType } from '../backend/sharpValues';
+import { CodeRange, ShContFlag, ShValue, SVError, SVErrorProps, SVType } from '../backend/sharpValues';
 
+// maps file path to unique id (number) and vice versa
 export class FilePathStore {
     private _pathList: string[];
     private _idMap: Map<string, number>;
 
-    constructor() {
-        this._pathList = [];
+    constructor(pathList?: string[]) {
+        this._pathList = pathList ?? [];
         this._idMap = new Map();
+
+        this.addPathList(this._pathList);
     }
 
     addPath(path: string): number {
@@ -60,14 +62,17 @@ export enum ExecutionPathStatus {
 // this will be used in communication between language server and client
 // for more information of this path, the client should make another request to server
 export interface ExecutionPathProps {
+    pathId: number;
+    projectRoot: string;
+
     status: ExecutionPathStatus;
 
-    // Map each variables from env to correlated values in heap.
+    // Map each variables from env to correlated (stringified) values in heap.
     // To remove deep value, all SVObjects will be replaced to its address (SVAddr)
-    variables: Map<string, ShValue>;
+    variables: { [varName: string]: string };
 
-    // ctrPool of ConstraintSet
-    ctrPool: Constraint[];
+    // stringified ctrPool of ConstraintSet with source
+    ctrPool: [string, CodeRange][];
 
     // indices in ctrPool
     hardCtr: number[];
@@ -75,7 +80,7 @@ export interface ExecutionPathProps {
     pathCtr: number[];
 
     // Logs, Warnings, or Errors from context
-    logs: SVError[];
+    logs: SVErrorProps[];
 
     // env and heap size of original context
     envSize: number;
@@ -87,12 +92,24 @@ export interface ExecutionPathProps {
 export class ExecutionPath {
     readonly props: ExecutionPathProps;
 
-    private _ctx: Context<ShValue | ShContFlag>;
-    private _status: ExecutionPathStatus;
+    private _pathId: number;
+    private _projectRoot: string;
     private _pathStore: FilePathStore;
 
-    constructor(result: Context<ShValue | ShContFlag>, status: ExecutionPathStatus, pathStore: FilePathStore) {
+    private _ctx: Context<ShValue | ShContFlag>;
+    private _status: ExecutionPathStatus;
+
+    constructor(
+        result: Context<ShValue | ShContFlag>,
+        pathId: number,
+        projectRoot: string,
+        status: ExecutionPathStatus,
+        pathStore: FilePathStore
+    ) {
         this._ctx = result;
+
+        this._pathId = pathId;
+        this._projectRoot = projectRoot;
         this._status = status;
         this._pathStore = pathStore;
 
@@ -101,8 +118,8 @@ export class ExecutionPath {
 
     private _initialize(): ExecutionPathProps {
         const status = this._status;
-        const variables = new Map<string, ShValue>();
-        const ctrPool: Constraint[] = [];
+        const variables = {};
+        const ctrPool: [string, CodeRange][] = [];
         const logs: SVError[] = [];
 
         const ctx = this._ctx;
@@ -128,6 +145,8 @@ export class ExecutionPath {
         });
 
         return {
+            pathId: this._pathId,
+            projectRoot: this._projectRoot,
             status,
             variables,
             ctrPool,

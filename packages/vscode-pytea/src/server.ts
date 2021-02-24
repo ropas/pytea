@@ -182,6 +182,7 @@ export class PyteaServer {
             PyteaService.setGlobalService(pyteaService);
             const result = pyteaService.analyze();
             const success = result?.getList();
+            const stopped = result?.getStopped();
             const failed = result?.getFailed();
             this.console.info(
                 `Analyzing completed. Found ${success?.count() ?? 0} success paths / ${
@@ -190,7 +191,13 @@ export class PyteaServer {
             );
 
             if (result) {
-                pyteaService.printLog(result);
+                workspace.result = result;
+
+                setTimeout(() => {
+                    //  async print log
+                    pyteaService.printLog(result);
+                }, 10);
+
                 if (failed && failed.count() > 0) {
                     const failPath = failed.get(0)!;
                     const error = failPath.retVal;
@@ -205,6 +212,8 @@ export class PyteaServer {
                         });
                     }
                 }
+
+                return `succ: ${success?.count()}, stop: ${stopped?.count()}, fail: ${failed?.count()}`;
             } else {
                 this.console.error('Analyzer returned undefined');
             }
@@ -395,10 +404,6 @@ export class PyteaServer {
                 this._pendingCommandCancellationSource = undefined;
             }
 
-            const executeCommand = async (token: CancellationToken) => {
-                await this.executeCommand(params, token);
-            };
-
             // Create a progress dialog for long-running commands.
             const progress = await this._getProgressReporter(
                 params.workDoneToken,
@@ -409,13 +414,11 @@ export class PyteaServer {
             this._pendingCommandCancellationSource = source;
 
             try {
-                await executeCommand(source.token);
+                return this.executeCommand(params, token);
             } finally {
                 progress.reporter.done();
                 source.dispose();
             }
-
-            return 'test';
         });
     }
 
@@ -489,6 +492,8 @@ export class PyteaServer {
             disableLanguageServices: true,
             disableOrganizeImports: true,
             isInitialized: createDeferred<boolean>(),
+            selectedPath: 0,
+            result: undefined,
         };
     }
 

@@ -49,6 +49,21 @@
                 "command": "pytea.restartserver",
                 "title": "Restart Server",
                 "category": "Pytea"
+            },
+            {
+                "command": "pytea.selectPath",
+                "title": "Select Specific Execution Path",
+                "category": "Pytea"
+            },
+            {
+                "command": "pytea.gotoCallStack",
+                "title": "Go To The Function Definition of The Stack",
+                "category": "Pytea"
+            },
+            {
+                "command": "pytea.gotoConstraint",
+                "title": "Go To The Generated Point Of The Constraint",
+                "category": "Pytea"
             }
         ],
         "menus": {
@@ -60,58 +75,6 @@
                     "when": "editorLangId == python"
                 }
             ]
-        },
-        "configuration": {
-            "type": "object",
-            "title": "Pytea",
-            "properties": {
-                "python.pytea.configPath": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Path to pyteaconfig.json."
-                },
-                "python.pytea.pyteaLibraryPath": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Path to Pytea implementation of Python builtins and libraries."
-                },
-                "python.pytea.pythonCommandLineArguments": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Python command line arguments. Injected to Python argparse functions."
-                },
-                "python.pytea.pythonSubcommand": {
-                    "type": "string",
-                    "default": "",
-                    "description": "'dest' value of argparse.add_subparsers."
-                },
-                "python.pytea.immediateConstraintCheck": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "Check and discard trivial integer constraints"
-                },
-                "python.pytea.ignoreAssert": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Ignore assert statements of Python."
-                },
-                "python.pytea.variableRange": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Explicit range of random variables. null means unbounded."
-                },
-                "python.pytea.logLevel": {
-                    "type": "string",
-                    "default": "result-only",
-                    "description": "Verbosity of Pytea analysis log.",
-                    "enum": [
-                        "none",
-                        "result-only",
-                        "reduced",
-                        "full"
-                    ]
-                }
-            }
         },
         "jsonValidation": [
             {
@@ -168,6 +131,58 @@
                     "name": "Analyzer Log"
                 }
             ]
+        }
+    },
+    "configuration": {
+        "type": "object",
+        "title": "Pytea",
+        "properties": {
+            "python.pytea.configPath": {
+                "type": "string",
+                "default": "",
+                "description": "Path to pyteaconfig.json."
+            },
+            "python.pytea.pyteaLibraryPath": {
+                "type": "string",
+                "default": "",
+                "description": "Path to Pytea implementation of Python builtins and libraries."
+            },
+            "python.pytea.pythonCommandLineArguments": {
+                "type": "object",
+                "default": {},
+                "description": "Python command line arguments. Injected to Python argparse functions."
+            },
+            "python.pytea.pythonSubcommand": {
+                "type": "string",
+                "default": "",
+                "description": "'dest' value of argparse.add_subparsers."
+            },
+            "python.pytea.immediateConstraintCheck": {
+                "type": "boolean",
+                "default": true,
+                "description": "Check and discard trivial integer constraints"
+            },
+            "python.pytea.ignoreAssert": {
+                "type": "boolean",
+                "default": false,
+                "description": "Ignore assert statements of Python."
+            },
+            "python.pytea.variableRange": {
+                "type": "object",
+                "default": {},
+                "description": "Explicit range of random variables. null means unbounded."
+            },
+            "python.pytea.logLevel": {
+                "type": "string",
+                "default": "result-only",
+                "description": "Verbosity of Pytea analysis log.",
+                "enum": [
+                    "none",
+                    "result-only",
+                    "reduced",
+                    "full"
+                ]
+            }
         }
     },
     "scripts": {

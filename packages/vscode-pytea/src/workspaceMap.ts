@@ -4,6 +4,7 @@
  * Workspace management related functionality.
  */
 
+import { ContextSet } from 'pytea/backend/context';
 import { defaultOptions, PyteaOptions } from 'pytea/service/pyteaOptions';
 import { PyteaService } from 'pytea/service/pyteaService';
 
@@ -15,6 +16,8 @@ import { PyteaServer } from './server';
 export interface PyteaWorkspaceInstance extends WorkspaceServiceInstance {
     pyteaService: PyteaService;
     pyteaOptions: PyteaOptions;
+    selectedPath: number;
+    result?: ContextSet<unknown>;
 }
 
 export class PyteaWorkspaceMap extends Map<string, PyteaWorkspaceInstance> {
@@ -81,6 +84,8 @@ export class PyteaWorkspaceMap extends Map<string, PyteaWorkspaceInstance> {
                     disableLanguageServices: false,
                     disableOrganizeImports: false,
                     isInitialized: createDeferred<boolean>(),
+                    selectedPath: 0,
+                    result: undefined,
                 };
                 this.set(this._defaultWorkspacePath, defaultWorkspace);
                 this._ls.updateSettingsForWorkspace(defaultWorkspace).ignoreErrors();

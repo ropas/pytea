@@ -670,7 +670,7 @@ export class SVUndef extends Record(svUndefDefaults) implements SVUndefProps {
     }
 }
 
-interface SVErrorProps extends ShValueBase {
+export interface SVErrorProps extends ShValueBase {
     readonly type: SVType.Error;
     readonly reason: string;
     readonly level: SVErrorLevel;

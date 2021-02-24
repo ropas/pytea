@@ -30,7 +30,7 @@ export class AnalyzeFileCommand implements ServerCommand {
         const args = cmdParams.arguments;
         if (args && args[0]) {
             const entryPath = convertUriToPath(args[0]);
-            this._ls.analyze(entryPath);
+            return this._ls.analyze(entryPath);
         }
     }
 }

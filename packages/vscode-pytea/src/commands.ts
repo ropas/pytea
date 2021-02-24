@@ -10,4 +10,5 @@
 export const enum PyteaCommands {
     restartServer = 'pytea.restartserver',
     analyzeFile = 'pytea.analyzefile',
+    selectPath = 'pytea.selectPath',
 }
