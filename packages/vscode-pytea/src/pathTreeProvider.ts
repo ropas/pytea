@@ -6,7 +6,7 @@
  * Manage datas of sidebar
  */
 
-import { ExecutionPathProps } from 'pytea/service/executionPaths';
+import { ExecutionPathProps, ExecutionPathStatus } from 'pytea/service/executionPaths';
 import {
     commands,
     Event,
@@ -23,7 +23,16 @@ interface PyteaTreeProvider {
     refresh(props?: ExecutionPathProps): void;
 }
 
-export class PathSelectionProvider implements TreeDataProvider<number> {
+// TODO: use ES6 Symbol?
+const idCache: { [id: number]: { id: number } } = {};
+function getId(id: number): { id: number } {
+    if (id in idCache) return idCache[id];
+    const newId = { id };
+    idCache[id] = newId;
+    return newId;
+}
+
+export class PathSelectionProvider implements TreeDataProvider<{ id: number }> {
     private _onDidChangeTreeData: EventEmitter<any> = new EventEmitter<any>();
     readonly onDidChangeTreeData: Event<any> = this._onDidChangeTreeData.event;
 
@@ -31,26 +40,43 @@ export class PathSelectionProvider implements TreeDataProvider<number> {
 
     public refresh(pathProps: ExecutionPathProps[]): void {
         this.pathProps = pathProps;
+        console.log(`refresh with ${pathProps.length}`);
         this._onDidChangeTreeData.fire(undefined);
     }
 
-    public getTreeItem(pathId: number): TreeItem {
+    public getTreeItem(pathId: { id: number }): TreeItem {
         return {
+            label: this._label(pathId.id),
             command: {
                 command: 'pytea.selectPath',
-                arguments: [pathId],
+                arguments: [pathId.id],
                 title: 'Select Specific Execution Path',
             },
         };
     }
 
-    public getChildren(element?: number): ProviderResult<number[]> {
-        if (element !== undefined) return;
-        return this.pathProps.map((_, i) => i);
+    public getChildren(element?: { id: number }): ProviderResult<{ id: number }[]> {
+        if (element !== undefined) return [];
+        return this.pathProps.map((_, i) => {
+            return getId(i);
+        });
+    }
+
+    private _label(pathId: number): string {
+        if (pathId < 0 || this.pathProps.length <= pathId) return `Unknown Id ${pathId}`;
+        const path = this.pathProps[pathId];
+        switch (path.status) {
+            case ExecutionPathStatus.Success:
+                return `🟢 Success path ${pathId + 1}`;
+            case ExecutionPathStatus.Stopped:
+                return `🟡 Stopped path ${pathId + 1}`;
+            case ExecutionPathStatus.Failed:
+                return `🔴 Failed path ${pathId + 1}`;
+        }
     }
 }
 
-export class VariableDataProvider implements TreeDataProvider<number>, PyteaTreeProvider {
+export class VariableDataProvider implements TreeDataProvider<string>, PyteaTreeProvider {
     private _onDidChangeTreeData: EventEmitter<any> = new EventEmitter<any>();
     readonly onDidChangeTreeData: Event<any> = this._onDidChangeTreeData.event;
 
@@ -61,20 +87,16 @@ export class VariableDataProvider implements TreeDataProvider<number>, PyteaTree
         this._onDidChangeTreeData.fire(undefined);
     }
 
-    public getTreeItem(element: number): TreeItem {
+    public getTreeItem(element: string): TreeItem {
         return {
             // resourceUri: "",
-            command: {
-                command: 'pytea.selectPath',
-                arguments: [element],
-                title: 'Select Specific Execution Path',
-            },
+            label: `var ${element}`,
         };
     }
 
-    public getChildren(element?: number): ProviderResult<number[]> {
+    public getChildren(element?: string): ProviderResult<string[]> {
         // return element ? this.model.getChildren(element) : this.model.roots;
-        return [];
+        return undefined;
     }
 }
 
@@ -102,7 +124,7 @@ export class CallStackProvider implements TreeDataProvider<number>, PyteaTreePro
 
     public getChildren(element?: number): ProviderResult<number[]> {
         // return element ? this.model.getChildren(element) : this.model.roots;
-        return [];
+        return undefined;
     }
 }
 
@@ -130,11 +152,11 @@ export class ConstraintDataProvider implements TreeDataProvider<number>, PyteaTr
 
     public getChildren(element?: number): ProviderResult<number[]> {
         // return element ? this.model.getChildren(element) : this.model.roots;
-        return [];
+        return undefined;
     }
 }
 
-export class FtpExplorer {
+export class PathManager {
     private _pathTree: TreeView<number>;
     private _varTree: TreeView<number>;
     private _stackTree: TreeView<number>;
@@ -159,13 +181,21 @@ export class FtpExplorer {
         this._pathTree = window.createTreeView('executionPaths', { treeDataProvider: this._mainProvider });
         this._varTree = window.createTreeView('variables', { treeDataProvider: providers[0] });
         this._stackTree = window.createTreeView('callStack', { treeDataProvider: providers[1] });
-        this._hardCtrTree = window.createTreeView('softConstraints', { treeDataProvider: providers[2] });
+        this._softCtrTree = window.createTreeView('softConstraints', { treeDataProvider: providers[2] });
         this._pathCtrTree = window.createTreeView('pathConstraints', { treeDataProvider: providers[3] });
-        this._softCtrTree = window.createTreeView('hardConstraints', { treeDataProvider: providers[4] });
+        this._hardCtrTree = window.createTreeView('hardConstraints', { treeDataProvider: providers[4] });
         this._providers = providers;
+
+        context.subscriptions.push(this._pathTree);
+        context.subscriptions.push(this._varTree);
+        context.subscriptions.push(this._stackTree);
+        context.subscriptions.push(this._softCtrTree);
+        context.subscriptions.push(this._pathCtrTree);
+        context.subscriptions.push(this._hardCtrTree);
 
         commands.registerCommand('pytea.selectPath', (pathId) => {
             if (pathId < 0 || pathId >= this._pathProps.length) {
+                console.log(`selected ${pathId}`);
                 return;
             }
         });
@@ -182,28 +212,3 @@ export class FtpExplorer {
         this._providers.forEach((p) => p.refresh(mainPath));
     }
 }
-
-// export class PathTreeProvider implements TreeDataProvider<number> {}
-
-// function aNodeWithIdTreeDataProvider(msg: string): TreeDataProvider<{ key: string }> {
-//     return {
-//         getChildren: (element?: { key: string }): { key: string }[] => {
-//             if (!element) return [{ key: msg }];
-//             else if (element.key.length > 20) return [];
-//             else return [{ key: msg.repeat(element.key.length + 1) }];
-//         },
-//         getTreeItem: (element: { key: string }): TreeItem => {
-//             const treeItem = getTreeItem(element.key);
-//             treeItem.id = element.key;
-//             return treeItem;
-//         },
-//     };
-// }
-
-// function getTreeItem(key: string): TreeItem {
-//     return {
-//         label: <any>{ label: key },
-//         tooltip: `Tooltip for ${key}`,
-//         collapsibleState: TreeItemCollapsibleState.Collapsed,
-//     };
-// }

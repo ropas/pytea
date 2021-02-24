@@ -39,6 +39,7 @@ import { isThenable } from 'pyright-internal/common/core';
 
 import { FileBasedCancellationStrategy } from './cancellationUtils';
 import { PyteaCommands } from './commands';
+import { PathManager } from './pathTreeProvider';
 
 let cancellationStrategy: FileBasedCancellationStrategy | undefined;
 
@@ -158,6 +159,7 @@ export function activate(context: ExtensionContext) {
         })
     );
 
+    const pathManager = new PathManager(context);
     const analyzeFileCommand = PyteaCommands.analyzeFile;
     context.subscriptions.push(
         commands.registerTextEditorCommand(
@@ -171,11 +173,8 @@ export function activate(context: ExtensionContext) {
                 languageClient
                     .sendRequest<ExecutionPathProps[]>('workspace/executeCommand', cmd)
                     .then(async (response) => {
+                        pathManager.applyPathProps(response);
                         // window.showInformationMessage(response);
-                        // console.log(response);
-                        // new TestView(context, response);
-                        console.log(`${response?.length ?? -1}`);
-                        window.showInformationMessage(`${response?.length ?? -1}`);
                     });
             }
         )
