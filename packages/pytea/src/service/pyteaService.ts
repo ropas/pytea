@@ -36,7 +36,7 @@ export class PyteaService {
 
     private _console: ConsoleInterface;
 
-    private _stmtPaths: FilePathStore;
+    private _pathStore: FilePathStore;
     private _libStmt: Map<string, [string, ThStmt]>;
     private _projectStmt?: Map<string, [string, ThStmt]>;
 
@@ -58,7 +58,7 @@ export class PyteaService {
         this._service = service;
 
         this._libStmt = new Map();
-        this._stmtPaths = new FilePathStore();
+        this._pathStore = new FilePathStore();
     }
 
     get options(): PyteaOptions | undefined {
@@ -114,6 +114,10 @@ export class PyteaService {
         this._options = options;
     }
 
+    getPathStore(): FilePathStore {
+        return this._pathStore;
+    }
+
     // check library or entry file is fully loaded.
     validate(): boolean {
         let valid = true;
@@ -165,7 +169,7 @@ export class PyteaService {
         ) {
             this._libStmt = getStmtsFromDir(this._service, this._options.pyteaLibPath);
             this._libStmt.forEach(([path]) => {
-                this._stmtPaths.addPath(path);
+                this._pathStore.addPath(path);
             });
             this._pushTimeLog('Translate library scripts');
         }
@@ -193,7 +197,7 @@ export class PyteaService {
         const projectPath = path.join(entryPath, '..');
         this._projectStmt = getStmtsFromDir(this._service, projectPath);
         this._projectStmt.forEach(([path]) => {
-            this._stmtPaths.addPath(path);
+            this._pathStore.addPath(path);
         });
 
         this._pushTimeLog('Translate project scripts');
@@ -345,7 +349,7 @@ export class PyteaService {
             const end = convertOffsetToPosition(node.start + node.length, lines);
             return [filePath, { start, end }];
         } else {
-            const filePath = this._stmtPaths.getPath(node.fileId);
+            const filePath = this._pathStore.getPath(node.fileId);
             if (!filePath) return;
             return [filePath, node.range];
         }

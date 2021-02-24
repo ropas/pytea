@@ -7,6 +7,7 @@
  * Client for Pytea Python language server.
  */
 import * as path from 'path';
+import { ExecutionPath, ExecutionPathProps } from 'pytea/service/executionPaths';
 import {
     commands,
     ExtensionContext,
@@ -167,11 +168,15 @@ export function activate(context: ExtensionContext) {
                     arguments: [editor.document.uri.toString(), ...args],
                 };
                 console.log(`execute analyze ${editor.document.uri.toString()}`);
-                languageClient.sendRequest<string>('workspace/executeCommand', cmd).then((response) => {
-                    window.showInformationMessage(response);
-                    console.log(response);
-                    // new TestView(context, response);
-                });
+                languageClient
+                    .sendRequest<ExecutionPathProps[]>('workspace/executeCommand', cmd)
+                    .then(async (response) => {
+                        // window.showInformationMessage(response);
+                        // console.log(response);
+                        // new TestView(context, response);
+                        console.log(`${response?.length ?? -1}`);
+                        window.showInformationMessage(`${response?.length ?? -1}`);
+                    });
             }
         )
     );

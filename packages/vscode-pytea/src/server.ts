@@ -6,6 +6,7 @@
  * Implements pytea language server.
  */
 
+import { ExecutionPath, ExecutionPathStatus } from 'pytea/service/executionPaths';
 import { defaultOptions, PyteaLogLevel, PyteaOptions } from 'pytea/service/pyteaOptions';
 import { PyteaService } from 'pytea/service/pyteaService';
 import { buildPyteaOption } from 'pytea/service/pyteaUtils';
@@ -191,29 +192,65 @@ export class PyteaServer {
             );
 
             if (result) {
-                workspace.result = result;
+                const executionPaths: ExecutionPath[] = [];
+                let id = 0;
+                success?.forEach((p) => {
+                    const path = new ExecutionPath(
+                        p,
+                        id,
+                        this.rootPath,
+                        ExecutionPathStatus.Success,
+                        pyteaService.getPathStore()
+                    );
+                    executionPaths.push(path);
+                    id++;
+                });
+
+                stopped?.forEach((p) => {
+                    const path = new ExecutionPath(
+                        p,
+                        id,
+                        this.rootPath,
+                        ExecutionPathStatus.Stopped,
+                        pyteaService.getPathStore()
+                    );
+                    executionPaths.push(path);
+                    id++;
+                });
+
+                failed?.forEach((p) => {
+                    const path = new ExecutionPath(
+                        p,
+                        id,
+                        this.rootPath,
+                        ExecutionPathStatus.Failed,
+                        pyteaService.getPathStore()
+                    );
+                    executionPaths.push(path);
+                    id++;
+                });
 
                 setTimeout(() => {
                     //  async print log
                     pyteaService.printLog(result);
                 }, 10);
 
-                if (failed && failed.count() > 0) {
-                    const failPath = failed.get(0)!;
-                    const error = failPath.retVal;
-                    const sourceRange = pyteaService.getSourceRange(error.source);
-                    if (sourceRange) {
-                        const [filePath, range] = sourceRange;
-                        this._connection.sendDiagnostics({
-                            uri: convertPathToUri(filePath),
-                            diagnostics: this._convertDiagnostics([
-                                new AnalyzerDiagnostic(DiagnosticCategory.Error, error.reason, range),
-                            ]),
-                        });
-                    }
-                }
-
-                return `succ: ${success?.count()}, stop: ${stopped?.count()}, fail: ${failed?.count()}`;
+                // if (failed && failed.count() > 0) {
+                //     const failPath = failed.get(0)!;
+                //     const error = failPath.retVal;
+                //     const sourceRange = pyteaService.getSourceRange(error.source);
+                //     if (sourceRange) {
+                //         const [filePath, range] = sourceRange;
+                //         this._connection.sendDiagnostics({
+                //             uri: convertPathToUri(filePath),
+                //             diagnostics: this._convertDiagnostics([
+                //                 new AnalyzerDiagnostic(DiagnosticCategory.Error, error.reason, range),
+                //             ]),
+                //         });
+                //     }
+                // }
+                // return ['a'];
+                return executionPaths.map((p) => p.props);
             } else {
                 this.console.error('Analyzer returned undefined');
             }
@@ -493,7 +530,7 @@ export class PyteaServer {
             disableOrganizeImports: true,
             isInitialized: createDeferred<boolean>(),
             selectedPath: 0,
-            result: undefined,
+            paths: [],
         };
     }
 
