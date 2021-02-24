@@ -16,10 +16,11 @@ import { getFileInfo } from 'pyright-internal/analyzer/analyzerNodeInfo';
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { ConsoleInterface, StandardConsole } from 'pyright-internal/common/console';
 import { convertOffsetToPosition } from 'pyright-internal/common/positionUtils';
+import { Range } from 'pyright-internal/common/textRange';
 import { ParseNode, ParseNodeType } from 'pyright-internal/parser/parseNodes';
 
 import { Context, ContextSet } from '../backend/context';
-import { CodeSource, ShContFlag, ShValue, SVAddr, SVString, SVType } from '../backend/sharpValues';
+import { CodeRange, CodeSource, ShContFlag, ShValue, SVAddr, SVString, SVType } from '../backend/sharpValues';
 import { TorchBackend } from '../backend/torchBackend';
 import { IRWriter } from '../frontend/IRReaderWriter';
 import { ThStmt } from '../frontend/torchStatements';
@@ -323,6 +324,30 @@ export class PyteaService {
         } else {
             const { start, end } = node.range;
             return `[${start.line + 1}:${start.character} - ${end.line + 1}:${end.character}]`;
+        }
+    }
+
+    getSourceRange(source?: CodeSource): [string, Range] | undefined {
+        if (!source) return;
+
+        const node = source;
+        if (!('fileId' in node)) {
+            let moduleNode = node;
+            while (moduleNode.nodeType !== ParseNodeType.Module) {
+                moduleNode = moduleNode.parent!;
+            }
+
+            const fileInfo = getFileInfo(moduleNode)!;
+
+            const filePath = fileInfo.filePath;
+            const lines = fileInfo.lines;
+            const start = convertOffsetToPosition(node.start, lines);
+            const end = convertOffsetToPosition(node.start + node.length, lines);
+            return [filePath, { start, end }];
+        } else {
+            const filePath = this._stmtPaths.getPath(node.fileId);
+            if (!filePath) return;
+            return [filePath, node.range];
         }
     }
 

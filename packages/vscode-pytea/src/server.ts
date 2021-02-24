@@ -77,9 +77,6 @@ export class PyteaServer {
 
     constructor() {
         this._connection = createConnection();
-        // this._connection = createConnection({
-        //     cancellationStrategy: getCancellationStrategyFromArgv(process.argv),
-        // });
 
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const version = require('../package.json').version || '';
@@ -184,11 +181,30 @@ export class PyteaServer {
             // TODO: remove global reference
             PyteaService.setGlobalService(pyteaService);
             const result = pyteaService.analyze();
-            this.console.info(`Analyzing completed. Found ${result?.getList()?.count() ?? 0} paths`);
+            const success = result?.getList();
+            const failed = result?.getFailed();
+            this.console.info(
+                `Analyzing completed. Found ${success?.count() ?? 0} success paths / ${
+                    failed?.count() ?? 0
+                } failed paths`
+            );
 
             if (result) {
-                // TODO: resulting!
                 pyteaService.printLog(result);
+                if (failed && failed.count() > 0) {
+                    const failPath = failed.get(0)!;
+                    const error = failPath.retVal;
+                    const sourceRange = pyteaService.getSourceRange(error.source);
+                    if (sourceRange) {
+                        const [filePath, range] = sourceRange;
+                        this._connection.sendDiagnostics({
+                            uri: convertPathToUri(filePath),
+                            diagnostics: this._convertDiagnostics([
+                                new AnalyzerDiagnostic(DiagnosticCategory.Error, error.reason, range),
+                            ]),
+                        });
+                    }
+                }
             } else {
                 this.console.error('Analyzer returned undefined');
             }

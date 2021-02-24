@@ -120,54 +120,54 @@
             }
         ],
         "viewsContainers": {
-			"activitybar": [
-				{
-					"id": "pytea-analysis",
-					"title": "Pytea Analysis",
-					"icon": "images/sidebar.svg"
-				}
-			],
+            "activitybar": [
+                {
+                    "id": "pytea-analysis",
+                    "title": "Pytea Analysis",
+                    "icon": "images/sidebar.svg"
+                }
+            ],
             "panel": [
-				{
-					"id": "pytea-explorer",
-					"title": "Pytea",
-					"icon": "images/sidebar.svg"
-				}
-			]
-		},
-		"views": {
-			"pytea-analysis": [
                 {
-					"id": "executionPaths",
-					"name": "Execution Paths"
-				},
+                    "id": "pytea-explorer",
+                    "title": "Pytea",
+                    "icon": "images/sidebar.svg"
+                }
+            ]
+        },
+        "views": {
+            "pytea-analysis": [
                 {
-					"id": "variables",
-					"name": "Variables"
-				},
-				{
-					"id": "callStack",
-					"name": "Call Stack"
-				},
+                    "id": "executionPaths",
+                    "name": "Execution Paths"
+                },
                 {
-					"id": "softConstraints",
-					"name": "Soft Constraints"
-				},
+                    "id": "variables",
+                    "name": "Variables"
+                },
                 {
-					"id": "pathConstraints",
-					"name": "Path Constraints"
-				},
+                    "id": "callStack",
+                    "name": "Call Stack"
+                },
                 {
-					"id": "hardConstraints",
-					"name": "Hard Constraints"
-				}
-			],
+                    "id": "softConstraints",
+                    "name": "Soft Constraints"
+                },
+                {
+                    "id": "pathConstraints",
+                    "name": "Path Constraints"
+                },
+                {
+                    "id": "hardConstraints",
+                    "name": "Hard Constraints"
+                }
+            ],
             "pytea-explorer": [
-				{
-					"id": "analyzerLog",
-					"name": "Analyzer Log"
-				}
-			]
+                {
+                    "id": "analyzerLog",
+                    "name": "Analyzer Log"
+                }
+            ]
         }
     },
     "scripts": {
