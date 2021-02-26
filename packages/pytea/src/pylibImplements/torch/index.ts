@@ -17,9 +17,11 @@ import {
     SVNotImpl,
     SVObject,
     SVSize,
+    SVString,
     SVType,
 } from '../../backend/sharpValues';
 import {
+    ExpBool,
     ExpNum,
     ExpShape,
     ExpString,
@@ -350,8 +352,12 @@ export namespace TorchLCImpl {
         const heap = ctx.heap;
         const selfAddr = params[0];
 
+        const self = fetchAddr(selfAddr, heap);
         const selfSize = fetchSize(selfAddr, heap);
 
+        if (self?.type !== SVType.Object) {
+            return ctx.failWithMsg(`from 'LibCall.torch.item': not a tensor object`, source).toSet();
+        }
         if (typeof selfSize === 'string') {
             return ctx.warnTensorWithMsg(`from 'LibCall.torch.item': ${selfSize}`, source);
         }
@@ -359,13 +365,31 @@ export namespace TorchLCImpl {
         const selfShape = selfSize.shape;
         const selfRank = selfSize.rank();
 
-        return ctx
-            .require(
-                [ctx.genOr(ctx.genEq(0, selfRank, source), ctx.genEq(1, ExpNum.numel(selfShape, source)), source)],
-                `from 'LibCall.torch.item': tensor must have exacly one element`,
-                source
-            ) // TODO: match return value type with tensor dtype.
-            .return(SVFloat.create(ExpNum.fromSymbol(ctx.genSymFloat('torchItemElem', source)), source));
+        // Tensor.dtype is always given. force casting.
+        const dtypeClass = fetchAddr(self.getAttr('dtype'), heap) as SVObject;
+        const dtypeName = dtypeClass.getAttr('__name__') as SVString;
+        const dtype = dtypeName.value as string;
+
+        const isFloat = dtype === 'float16' || dtype === 'float32' || dtype === 'float64';
+        const isInt =
+            dtype === 'int8' || dtype === 'int16' || dtype === 'int32' || dtype === 'int64' || dtype === 'uint8';
+        const isBool = dtype === 'bool';
+
+        const ctxSet = ctx.require(
+            [ctx.genOr(ctx.genEq(0, selfRank, source), ctx.genEq(1, ExpNum.numel(selfShape, source)), source)],
+            `from 'LibCall.torch.item': tensor must have exacly one element`,
+            source
+        );
+
+        if (isFloat) {
+            return ctxSet.return(SVFloat.create(ExpNum.fromSymbol(ctx.genSymFloat('torchItem', source)), source));
+        } else if (isInt) {
+            return ctxSet.return(SVInt.create(ExpNum.fromSymbol(ctx.genSymInt('torchItem', source)), source));
+        } else if (isBool) {
+            return ctxSet.return(SVBool.create(ExpBool.fromSymbol(ctx.genSymBool('torchItem', source)), source));
+        } else {
+            return ctx.failWithMsg(`from 'LibCall.torch.item': unknown dtype of tensor`, source).toSet();
+        }
     }
 
     // implementation of torch.Tensor.repeat
@@ -1756,8 +1780,8 @@ export namespace TorchLCImpl {
                 let shape = selfShape;
                 const rankN = tupleLen / 2;
                 for (let i = 0; i < rankN; i++) {
-                    const padLeft = padSizes[(rankN - i - 1) * 2];
-                    const padRight = padSizes[(rankN - i - 1) * 2 + 1];
+                    const padLeft = padSizes[i * 2];
+                    const padRight = padSizes[i * 2 + 1];
                     shape = ExpShape.setDim(
                         shape,
                         ExpNum.bop(NumBopType.Sub, selfRank, i + 1, source),

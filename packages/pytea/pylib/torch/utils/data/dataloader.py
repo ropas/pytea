@@ -45,6 +45,8 @@ class DataLoader:
 
         if self.drop_last == False and self._last_batch > 0 and index == _len - 1:
             batch_size = self._last_batch
+        # TODO:
+        # elif _len == 0:
         else:
             batch_size = self.batch_size
 
@@ -63,7 +65,7 @@ class DataLoader:
                     ret_list.append(LibCall.shape.repeat(item, 0, batch_size))
                 else:
                     ret_list.append(Tensor(batch_size))
-        
+
         if len(ret_list) == 1:
             return ret_list[0]
         else:

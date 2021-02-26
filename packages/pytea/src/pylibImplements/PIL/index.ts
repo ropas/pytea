@@ -4,7 +4,7 @@ import { LCImpl } from '..';
 import { fetchAddr } from '../../backend/backUtils';
 import { Context, ContextSet } from '../../backend/context';
 import { fetchSize, simplifyShape } from '../../backend/expUtils';
-import { ShValue, SVSize, SVNone, SVType } from '../../backend/sharpValues';
+import { ShValue, SVInt, SVSize, SVNone, SVType } from '../../backend/sharpValues';
 import { ExpNum, ExpShape } from '../../backend/symExpressions';
 import { LCBase } from '../libcall';
 
@@ -127,9 +127,33 @@ export namespace PILLCImpl {
         return leftPath.join(rightPath);
     }
 
+    export function getChannel(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 1) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.PIL.getChannel': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const { env, heap } = ctx;
+        const [imageAddr] = params;
+
+        const image = fetchAddr(imageAddr, heap);
+        if (!(image && image instanceof SVSize)) {
+            return ctx.warnWithMsg(`from 'LibCall.PIL.getChannel': input is not a Size type`, source).toSet();
+        }
+
+        const shape = image.shape;
+        const channel = ExpNum.index(shape, 0, source);
+
+        return ctx.toSetWith(SVInt.create(channel));
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         blend,
         fromarray,
+        getChannel,
     };
 }
 

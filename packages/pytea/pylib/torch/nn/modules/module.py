@@ -3,7 +3,7 @@ from ... import LibCall
 
 class Module:
     def __init__(self):
-        self.training = False
+        self.training = True
 
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
@@ -23,6 +23,8 @@ class Module:
 
     def train(self, mode=True):
         self.training = mode
+        for module in self.modules():
+            module.training = mode
         return self
 
     def eval(self):
@@ -48,7 +50,7 @@ class Module:
     def register_buffer(self, name, tensor):
         # TODO: this is not workly currently.. fix this
         LibCall.builtins.dict_setitem(self, name, tensor)
-        
+
     def state_dict(self, destination=None, prefix=None, keep_vars=None):
         # TODO: make key-value pair
         return {}

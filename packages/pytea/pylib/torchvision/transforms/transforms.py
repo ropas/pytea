@@ -35,6 +35,7 @@ class ToTensor:
         else:
             return LibCall.torch.warnTensorWithMsg("pic should be PIL Image or ndarray")
 
+
 class ToPILImage:
     def __init__(self, mode=None):
         self.mode = mode
@@ -70,7 +71,7 @@ class RandomCrop:
     def __call__(self, img):
         if isinstance(img, Image.Image):
             image = Image.Image()
-            image._setSize(img._channel, self.size[0], self.size[1])
+            image._setSize(img._getChannel(), self.size[0], self.size[1])
             return image
         else:
             return LibCall.torchvision.crop(img, self.size[0], self.size[1])
@@ -139,11 +140,13 @@ class Lambda:
     def __call__(self, img):
         return self.lambd(img)
 
+
 class RandomHorizontalFlip(torch.nn.Module):
     def __init__(self, p=0.5):
         pass
 
     def forward(self, img):
-        if isinstance(img, Image.Image) or isinstance(img, Tensor)
+        if isinstance(img, Image.Image) or isinstance(img, Tensor):
             return img
-        raise TypeError('img should be PIL Image or Tensor')
+        raise TypeError("img should be PIL Image or Tensor")
+

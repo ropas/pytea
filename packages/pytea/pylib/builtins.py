@@ -33,6 +33,11 @@ def exit(code=0):
     return LibCall.builtins.exit(code)
 
 
+# temp
+def round(number, digits):
+    return number
+
+
 class slice:
     def __init__(self, start=None, stop=None, step=None):
         self.start = start
@@ -100,7 +105,6 @@ Ellipsis.__mro__ = (Ellipsis, object)
 Ellipsis.__name__ = "Ellipsis"
 
 
-
 def _tuple__getitem__(self, index):
     if isinstance(index, int):
         return self[index]
@@ -115,11 +119,13 @@ def _tuple__getitem__(self, index):
             stop = None
         return (self[i] for i in range(start, stop, index.step))
 
+
 tuple.__getitem__ = _tuple__getitem__
 
 
 def _list_append(self, item):
     LibCall.builtins.list_append(self, item)
+
 
 list.append = _list_append
 
@@ -132,12 +138,13 @@ def _list__getitem__(self, index):
             start = index.start if index.start >= 0 else len(self) + index.start
         else:
             start = None
-            
+
         if index.stop is not None:
             stop = index.stop if index.stop >= 0 else len(self) + index.stop
         else:
             stop = None
         return [self[i] for i in range(start, stop, index.step)]
+
 
 list.__getitem__ = _list__getitem__
 
@@ -150,6 +157,7 @@ def _list__add__(self, items):
         LibCall.builtins.list_append(ret, item)
     return ret
 
+
 list.__add__ = _list__add__
 
 
@@ -161,7 +169,9 @@ def _tuple__add__(self, items):
         LibCall.builtins.list_append(ret, item)
     return ret
 
+
 tuple.__add__ = _tuple__add__
+
 
 def _dict_items(self):
     return LibCall.builtins.dict_items(self)
@@ -203,7 +213,17 @@ def _str_replace(self, old, new, count=None):
     # TODO: replace it.
     return self
 
+
 str.replace = _str_replace
+
+# temp
+def _str_ljust(self, length, character=" "):
+    # TODO:
+    return self
+
+
+str.ljust = _str_ljust
+
 
 def sum(values):
     a = 0

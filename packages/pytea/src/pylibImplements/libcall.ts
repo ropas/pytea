@@ -239,7 +239,7 @@ export namespace LCBase {
             obj = obj.setAttr('__mro__', dictType);
         }
 
-        return ctx.setHeap(newHeap.setVal(objAddr, obj)).toSetWith(obj);
+        return ctx.setHeap(newHeap.setVal(objAddr, obj)).toSetWith(objAddr);
     }
 
     export interface SetDefaultParams {

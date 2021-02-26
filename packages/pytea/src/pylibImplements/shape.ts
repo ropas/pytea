@@ -162,7 +162,7 @@ export namespace ShapeLCImpl {
         if (index.type === SVType.Int) {
             // index is contant int
             const indexNum = index.value;
-            const indexDim = ExpNum.index(shape, indexNum, source);
+            const indexDim = ExpNum.index(shape, axisValue, source);
 
             return ctx
                 .require(

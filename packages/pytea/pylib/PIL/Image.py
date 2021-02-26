@@ -17,9 +17,12 @@ class Image:
         self.size = (width, height)
         LibCall.builtins.setSize(self, (channel, width, height))
 
+    def _getChannel(self):
+        return LibCall.PIL.getChannel(self)
+
     def copy(self):
         im = Image()
-        im._setSize(self._channel, self.width, self.height)
+        im._setSize(self._getChannel(), self.width, self.height)
         return im
 
     def convert(self, mode=None, *args, **kwargs):
@@ -51,7 +54,7 @@ class Image:
             raise Exception("unknown method type")
 
         im = Image()
-        im._setSize(self._channel, size[0], size[1])
+        im._setSize(self._getChannel(), size[0], size[1])
         return im
 
     def resize(self, size, resample=3, box=None, reducing_gap=None):
@@ -84,9 +87,9 @@ def open(fp, mode="r"):
     im = Image()
     # make symbolic image
     im._setSize(
-        LibCall.builtins.randInt(1, 4, 'PILImgC'),
-        LibCall.builtins.randInt(24, 4096, 'PILImgW'),
-        LibCall.builtins.randInt(24, 4096, 'PILImgH')
+        LibCall.builtins.randInt(1, 4, "PILImgC"),
+        LibCall.builtins.randInt(24, 4096, "PILImgW"),
+        LibCall.builtins.randInt(24, 4096, "PILImgH"),
     )
     return im
 

@@ -38,11 +38,12 @@ def z3_max(a, b):
 
 
 class PathResult(Enum):
-    Unavailable = 0
+    Unreachable = 0
     Valid = 1
     Sat = 2
     Unsat = 3
     DontKnow = 4
+    Conflict = 5
 
 
 # Type enums: Must be consistent with enums in "symExpressions.ts", "constraintType.ts".
@@ -137,7 +138,8 @@ class Z3Encoder:
         ctrSetList = list(map(CtrSet, jsonObj))
 
         # lists of path indices
-        UnavailablePaths = []
+        ConflictPaths = []
+        UnreachablePaths = []
         ValidPaths = []
         SatPaths = []
         UnsatPaths = []
@@ -151,8 +153,12 @@ class Z3Encoder:
             pathResult, pathLog = ctrSet.analysis()  # side effect: print result
             log += pathLog
 
-            if pathResult == PathResult.Unavailable.value:
-                UnavailablePaths.append(pathIdx)
+            if pathResult == PathResult.Conflict.value:
+                self.console.log(log)
+                ConflictPaths.append(pathIdx)
+            elif pathResult == PathResult.Unreachable.value:
+                self.console.log(log)
+                UnreachablePaths.append(pathIdx)
             elif pathResult == PathResult.Valid.value:
                 ValidPaths.append(pathIdx)
             elif pathResult == PathResult.Sat.value:
@@ -170,8 +176,12 @@ class Z3Encoder:
         log += "\n-----------------------------------"
         self.console.log(log)
 
-        if len(UnavailablePaths) != 0:
-            self.console.log("Unavailable paths: {}".format(len(UnavailablePaths)))
+        if len(ConflictPaths) != 0:
+            self.console.log("Conflict paths: {}".format(len(ConflictPaths)))
+            self.console.log(ConflictPaths)
+        if len(UnreachablePaths) != 0:
+            self.console.log("Unreachable paths: {}".format(len(UnreachablePaths)))
+            self.console.log(UnreachablePaths)
         if len(ValidPaths) != 0:
             self.console.log("Valid paths: {}".format(len(ValidPaths)))
         if len(SatPaths) != 0:
@@ -226,9 +236,23 @@ class CtrSet:
 
     # analyze ctrSet(of a path).
     def analysis(self):
-        if self.pathCondCheck() == "unsat":
-            log = "Unavailable path. Path condition is unsatisfiable."
-            return PathResult.Unavailable.value, log
+        pathCond, unsatIndice = self.pathCondCheck()
+        if pathCond == PathResult.Unreachable.value:
+            log = "Unreachable path. Path condition is unsatisfiable."
+            log += "unsat constraint:\n"
+            log += self.ctrPool[unsatIndice[-1]].toString() + "\n"
+            log += "conflict constraints: \n"
+            for idx in unsatIndice[:-1]:
+                log += self.ctrPool[idx].toString() + "\n"
+            return PathResult.Unreachable.value, log
+        elif pathCond == PathResult.Conflict.value:
+            log = "Hard constraints conflict.\n"
+            log += "unsat constraint:\n"
+            log += self.ctrPool[unsatIndice[-1]].toString() + "\n"
+            log += "conflict constraints: \n"
+            for idx in unsatIndice[:-1]:
+                log += self.ctrPool[idx].toString() + "\n"
+            return PathResult.Conflict.value, log
 
         validity, counterEx = self.checkValidity()
         if validity == "valid":
@@ -240,8 +264,13 @@ class CtrSet:
             log = "Satisfiable path.\n\n"
             log += "counter example:\n"
             log += str(counterEx) + "\n"
-        elif sat == PathResult.Unavailable.value:
-            log = "Unavailable path. Path condition is unsatisfiable."
+        elif sat == PathResult.Unreachable.value:
+            log = "Unreachable path. Path condition is unsatisfiable."
+            log += "unsat constraint:\n"
+            log += self.ctrPool[unsatIndice[-1]].toString() + "\n"
+            log += "conflict constraints: \n"
+            for idx in unsatIndice[:-1]:
+                log += self.ctrPool[idx].toString() + "\n"
         elif sat == PathResult.Unsat.value:
             log = "Unsatisfiable path.\n\n"
             log += "unsat constraint:\n"
@@ -253,7 +282,18 @@ class CtrSet:
             log = "Dontknow path.\n\n"
         return sat, log
 
+    def _findIndiceOfCtrs(self, ctrPool, ctrs):
+        indices = []
+        for ctr in ctrs:
+            for idx, ctr_ in enumerate(ctrPool):
+                if ctr == ctr_.formula:
+                    indices.append(idx)
+                    break
+        indices.sort()
+        return indices
+
     # check sat with only hardCtr and pathCtr.
+    # TODO: Optimize it
     def pathCondCheck(self):
         assumptions = list(map(lambda i: self.ctrPool[i].formula, self.hardCtr))
         pathConds = list(map(lambda i: self.ctrPool[i].formula, self.pathCtr))
@@ -262,7 +302,30 @@ class CtrSet:
         s = Solver()
         s.add(formula)
 
-        return str(s.check(assumptions))
+        result = str(s.check(assumptions))
+        if result == "unsat":
+            s.reset()
+            s.add(assumptions)
+            if str(s.check()) == "unsat":
+                result = "conflict"
+        else:
+            return None, None
+
+        if result == "unsat":
+            constraints = assumptions + pathConds
+        else:
+            constraints = assumptions
+
+        s.reset()
+        s.set(":core.minimize", True)
+        str(s.check(constraints))
+        unsatCore = s.unsat_core()
+        unsatIndice = self._findIndiceOfCtrs(self.ctrPool, unsatCore)
+
+        if result == "unsat":
+            return PathResult.Unreachable.value, unsatIndice
+        else:
+            return PathResult.Conflict.value, unsatIndice
 
     # check validity and find counter-example if invalid.
     # return (validity, counter-example).
@@ -284,16 +347,6 @@ class CtrSet:
             return "invalid", s.model()
 
     def checkSat(self, minimize=False):
-        def findIndiceOfCtrs(ctrPool, ctrs):
-            indices = []
-            for ctr in ctrs:
-                for idx, ctr_ in enumerate(ctrPool):
-                    if ctr == ctr_.formula:
-                        indices.append(idx)
-                        break
-            indices.sort()
-            return indices
-
         constraints = list(map(lambda ctr: ctr.formula, self.ctrPool))
         s = Solver()
         if minimize:
@@ -303,16 +356,16 @@ class CtrSet:
             return PathResult.Sat.value, None
         elif result == "unsat":
             unsatCore = s.unsat_core()
-            unsatIndice = findIndiceOfCtrs(self.ctrPool, unsatCore)
+            unsatIndice = self._findIndiceOfCtrs(self.ctrPool, unsatCore)
             if unsatIndice[-1] in self.pathCtr:
-                return PathResult.Unavailable.value, unsatIndice
+                return PathResult.Unreachable.value, unsatIndice
             return PathResult.Unsat.value, unsatIndice
         else:
             return PathResult.DontKnow.value, None
 
     # track constraint which causes unsat.
     # direction can be "forward" | "backward" | "binary".
-    # TODO: Is there cases that checkSat() can't distinguish unavailable path, but trackUnsatCtrs() can?
+    # TODO: Is there cases that checkSat() can't distinguish Unreachable path, but trackUnsatCtrs() can?
     #       If not, this function is not needed.
     def trackUnsatCtrs(self, direction="forward"):
         def checkCtrs(ctrPool):
@@ -374,7 +427,7 @@ class CtrSet:
             unsatIdx = trackBinary(self.ctrPool, 0, len(self.ctrPool) - 1, "unsat")
 
         if unsatIdx in self.pathCtr:
-            return PathResult.Unavailable.value, None
+            return PathResult.Unreachable.value, None
         result, conflicts = checkCtrUnderAssumptions(
             self.ctrPool[:unsatIdx], self.ctrPool[unsatIdx]
         )
@@ -593,7 +646,7 @@ class Ctr:
             raise Exception("getRank Error: not a ExpShape")
 
         if expShape["opType"] == ShapeOpType.Const.value:
-            return self.encodeExpNum(expShape["rank"])
+            return expShape["rank"]
         elif expShape["opType"] == ShapeOpType.Symbol.value:
             rank = self.encodeExpNum(expShape["symbol"]["rank"])
             if not is_int(rank):
