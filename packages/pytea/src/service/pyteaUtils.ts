@@ -25,7 +25,7 @@ import {
     normalizePath,
 } from 'pyright-internal/common/pathUtils';
 import { convertOffsetToPosition } from 'pyright-internal/common/positionUtils';
-import { ParseNodeType } from 'pyright-internal/parser/parseNodes';
+import { ParseNode, ParseNodeType } from 'pyright-internal/parser/parseNodes';
 
 import { fetchAddr } from '../backend/backUtils';
 import {
@@ -631,5 +631,33 @@ export namespace CodeSourcePositioner {
         const fileId = pathStore.addPath(filePath);
 
         return { fileId, range: { start, end } };
+    }
+}
+
+export function formatParseNodeRange(node: ParseNode): string {
+    let moduleNode = node;
+    while (moduleNode.nodeType !== ParseNodeType.Module) {
+        moduleNode = moduleNode.parent!;
+    }
+
+    const fileInfo = getFileInfo(moduleNode)!;
+
+    const filePath = fileInfo.filePath;
+    const lines = fileInfo.lines;
+    const start = convertOffsetToPosition(node.start, lines);
+    const end = convertOffsetToPosition(node.start + node.length, lines);
+
+    return `[${start.line + 1}:${start.character} - ${end.line + 1}:${end.character}] (${filePath})`;
+}
+
+export function formatCodeSource(node?: CodeSource): string {
+    if (!node) return 'internal';
+
+    // check ParseNode or not
+    if (!('fileId' in node)) {
+        return formatParseNodeRange(node);
+    } else {
+        const { start, end } = node.range;
+        return `[${start.line + 1}:${start.character} - ${end.line + 1}:${end.character}]`;
     }
 }

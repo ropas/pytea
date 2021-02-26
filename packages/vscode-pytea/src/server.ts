@@ -216,6 +216,18 @@ export class PyteaServer {
                     );
                     executionPaths.push(path);
                     id++;
+
+                    const error = p.retVal;
+                    const sourceRange = pyteaService.getSourceRange(error.source);
+                    if (sourceRange) {
+                        const [filePath, range] = sourceRange;
+                        this._connection.sendDiagnostics({
+                            uri: convertPathToUri(filePath),
+                            diagnostics: this._convertDiagnostics([
+                                new AnalyzerDiagnostic(DiagnosticCategory.Warning, error.reason, range),
+                            ]),
+                        });
+                    }
                 });
 
                 failed?.forEach((p) => {
@@ -228,6 +240,18 @@ export class PyteaServer {
                     );
                     executionPaths.push(path);
                     id++;
+
+                    const error = p.retVal;
+                    const sourceRange = pyteaService.getSourceRange(error.source);
+                    if (sourceRange) {
+                        const [filePath, range] = sourceRange;
+                        this._connection.sendDiagnostics({
+                            uri: convertPathToUri(filePath),
+                            diagnostics: this._convertDiagnostics([
+                                new AnalyzerDiagnostic(DiagnosticCategory.Error, error.reason, range),
+                            ]),
+                        });
+                    }
                 });
 
                 setTimeout(() => {
@@ -258,6 +282,8 @@ export class PyteaServer {
             this.console.error(`Found error while analyzing ${options.entryPath}\n  ${e}`);
         }
     }
+
+    selectDiagnostics(pathId: number): void {}
 
     restart() {
         this._workspaceMap.forEach((workspace) => {

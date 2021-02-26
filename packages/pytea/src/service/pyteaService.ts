@@ -17,16 +17,16 @@ import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { ConsoleInterface, StandardConsole } from 'pyright-internal/common/console';
 import { convertOffsetToPosition } from 'pyright-internal/common/positionUtils';
 import { Range } from 'pyright-internal/common/textRange';
-import { ParseNode, ParseNodeType } from 'pyright-internal/parser/parseNodes';
+import { ParseNodeType } from 'pyright-internal/parser/parseNodes';
 
 import { Context, ContextSet } from '../backend/context';
-import { CodeRange, CodeSource, ShContFlag, ShValue, SVAddr, SVString, SVType } from '../backend/sharpValues';
+import { CodeSource, ShContFlag, ShValue, SVAddr, SVString, SVType } from '../backend/sharpValues';
 import { TorchBackend } from '../backend/torchBackend';
 import { IRWriter } from '../frontend/IRReaderWriter';
 import { ThStmt } from '../frontend/torchStatements';
 import { FilePathStore } from './executionPaths';
 import { defaultOptions, PyCmdArgs, PyteaOptions } from './pyteaOptions';
-import { getStmtsFromDir, reducedToString } from './pyteaUtils';
+import { formatCodeSource, getStmtsFromDir, reducedToString } from './pyteaUtils';
 
 let _globalService: PyteaService | undefined;
 
@@ -303,34 +303,6 @@ export class PyteaService {
         return [pair ? pair[1] : undefined, fromInit];
     }
 
-    formatParseNodeRange(node: ParseNode): string {
-        let moduleNode = node;
-        while (moduleNode.nodeType !== ParseNodeType.Module) {
-            moduleNode = moduleNode.parent!;
-        }
-
-        const fileInfo = getFileInfo(moduleNode)!;
-
-        const filePath = fileInfo.filePath;
-        const lines = fileInfo.lines;
-        const start = convertOffsetToPosition(node.start, lines);
-        const end = convertOffsetToPosition(node.start + node.length, lines);
-
-        return `[${start.line + 1}:${start.character} - ${end.line + 1}:${end.character}] (${filePath})`;
-    }
-
-    formatCodeSource(node?: CodeSource): string {
-        if (!node) return 'internal';
-
-        // check ParseNode or not
-        if (!('fileId' in node)) {
-            return this.formatParseNodeRange(node);
-        } else {
-            const { start, end } = node.range;
-            return `[${start.line + 1}:${start.character} - ${end.line + 1}:${end.character}]`;
-        }
-    }
-
     getSourceRange(source?: CodeSource): [string, Range] | undefined {
         if (!source) return;
 
@@ -367,7 +339,7 @@ export class PyteaService {
         failed.forEach((ctx, i) => {
             const source = ctx.retVal.source;
 
-            this._console.info(`failed path #${i + 1}: ${ctx.retVal.reason} - ${this.formatCodeSource(source)}\n\n`);
+            this._console.info(`failed path #${i + 1}: ${ctx.retVal.reason} - ${formatCodeSource(source)}\n\n`);
         });
 
         this._pushTimeLog('printing results');
@@ -431,7 +403,7 @@ export class PyteaService {
 
             this._console.info(
                 chalk.yellow(`stopped path #${i + 1}`) +
-                    `: ${ctx.retVal.reason} - ${this.formatCodeSource(source)}\n\n` +
+                    `: ${ctx.retVal.reason} - ${formatCodeSource(source)}\n\n` +
                     `LOGS:\n${this._logsToString(ctx)}\n\n` +
                     'CONSTRAINTS:\n' +
                     ctx.ctrSet.toString() +
@@ -453,7 +425,7 @@ export class PyteaService {
 
             this._console.info(
                 chalk.red(`failed path #${i + 1}`) +
-                    `: ${ctx.retVal.reason} - ${this.formatCodeSource(source)}\n\n` +
+                    `: ${ctx.retVal.reason} - ${formatCodeSource(source)}\n\n` +
                     `LOGS:\n${this._logsToString(ctx)}\n\n` +
                     'CONSTRAINTS:\n' +
                     ctx.ctrSet.toString() +
@@ -500,7 +472,7 @@ export class PyteaService {
 
             this._console.info(
                 chalk.yellow(`stopped path #${i + 1}`) +
-                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${this.formatCodeSource(source)}\n` +
+                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${formatCodeSource(source)}\n` +
                     `LOGS:\n${this._logsToString(ctx)}\n` +
                     'CONSTRAINTS:\n' +
                     ctx.ctrSet.toString() +
@@ -516,7 +488,7 @@ export class PyteaService {
 
             this._console.info(
                 chalk.red(`failed path #${i + 1}`) +
-                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${this.formatCodeSource(source)}\n` +
+                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${formatCodeSource(source)}\n` +
                     `LOGS:\n${this._logsToString(ctx)}\n` +
                     'CONSTRAINTS:\n' +
                     ctx.ctrSet.toString() +
@@ -596,7 +568,7 @@ export class PyteaService {
     private _logsToString(ctx: Context<unknown>): string {
         return ctx.logs
             .map((log) => {
-                const posStr = this.formatCodeSource(log.source);
+                const posStr = formatCodeSource(log.source);
 
                 if (log.type === SVType.Error) {
                     return `${log.reason} - ${posStr}`;
@@ -617,7 +589,7 @@ export class PyteaService {
                     return f.name !== 'callKV';
                 }
             })
-            .map(([func, node]) => `${typeof func === 'string' ? func : func.name} - ${this.formatCodeSource(node)}`)
+            .map(([func, node]) => `${typeof func === 'string' ? func : func.name} - ${formatCodeSource(node)}`)
             .reverse()
             .join('\n');
     }

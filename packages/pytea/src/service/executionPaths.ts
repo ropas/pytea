@@ -6,8 +6,14 @@
  * Format results (Execution Paths) to communicate between language server and client
  */
 
+import { getFileInfo } from 'pyright-internal/analyzer/analyzerNodeInfo';
+import { convertOffsetToPosition } from 'pyright-internal/common/positionUtils';
+import { ParseNodeType } from 'pyright-internal/parser/parseNodes';
+
+import { ctrToStr } from '../backend/constraintType';
 import { Context } from '../backend/context';
-import { CodeRange, ShContFlag, ShValue, SVError, SVErrorProps, SVType } from '../backend/sharpValues';
+import { simplifyConstraint } from '../backend/expUtils';
+import { CodeRange, CodeSource, ShContFlag, ShValue, SVError, SVErrorProps, SVType } from '../backend/sharpValues';
 
 // maps file path to unique id (number) and vice versa
 export class FilePathStore {
@@ -51,6 +57,32 @@ export class FilePathStore {
     length(): number {
         return this._pathList.length;
     }
+
+    toCodeRange(source?: CodeSource): CodeRange | undefined {
+        if (!source) return;
+
+        if (!('fileId' in source)) {
+            let moduleNode = source;
+            while (moduleNode.nodeType !== ParseNodeType.Module) {
+                moduleNode = moduleNode.parent!;
+            }
+
+            const fileInfo = getFileInfo(moduleNode)!;
+            const filePath = fileInfo.filePath;
+
+            const lines = fileInfo.lines;
+            const start = convertOffsetToPosition(source.start, lines);
+            const end = convertOffsetToPosition(source.start + source.length, lines);
+            const fileId = this.addPath(filePath);
+
+            return {
+                fileId,
+                range: { start, end },
+            };
+        }
+
+        return source;
+    }
 }
 
 export enum ExecutionPathStatus {
@@ -72,7 +104,9 @@ export interface ExecutionPathProps {
     variables: { [varName: string]: string };
 
     // stringified ctrPool of ConstraintSet with source
-    ctrPool: [string, CodeRange][];
+    ctrPool: [string, CodeRange?][];
+
+    callStack: [string, CodeRange?][];
 
     // indices in ctrPool
     hardCtr: number[];
@@ -119,8 +153,9 @@ export class ExecutionPath {
     private _initialize(): ExecutionPathProps {
         const status = this._status;
         const variables = {};
-        const ctrPool: [string, CodeRange][] = [];
+        const ctrPool: [string, CodeRange?][] = [];
         const logs: SVError[] = [];
+        const callStack: [string, CodeRange?][] = [];
 
         const ctx = this._ctx;
         const { env, heap, ctrSet } = ctx;
@@ -132,16 +167,39 @@ export class ExecutionPath {
                 // TODO
             }
         } else {
-            // TODO
+            // TODO: add call stack
+            ctx.callStack
+                .filter(([f, _]) => {
+                    // filter callKV libcall
+                    if (typeof f === 'string') {
+                        return f !== 'callKV';
+                    } else {
+                        return f.name !== 'callKV';
+                    }
+                })
+                .forEach(([func, node]) => {
+                    callStack.push([
+                        `${typeof func === 'string' ? func : func.name}`,
+                        this._pathStore.toCodeRange(node),
+                    ]);
+                });
+            callStack.reverse();
         }
 
         ctx.logs.forEach((value) => {
             if (value.type === SVType.Error) {
-                const cleanValue = value.set('source', undefined);
+                const cleanValue = value.set('source', this._pathStore.toCodeRange(value.source));
                 logs.push(cleanValue);
             } else {
                 // TODO: clean normal value
             }
+        });
+
+        ctx.ctrSet.ctrPool.forEach((ctr) => {
+            const ctrStr = ctrToStr(simplifyConstraint(ctx.ctrSet, ctr));
+            const source = this._pathStore.toCodeRange(ctr.source);
+
+            ctrPool.push([ctrStr, source]);
         });
 
         return {
@@ -150,6 +208,7 @@ export class ExecutionPath {
             status,
             variables,
             ctrPool,
+            callStack,
             hardCtr: ctrSet.hardCtr.toArray(),
             softCtr: ctrSet.softCtr.toArray(),
             pathCtr: ctrSet.pathCtr.toArray(),

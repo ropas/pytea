@@ -56,13 +56,18 @@
                 "category": "Pytea"
             },
             {
+                "command": "pytea.inspectVariable",
+                "title": "Inspect the value of the variable from environment",
+                "category": "Pytea"
+            },
+            {
                 "command": "pytea.gotoCallStack",
                 "title": "Go To The Function Definition of The Stack",
                 "category": "Pytea"
             },
             {
                 "command": "pytea.gotoConstraint",
-                "title": "Go To The Generated Point Of The Constraint",
+                "title": "Go To The Generation Point Of The Constraint",
                 "category": "Pytea"
             }
         ],
