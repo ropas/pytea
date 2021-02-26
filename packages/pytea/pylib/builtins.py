@@ -105,15 +105,27 @@ def _tuple__getitem__(self, index):
     if isinstance(index, int):
         return self[index]
     elif isinstance(index, slice):
+        start, stop = None, None
         if index.start is not None:
             start = index.start if index.start >= 0 else len(self) + index.start
-        else:
-            start = None
         if index.stop is not None:
             stop = index.stop if index.stop >= 0 else len(self) + index.stop
+
+        if index.start is None:
+            if index.stop is None:
+                # index by [:]
+                return self
+            else:
+                # index by [:stop]
+                return (self[i] for i in range(0, stop))
         else:
-            stop = None
-        return (self[i] for i in range(start, stop, index.step))
+            if index.stop is None:
+                # index by [start:]
+                return (self[i] for i in range(start, len(self)))
+            else:
+                # index by [start:stop]
+                return (self[i] for i in range(start, stop))
+
 
 tuple.__getitem__ = _tuple__getitem__
 
@@ -128,16 +140,26 @@ def _list__getitem__(self, index):
     if isinstance(index, int):
         return self[index]
     elif isinstance(index, slice):
+        start, stop = None, None
         if index.start is not None:
             start = index.start if index.start >= 0 else len(self) + index.start
-        else:
-            start = None
-            
         if index.stop is not None:
             stop = index.stop if index.stop >= 0 else len(self) + index.stop
+
+        if index.start is None:
+            if index.stop is None:
+                # index by [:]
+                return self
+            else:
+                # index by [:stop]
+                return [self[i] for i in range(0, stop)]
         else:
-            stop = None
-        return [self[i] for i in range(start, stop, index.step)]
+            if index.stop is None:
+                # index by [start:]
+                return [self[i] for i in range(start, len(self))]
+            else:
+                # index by [start:stop]
+                return [self[i] for i in range(start, stop)]
 
 list.__getitem__ = _list__getitem__
 
