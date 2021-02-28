@@ -8,6 +8,7 @@
  */
 import { List } from 'immutable';
 
+import { ConsoleInterface } from 'pyright-internal/common/console';
 import { ExpressionNode } from 'pyright-internal/parser/parseNodes';
 
 import {
@@ -121,23 +122,33 @@ export namespace TorchBackend {
         return runModule(stmt as TSLet, relPath).map((ctx) => ctx.asDefault());
     }
 
-    let _pathCount = 0;
+    let _pathCount = 1;
     // milisecond timeout & path count timeout
     // if unset, run until memory error.
-    export function runWithFailure<T>(
+    export async function runWithFailure<T>(
         ctxSet: ContextSet<T>,
         stmt: ThStmt,
+        console: ConsoleInterface,
         timeout?: number,
         maxPath?: number
     ): Promise<ContextSet<ShValue | ShContFlag>> {
         const runner: Promise<ContextSet<ShValue | ShContFlag>> = new Promise((resolve, reject) => {
+            _pathCount = 1;
+            const pathWatcher = setInterval(() => {
+                console.info(`running ${_pathCount} paths...`);
+            }, 1000);
+
             try {
                 const retVal = run(ctxSet, stmt, maxPath);
+
                 resolve(retVal);
             } catch (pathCount) {
                 reject(`path count overflow: ${pathCount} paths (max: ${maxPath})`);
+            } finally {
+                clearInterval(pathWatcher);
             }
         });
+
         if (timeout) {
             const referee: Promise<never> = new Promise((_, reject) => {
                 setTimeout(() => reject(`timeout expired`), timeout);

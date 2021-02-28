@@ -88,6 +88,12 @@
       "title": "Pass analysis result to Python Z3 server",
       "default": false
     },
+    "z3Port": {
+      "$id": "#/properties/z3Port",
+      "type": "number",
+      "title": "Port to Python Z3 server",
+      "default": 17851
+    },
     "timeout": {
       "$id": "#/properties/timeout",
       "type": "number",

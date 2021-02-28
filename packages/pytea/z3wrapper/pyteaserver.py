@@ -14,9 +14,17 @@ import importlib.util
 import json
 import sys
 import zmq
-from .json2z3 import Z3encoder
+from .json2z3 import Z3encoder, PathResult, CtrSet
 
 DEFAULT_PORT = 17851
+
+
+def respond_rpc(id, result):
+    ret_val = dict()
+    ret_val["jsonrpc"] = "2.0"
+    ret_val["id"] = id
+    ret_val["result"] = json.dumps(result)
+    return ret_val
 
 
 class PyTeaServer:
@@ -28,16 +36,37 @@ class PyTeaServer:
         self.socket = self.ctx.socket(zmq.REP)
         self.socket.bind(f"tcp://127.0.0.1:{port}")
 
-    def log(self, message):
-        pass
+    def listen(self):
+        while True:
+            try:
+                raw_message = self.socket.recv()
+                message = json.loads(raw_message)
+                result = []
+                message_id = message["id"]
 
-    def analyze(self, message):
-        try:
-            jsonObj = json.loads(message)
-            self.encoder.analyze(jsonObj)
-        except Exception as e:
-            # TODO: do something
-            pass
+                if message["method"] == "ping":
+                    result.append(respond_rpc(message_id, result))
+                elif message["method"] == "solve":
+                    result = self.analyze(message["result"])
+
+                self.socket.send(json.dumps(result).encode("utf-8"))
+            except Exception as e:
+                pass
+
+    def analyze(self, paths):
+        ctr_set_list = map(CtrSet, paths)
+        result = []
+
+        for ctr_set in ctr_set_list:
+            path_result = dict()
+            path_type, _, extras = ctr_set.analysis()  # side effect: print result
+
+            path_result["type"] = path_type
+            path_result["extras"] = extras
+
+            result.append(path_result)
+
+        return result
 
 
 def parse_args():
@@ -69,6 +98,7 @@ def main():
         sys.exit(-1)
 
     server = PyTeaServer(args)
+    server.listen()
 
 
 if __name__ == "__main__":

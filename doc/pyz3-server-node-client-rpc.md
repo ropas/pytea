@@ -3,7 +3,30 @@
 
 ## example
 
-#### solve request (node -> python)
+### ping
+
+#### request (node -> python, 100ms timeout)
+```json
+{
+    "jsonrpc": "2.0",
+    "method": "ping",
+    "id": 0,
+    "params": ["14214"] // random number
+}
+```
+
+#### respond (python -> node)
+```json
+{
+    "jsonrpc": "2.0",
+    "id": 0, // number
+    "result": [
+        "14214" // echo
+    ]
+}
+```
+
+### z3 solve request (node -> python)
 ```json
 {
     "jsonrpc": "2.0",
@@ -36,16 +59,18 @@
 
 ```typescript
 enum PathResultType {
-    Valid = 0,
-    MayInvalid = 1,
-    Invalid = 2,
-    Undecidable = 3,
-    Nonexistent = 4,
+    Nonexistent = 0,
+    Valid = 1,
+    MayInvalid = 2,
+    Invalid = 3,
+    Undecidable = 4,
 }
 
 interface PathResult {
     type: PathResultType,
-    counterexample?: string // if type == MayInvalid
-    conflict?: number // index of conflicted constraint (type == Invalid)
+    extras: {
+        counterexample?: string // if type == MayInvalid
+        conflict?: number // index of conflicted constraint (type == Invalid)
+    }
 }
 ```

@@ -205,16 +205,16 @@ export class PyteaService {
         return;
     }
 
-    analyze(): ContextSet<ShValue | ShContFlag> | undefined {
+    async analyze(): Promise<ContextSet<ShValue | ShContFlag>> {
         if (!this.validate()) {
             this._console.error('failed to validate PyTea service.');
-            return;
+            return Promise.reject();
         }
 
         const builtinsPair = this._libStmt.get('builtins');
         if (!builtinsPair) {
             this._console.error('cannot find PyTea implemenation of Python builtins.');
-            return;
+            return Promise.reject();
         }
         const builtins = builtinsPair[1];
 
@@ -228,7 +228,7 @@ export class PyteaService {
         if (!stmtPair) {
             this._mainStmt = undefined;
             this._console.error(`cannot parse entry file '${entryPath}'`);
-            return;
+            return Promise.reject();
         }
 
         const stmt = stmtPair[1];
@@ -241,11 +241,22 @@ export class PyteaService {
             const [nameAddr, newHeap] = ctx.heap.allocNew(SVString.create('__main__'));
             return ctx.setRelPath(entryName).setEnv(ctx.env.setId('__name__', nameAddr)).setHeap(newHeap);
         });
-        const result = TorchBackend.run(startSet, stmt);
+
+        const result = await TorchBackend.runWithFailure(
+            startSet,
+            stmt,
+            this._console,
+            this.options?.timeout,
+            this.options?.maxPath
+        );
 
         this._pushTimeLog('Running entry file');
 
-        return result;
+        return Promise.resolve(result);
+    }
+
+    async runZ3Py(result: ContextSet<ShValue | ShContFlag>): Promise<unknown> {
+        return Promise.resolve();
     }
 
     printLog(result: ContextSet<ShValue | ShContFlag>): void {

@@ -47,6 +47,9 @@ function parsePyrightArgs(): CommandLineOptions | undefined {
         { name: 'verbose', type: Boolean, defaultValue: false },
         { name: 'version', type: Boolean },
         { name: 'watch', alias: 'w', type: Boolean, defaultValue: false },
+        { name: 'runZ3', type: Boolean, defaultValue: false },
+        { name: 'timeout', type: Boolean },
+        { name: 'maxPath', type: Boolean },
     ];
 
     let args: CommandLineOptions;
@@ -124,7 +127,7 @@ function runMain(args: CommandLineOptions) {
     const output = new NullConsole();
     const realFileSystem = createFromRealFileSystem(output);
 
-    const watch = args.watch === true;
+    const watch = args.watch === true || args.runZ3 === true;
     options.watchForSourceChanges = watch;
 
     const pyrightService = new AnalyzerService('<default>', realFileSystem, output);
@@ -132,7 +135,7 @@ function runMain(args: CommandLineOptions) {
 
     const resultPath = combinePaths(process.cwd(), args.resultPath);
 
-    pyrightService.setCompletionCallback((results) => {
+    pyrightService.setCompletionCallback(async (results) => {
         if (results.fatalErrorOccurred) {
             process.exit(ExitStatus.FatalError);
         }
@@ -167,11 +170,11 @@ function runMain(args: CommandLineOptions) {
                 }
 
                 try {
-                    const result = pyteaService.analyze();
-                    if (result) {
-                        pyteaService.printLog(result);
+                    const result = await pyteaService.analyze();
+                    if (pyteaService && result) {
+                        pyteaService!.printLog(result);
                         if (watch) {
-                            runZ3Py(result);
+                            await runZ3Py(result);
                         } else {
                             exportConstraintSet(result, resultPath);
                         }

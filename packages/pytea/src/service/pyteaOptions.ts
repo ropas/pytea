@@ -46,6 +46,9 @@ export interface PyteaOptions {
     // Pass analysis result to Python Z3 server (default: false)
     runZ3: boolean;
 
+    // Port to Python Z3 server
+    z3Port: number;
+
     // Analyzer timeout in millisecond. undefined means no timeout (default: undefined)
     timeout?: number;
 
@@ -65,4 +68,5 @@ export const defaultOptions: PyteaOptions = {
     extractIR: false,
     variableRange: {},
     runZ3: false,
+    z3Port: 17851,
 };

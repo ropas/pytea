@@ -177,6 +177,26 @@
                     "reduced",
                     "full"
                 ]
+            },
+            "python.pytea.runZ3": {
+                "type": "boolean",
+                "default": false,
+                "description": "Pass analysis result to Python Z3 server"
+            },
+            "z3Port": {
+                "type": "number",
+                "default": 17851,
+                "description": "Port to Python Z3 server"
+            },
+            "timeout": {
+                "type": "number",
+                "default": 0,
+                "description": "Analyzer timeout in millisecond. undefined means no timeout"
+            },
+            "maxPath": {
+                "type": "number",
+                "default": 0,
+                "description": "Set max path count, throw runtime error if path count exceeds it"
             }
         }
     },

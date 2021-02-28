@@ -134,7 +134,7 @@ class Z3Encoder:
         self.console = console
 
     def analyze(self, jsonObj):
-        ctrSetList = list(map(CtrSet, jsonObj))
+        ctrSetList = map(CtrSet, jsonObj)
 
         # lists of path indices
         UnavailablePaths = []
@@ -153,7 +153,7 @@ class Z3Encoder:
             # )
 
             # log += ctrSet.toString()
-            pathResult, pathLog = ctrSet.analysis()  # side effect: print result
+            pathResult, pathLog, _ = ctrSet.analysis()  # side effect: print result
             # log += pathLog
             log = f"--- PATH {pathIdx} ---\n{pathLog}"
 
@@ -173,7 +173,7 @@ class Z3Encoder:
 
         self.console.log(
             "-----------------------------------\n"
-            f"OVERALL (total {len(ctrSetList)} paths)\n"
+            f"OVERALL (total {len(jsonObj)} paths)\n"
             "-----------------------------------"
         )
 
@@ -236,6 +236,8 @@ class CtrSet:
 
     # analyze ctrSet(of a path).
     def analysis(self):
+        extras = dict()
+
         if self.pathCondCheck() == "unsat":
             log = "Nonexistent path: Conflicted branch conditions."
             return PathResult.Unavailable.value, log
@@ -247,9 +249,11 @@ class CtrSet:
 
         sat, unsatIndice = self.checkSat()
         if sat == PathResult.Sat.value:
+            counter_str = str(counterEx)
             log = "Potentially Invalid path: Found counter example.\n\n"
             log += "counter example:\n"
-            log += str(counterEx) + "\n"
+            log += counter_str + "\n"
+            extras["counterexample"] = counter_str
         elif sat == PathResult.Unavailable.value:
             log = "Nonexistent path: Conflicted branch conditions."
         elif sat == PathResult.Unsat.value:
@@ -259,9 +263,11 @@ class CtrSet:
             log += "conflict constraints: \n"
             for idx in unsatIndice[:-1]:
                 log += self.ctrPool[idx].toString() + "\n"
+            extras["conflict"] = unsatIndice[-1]
         else:
             log = "Undecidable path: Z3 failed to solve constraints.\n\n"
-        return sat, log
+
+        return sat, log, extras
 
     # check sat with only hardCtr and pathCtr.
     def pathCondCheck(self):
