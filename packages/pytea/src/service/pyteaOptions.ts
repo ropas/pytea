@@ -42,6 +42,15 @@ export interface PyteaOptions {
     // The range of random varaible which name starts with prefix will be altered to this.
     // null means unbounded, range is inclusive.
     variableRange: { [prefix: string]: null | number | [number | null, number | null] };
+
+    // Pass analysis result to Python Z3 server (default: false)
+    runZ3: boolean;
+
+    // Analyzer timeout in millisecond. undefined means no timeout (default: undefined)
+    timeout?: number;
+
+    // Set max path count, throw runtime error if path count exceeds it (default: undefined)
+    maxPath?: number;
 }
 
 export const defaultOptions: PyteaOptions = {
@@ -55,4 +64,5 @@ export const defaultOptions: PyteaOptions = {
     ignoreAssert: false,
     extractIR: false,
     variableRange: {},
+    runZ3: false,
 };

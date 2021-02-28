@@ -336,10 +336,20 @@ export class PyteaService {
         const failed = result.getFailed();
         const stopped = result.getStopped();
 
+        stopped.forEach((ctx, i) => {
+            const source = ctx.retVal.source;
+
+            this._console.info(
+                ` path #${i + 1}: ${ctx.retVal.reason} - ${formatCodeSource(source, this._pathStore)}\n\n`
+            );
+        });
+
         failed.forEach((ctx, i) => {
             const source = ctx.retVal.source;
 
-            this._console.info(`failed path #${i + 1}: ${ctx.retVal.reason} - ${formatCodeSource(source)}\n\n`);
+            this._console.info(
+                `failed path #${i + 1}: ${ctx.retVal.reason} - ${formatCodeSource(source, this._pathStore)}\n\n`
+            );
         });
 
         this._pushTimeLog('printing results');
@@ -367,7 +377,7 @@ export class PyteaService {
         }
 
         success.forEach((ctx, i) => {
-            jsonList.push(ctx.ctrSet.getConstraintJSON());
+            jsonList.push(ctx.ctrSet.getConstraintJSON(this._pathStore));
 
             let heapLog = '';
             // TODO: currently assume that address 1 is main module object
@@ -384,13 +394,15 @@ export class PyteaService {
             }
 
             this._console.info(
-                chalk.green(`success path #${i + 1}`) +
-                    `\n\nLOGS:\n${this._logsToString(ctx)}\n\nCONSTRAINTS:\n${ctx.ctrSet.toString()}\n\n${heapLog}`
+                chalk.green(`success path #${i + 1}\n\n`) +
+                    heapLog +
+                    `\n\nLOGS:\n${this._logsToString(ctx)}` +
+                    `\n\nCONSTRAINTS:\n${ctx.ctrSet.toString(this._pathStore)}`
             );
         });
 
         stopped.forEach((ctx, i) => {
-            jsonList.push(ctx.ctrSet.getConstraintJSON());
+            jsonList.push(ctx.ctrSet.getConstraintJSON(this._pathStore));
 
             const source = ctx.retVal.source;
 
@@ -403,13 +415,13 @@ export class PyteaService {
 
             this._console.info(
                 chalk.yellow(`stopped path #${i + 1}`) +
-                    `: ${ctx.retVal.reason} - ${formatCodeSource(source)}\n\n` +
-                    `LOGS:\n${this._logsToString(ctx)}\n\n` +
-                    'CONSTRAINTS:\n' +
-                    ctx.ctrSet.toString() +
+                    `: ${ctx.retVal.reason} - ${formatCodeSource(source, this._pathStore)}` +
+                    `\n\nREDUCED HEAP (${ctx.heap.valMap.count()}):\n${heapLog}` +
                     '\n\nCALL STACK:\n' +
                     this._callStackToString(ctx) +
-                    `\n\nREDUCED HEAP (${ctx.heap.valMap.count()}):\n${heapLog}`
+                    `\n\nLOGS:\n${this._logsToString(ctx)}` +
+                    '\n\nCONSTRAINTS:\n' +
+                    ctx.ctrSet.toString(this._pathStore)
             );
         });
 
@@ -425,13 +437,13 @@ export class PyteaService {
 
             this._console.info(
                 chalk.red(`failed path #${i + 1}`) +
-                    `: ${ctx.retVal.reason} - ${formatCodeSource(source)}\n\n` +
-                    `LOGS:\n${this._logsToString(ctx)}\n\n` +
-                    'CONSTRAINTS:\n' +
-                    ctx.ctrSet.toString() +
+                    `: ${ctx.retVal.reason} - ${formatCodeSource(source, this._pathStore)}` +
+                    `\n\nREDUCED HEAP (${ctx.heap.valMap.count()}):\n${heapLog}` +
                     '\n\nCALL STACK:\n' +
                     this._callStackToString(ctx) +
-                    `\n\nREDUCED HEAP (${ctx.heap.valMap.count()}):\n${heapLog}`
+                    `\n\nLOGS:\n${this._logsToString(ctx)}` +
+                    '\n\nCONSTRAINTS:\n' +
+                    ctx.ctrSet.toString(this._pathStore)
             );
         });
 
@@ -461,7 +473,7 @@ export class PyteaService {
             this._console.info(
                 chalk.green(`success path #${i + 1}`) +
                     `\nLOGS:\n${this._logsToString(ctx)}\n` +
-                    `CONSTRAINTS:\n${ctx.ctrSet.toString()}\n` +
+                    `CONSTRAINTS:\n${ctx.ctrSet.toString(this._pathStore)}\n` +
                     `ENV:\n${ctx.env.toString()}\n` +
                     `HEAP (size: ${ctx.heap.valMap.count()}):\n${ctx.heap.filter((_, key) => key >= 0).toString()}\n`
             );
@@ -472,10 +484,10 @@ export class PyteaService {
 
             this._console.info(
                 chalk.yellow(`stopped path #${i + 1}`) +
-                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${formatCodeSource(source)}\n` +
+                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${formatCodeSource(source, this._pathStore)}\n` +
                     `LOGS:\n${this._logsToString(ctx)}\n` +
                     'CONSTRAINTS:\n' +
-                    ctx.ctrSet.toString() +
+                    ctx.ctrSet.toString(this._pathStore) +
                     '\n\nCALL STACK:\n' +
                     this._callStackToString(ctx) +
                     `\nENV:\n${ctx.env.toString()}\n` +
@@ -488,10 +500,10 @@ export class PyteaService {
 
             this._console.info(
                 chalk.red(`failed path #${i + 1}`) +
-                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${formatCodeSource(source)}\n` +
+                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${formatCodeSource(source, this._pathStore)}\n` +
                     `LOGS:\n${this._logsToString(ctx)}\n` +
                     'CONSTRAINTS:\n' +
-                    ctx.ctrSet.toString() +
+                    ctx.ctrSet.toString(this._pathStore) +
                     '\n\nCALL STACK:\n' +
                     this._callStackToString(ctx) +
                     `\nENV:\n${ctx.env.toString()}\n` +
@@ -519,7 +531,7 @@ export class PyteaService {
         let hasSVError = false;
 
         success.forEach((ctx, i) => {
-            jsonList.push(ctx.ctrSet.getConstraintJSON());
+            jsonList.push(ctx.ctrSet.getConstraintJSON(this._pathStore));
 
             let heapLog = '';
             // TODO: currently assume that address 1 is main module object

@@ -8,6 +8,8 @@
  */
 import chalk from 'chalk';
 import { List, Map, Record, Set } from 'immutable';
+import { FilePathStore } from 'src/service/executionPaths';
+import { formatCodeSource } from 'src/service/pyteaUtils';
 
 import { PyteaService } from '../service/pyteaService';
 import { absIndexByLen, sanitizeSource } from './backUtils';
@@ -150,17 +152,20 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         params ? super(params) : super();
     }
 
-    toString(): string {
+    toString(pathStore?: FilePathStore): string {
         return this.ctrPool
             .map((ctr) => simplifyConstraint(this, ctr))
             .map((ctr, idx) => {
                 const str = ctrToStr(ctr);
+                const source = formatCodeSource(ctr.source, pathStore);
+                const result = `${str} - ${source}`;
+
                 if (this.hardCtr.contains(idx)) {
-                    return chalk.magenta(str);
+                    return chalk.magenta(result);
                 } else if (this.pathCtr.contains(idx)) {
-                    return chalk.yellow(str);
+                    return chalk.yellow(result);
                 } else {
-                    return str;
+                    return result;
                 }
             })
             .join('\n');
@@ -174,10 +179,10 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         return this.ctrPool.map((ctr) => simplifyConstraint(this, ctr)).toArray();
     }
 
-    getConstraintJSON(): string {
+    getConstraintJSON(pathStore?: FilePathStore): string {
         return JSON.stringify(
             {
-                ctrPool: sanitizeSource(this.getConstraints()),
+                ctrPool: sanitizeSource(this.getConstraints(), pathStore),
                 hardCtr: this.hardCtr.toArray(),
                 softCtr: this.softCtr.toArray(),
                 pathCtr: this.pathCtr.toArray(),

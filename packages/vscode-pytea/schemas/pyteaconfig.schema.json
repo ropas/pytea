@@ -81,6 +81,24 @@
           ]
         }
       }
+    },
+    "runZ3": {
+      "$id": "#/properties/runZ3",
+      "type": "boolean",
+      "title": "Pass analysis result to Python Z3 server",
+      "default": false
+    },
+    "timeout": {
+      "$id": "#/properties/timeout",
+      "type": "number",
+      "title": "Analyzer timeout in millisecond. undefined means no timeout",
+      "default": 0
+    },
+    "maxPath": {
+      "$id": "#/properties/maxPath",
+      "type": "number",
+      "title": "Set max path count, throw runtime error if path count exceeds it",
+      "default": 0
     }
   }
 }

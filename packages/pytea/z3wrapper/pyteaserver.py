@@ -12,15 +12,21 @@ analyze constraints by Z3 and serve it to HTML.
 import argparse
 import importlib.util
 import json
+import sys
+import zmq
 from .json2z3 import Z3encoder
 
 DEFAULT_PORT = 17851
 
 
 class PyTeaServer:
-    def __init__(self, args):
-        self.args = args
+    def __init__(self, port):
+        self.port = port
         self.encoder = Z3encoder(self)
+
+        self.ctx = zmq.Context()
+        self.socket = self.ctx.socket(zmq.REP)
+        self.socket.bind(f"tcp://127.0.0.1:{port}")
 
     def log(self, message):
         pass
@@ -47,9 +53,6 @@ def parse_args():
 
     args = parser.parse_args()
 
-    if importlib.util.find_spec("z3") is None:
-        return None
-
     return args
 
 
@@ -57,7 +60,13 @@ def main():
     args = parse_args()
 
     if args is None:
-        return
+        sys.exit(-1)
+
+    if (
+        importlib.util.find_spec("z3") is None
+        or importlib.util.find_spec("zmq") is None
+    ):
+        sys.exit(-1)
 
     server = PyTeaServer(args)
 

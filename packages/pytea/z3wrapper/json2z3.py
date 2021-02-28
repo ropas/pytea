@@ -144,45 +144,55 @@ class Z3Encoder:
         DontknowPaths = []
 
         for pathIdx, ctrSet in enumerate(ctrSetList):
-            log = "-----------------------------------\n"
-            log += "PATH " + str(pathIdx)
-            log += "\n-----------------------------------\n"
-            log += ctrSet.toString()
+            # comment out printing all constraints
+
+            # self.console.log(
+            #     "-----------------------------------\n"
+            #     f"PATH {str(pathIdx)}\n"
+            #     "-----------------------------------"
+            # )
+
+            # log += ctrSet.toString()
             pathResult, pathLog = ctrSet.analysis()  # side effect: print result
-            log += pathLog
+            # log += pathLog
+            log = f"--- PATH {pathIdx} ---\n{pathLog}"
 
             if pathResult == PathResult.Unavailable.value:
                 UnavailablePaths.append(pathIdx)
             elif pathResult == PathResult.Valid.value:
                 ValidPaths.append(pathIdx)
             elif pathResult == PathResult.Sat.value:
-                self.console.log(log)
                 SatPaths.append(pathIdx)
+                self.console.log(log)
             elif pathResult == PathResult.Unsat.value:
-                self.console.log(log)
                 UnsatPaths.append(pathIdx)
-            else:
                 self.console.log(log)
+            else:
                 DontknowPaths.append(pathIdx)
+                self.console.log(log)
 
-        log = "-----------------------------------\n"
-        log += "OVERALL"
-        log += "\n-----------------------------------"
-        self.console.log(log)
+        self.console.log(
+            "-----------------------------------\n"
+            f"OVERALL (total {len(ctrSetList)} paths)\n"
+            "-----------------------------------"
+        )
 
-        if len(UnavailablePaths) != 0:
-            self.console.log("Unavailable paths: {}".format(len(UnavailablePaths)))
         if len(ValidPaths) != 0:
-            self.console.log("Valid paths: {}".format(len(ValidPaths)))
+            self.console.log(f"Valid paths (no constraint error): {len(ValidPaths)}")
         if len(SatPaths) != 0:
-            self.console.log("Satisfiable paths: {}".format(len(SatPaths)))
-            self.console.log(SatPaths)
+            self.console.log(
+                f"Potentially Invalid paths (found counter example): {len(SatPaths)}"
+            )
         if len(UnsatPaths) != 0:
-            self.console.log("Unsatisfiable paths: {}".format(len(UnsatPaths)))
-            self.console.log(UnsatPaths)
+            self.console.log(
+                f"Invalid paths (found conflicted constraints): {len(UnsatPaths)}"
+            )
         if len(DontknowPaths) != 0:
-            self.console.log("Dontknow paths: {}".format(len(DontknowPaths)))
-            self.console.log(DontknowPaths)
+            self.console.log(f"Undecidable paths (z3 timeout): {len(DontknowPaths)}")
+        if len(UnavailablePaths) != 0:
+            self.console.log(
+                f"Nonexistent paths (conflicted branch conditions): {len(UnavailablePaths)}"
+            )
 
 
 # constraint set of a path.
@@ -227,30 +237,30 @@ class CtrSet:
     # analyze ctrSet(of a path).
     def analysis(self):
         if self.pathCondCheck() == "unsat":
-            log = "Unavailable path. Path condition is unsatisfiable."
+            log = "Nonexistent path: Conflicted branch conditions."
             return PathResult.Unavailable.value, log
 
         validity, counterEx = self.checkValidity()
         if validity == "valid":
-            log = "Valid path. Constraints are always satisfiable."
+            log = "Valid path: Constraints are always satisfiable."
             return PathResult.Valid.value, log
 
         sat, unsatIndice = self.checkSat()
         if sat == PathResult.Sat.value:
-            log = "Satisfiable path.\n\n"
+            log = "Potentially Invalid path: Found counter example.\n\n"
             log += "counter example:\n"
             log += str(counterEx) + "\n"
         elif sat == PathResult.Unavailable.value:
-            log = "Unavailable path. Path condition is unsatisfiable."
+            log = "Nonexistent path: Conflicted branch conditions."
         elif sat == PathResult.Unsat.value:
-            log = "Unsatisfiable path.\n\n"
+            log = "Invalid path: Found conflicted constraints.\n\n"
             log += "unsat constraint:\n"
             log += self.ctrPool[unsatIndice[-1]].toString() + "\n"
             log += "conflict constraints: \n"
             for idx in unsatIndice[:-1]:
                 log += self.ctrPool[idx].toString() + "\n"
         else:
-            log = "Dontknow path.\n\n"
+            log = "Undecidable path: Z3 failed to solve constraints.\n\n"
         return sat, log
 
     # check sat with only hardCtr and pathCtr.

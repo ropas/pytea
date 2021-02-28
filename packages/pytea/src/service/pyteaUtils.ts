@@ -647,17 +647,28 @@ export function formatParseNodeRange(node: ParseNode): string {
     const start = convertOffsetToPosition(node.start, lines);
     const end = convertOffsetToPosition(node.start + node.length, lines);
 
-    return `[${start.line + 1}:${start.character} - ${end.line + 1}:${end.character}] (${filePath})`;
+    const location = `${start.line + 1}:${start.character}`;
+    return `[${location} - ${end.line + 1}:${end.character}] (${filePath}:${location})`;
 }
 
-export function formatCodeSource(node?: CodeSource): string {
+export function formatCodeSource(node?: CodeSource, pathStore?: FilePathStore): string {
     if (!node) return 'internal';
 
     // check ParseNode or not
+    if (pathStore) {
+        const range = pathStore.toCodeRange(node);
+        if (!range) return 'internal';
+
+        const filePath = pathStore.getPath(range.fileId);
+        const { start, end } = range.range;
+        const location = `${start.line + 1}:${start.character}`;
+        return `[${location} - ${end.line + 1}:${end.character}] (${filePath}:${location})`;
+    }
+
     if (!('fileId' in node)) {
         return formatParseNodeRange(node);
     } else {
         const { start, end } = node.range;
-        return `[${start.line + 1}:${start.character} - ${end.line + 1}:${end.character}]`;
+        return `[${start.line + 1}:${start.character} - ${end.line + 1}:${end.character}] (file ${node.fileId})`;
     }
 }

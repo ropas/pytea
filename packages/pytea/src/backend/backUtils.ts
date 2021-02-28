@@ -6,9 +6,10 @@
  *
  * Utility functions for She interpreter.
  */
-import { ExpressionNode } from 'pyright-internal/parser/parseNodes';
+import { ExpressionNode, ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { TEBopType, TEUopType } from '../frontend/torchStatements';
+import { FilePathStore } from '../service/executionPaths';
 import { ConstraintSet } from './constraintSet';
 import { Constraint, ConstraintType } from './constraintType';
 import { Context, ContextSet } from './context';
@@ -94,25 +95,32 @@ export function sanitizeAddrSet(ctxSet: ContextSet<ShValue>): ContextSet<ShValue
     return ctxSet.map(sanitizeAddrCtx);
 }
 
-export function sanitizeSource(obj: Object): typeof obj {
+export function sanitizeSource(obj: Object, pathStore?: FilePathStore): typeof obj {
     // TODO: map Map
     if (typeof obj !== 'object') {
         return obj;
     }
 
     if (Array.isArray(obj)) {
-        return obj.map(sanitizeSource);
+        return obj.map((o) => sanitizeSource(o, pathStore));
     }
 
     const ret: any = {};
 
     Object.entries(obj).forEach(([k, v]) => {
         if (k === 'source') {
+            if (typeof v === 'object') {
+                if ('nodeType' in v) {
+                    return pathStore?.toCodeRange(v as ParseNode);
+                } else if ('fileId' in v) {
+                    return v;
+                }
+            }
             return;
         } else if (Array.isArray(v)) {
-            ret[k] = v.map(sanitizeSource);
+            ret[k] = v.map((o) => sanitizeSource(o, pathStore));
         } else {
-            ret[k] = sanitizeSource(v);
+            ret[k] = sanitizeSource(v, pathStore);
         }
     });
 
