@@ -46,7 +46,7 @@ import { BuiltinsLCImpl } from '../pylibImplements/builtins';
 import { evalLibCall } from '../pylibImplements/evaluator';
 import { sanitizeAddrSet, SymOpUtils } from './backUtils';
 import * as BackUtils from './backUtils';
-import { Context, ContextSet, CtxExpr, CtxStmt } from './context';
+import { Context, ContextSet, CtxExpr, CtxStmt, peekMaxPaths, setMaxPaths } from './context';
 import { ShEnv } from './sharpEnvironments';
 import {
     CodeSource,
@@ -122,7 +122,6 @@ export namespace TorchBackend {
         return runModule(stmt as TSLet, relPath).map((ctx) => ctx.asDefault());
     }
 
-    let _pathCount = 1;
     // milisecond timeout & path count timeout
     // if unset, run until memory error.
     export async function runWithFailure<T>(
@@ -133,20 +132,24 @@ export namespace TorchBackend {
         maxPath?: number
     ): Promise<ContextSet<ShValue | ShContFlag>> {
         const runner: Promise<ContextSet<ShValue | ShContFlag>> = new Promise((resolve, reject) => {
-            _pathCount = 1;
-            const pathWatcher = setInterval(() => {
+            setMaxPaths(1);
+            const pathCount = peekMaxPaths();
+            console.info(`start running with ${pathCount} paths...`);
+
+            const pathWatcher = setTimeout(() => {
+                const _pathCount = peekMaxPaths();
                 console.info(`running ${_pathCount} paths...`);
+                if (maxPath && pathCount > maxPath) {
+                    reject(`path count overflow: ${pathCount} paths (max: ${maxPath})`);
+                }
             }, 1000);
 
-            try {
-                const retVal = run(ctxSet, stmt, maxPath);
+            const retVal = run(ctxSet, stmt);
 
-                resolve(retVal);
-            } catch (pathCount) {
-                reject(`path count overflow: ${pathCount} paths (max: ${maxPath})`);
-            } finally {
-                clearInterval(pathWatcher);
-            }
+            clearInterval(pathWatcher);
+            console.info(`end running with ${pathCount} paths`);
+
+            resolve(retVal);
         });
 
         if (timeout) {
@@ -159,12 +162,7 @@ export namespace TorchBackend {
         }
     }
 
-    export function run<T>(ctxSet: ContextSet<T>, stmt: ThStmt, maxPath?: number): ContextSet<ShValue | ShContFlag> {
-        _pathCount = ctxSet.getRunningCount();
-        if (maxPath && _pathCount > maxPath) {
-            throw _pathCount;
-        }
-
+    export function run<T>(ctxSet: ContextSet<T>, stmt: ThStmt): ContextSet<ShValue | ShContFlag> {
         switch (stmt.stype) {
             case TSType.Pass:
                 return _runPass(ctxSet, stmt);

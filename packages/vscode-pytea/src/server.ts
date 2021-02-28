@@ -146,7 +146,7 @@ export class PyteaServer {
         });
     }
 
-    analyze(entryPath: string) {
+    async analyze(entryPath: string) {
         this.console.info(`analyzing ${entryPath}...`);
 
         const workspace = this._workspaceMap.getWorkspaceForFile(entryPath);
@@ -181,10 +181,12 @@ export class PyteaServer {
         try {
             // TODO: remove global reference
             PyteaService.setGlobalService(pyteaService);
-            const result = pyteaService.analyze();
-            const success = result?.getList();
-            const stopped = result?.getStopped();
-            const failed = result?.getFailed();
+
+            // TODO: resolve rejected
+            const result = await pyteaService.analyze();
+            const success = result.getList();
+            const stopped = result.getStopped();
+            const failed = result.getFailed();
             this.console.info(
                 `Analyzing completed. Found ${success?.count() ?? 0} success paths / ${
                     failed?.count() ?? 0
@@ -287,16 +289,8 @@ export class PyteaServer {
         };
 
         const pyteaOptions: PyteaOptions = {
-            configPath: '',
-            pyteaLibPath: '',
-            entryPath: '',
-            pythonCmdArgs: {},
-            pythonSubcommand: '',
+            ...defaultOptions,
             logLevel: 'result-only',
-            immediateConstraintCheck: true,
-            ignoreAssert: false,
-            extractIR: false,
-            variableRange: {},
         };
 
         try {

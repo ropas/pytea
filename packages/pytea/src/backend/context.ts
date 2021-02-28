@@ -733,6 +733,15 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     }
 }
 
+let _maxPaths = 0;
+export function peekMaxPaths(): number {
+    return _maxPaths;
+}
+
+export function setMaxPaths(count: number) {
+    _maxPaths = count;
+}
+
 export class ContextSetImpl<T> implements ContextSet<T> {
     env: false;
     // running path
@@ -744,6 +753,9 @@ export class ContextSetImpl<T> implements ContextSet<T> {
     private _stopped: List<Context<SVError>>;
 
     constructor(ctxList: List<Context<T>>, failed?: List<Context<SVError>>, stopped?: List<Context<SVError>>) {
+        const len = ctxList.count();
+        if (len > _maxPaths) _maxPaths = len;
+
         this.env = false;
         this._ctxList = ctxList;
         this._failed = failed ? failed : List();
