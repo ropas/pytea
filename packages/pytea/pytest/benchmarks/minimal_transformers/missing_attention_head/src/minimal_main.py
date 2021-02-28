@@ -15,7 +15,7 @@ parser.add_argument(
     "--device", default="auto", help="device type that will be used while training"
 )
 parser.add_argument("--max_len", default=128, help="max length for BERT sequence input")
-parser.add_argument("--batch_size", default=16, help="batch size for training BERT")
+parser.add_argument("--batch_size", default=2048, help="batch size for training BERT")
 parser.add_argument("--lr", default=2e-5, help="learning rate for AdamW")
 parser.add_argument("--epochs", default=1, help="training epochs")
 
@@ -66,10 +66,10 @@ input_ids = np.array(input_ids, dtype=np.long)  ## (data_size, args.max_len)
 '''
 
 # Without tokenizer preprocessing..
-DATA_SIZE = 150  # TODO: change this into 150000
+DATA_SIZE = 15000
 
-input_ids = torch.randint(low=0, high=10000, size=(150, 128)).numpy()
-labels = torch.randint(low=0, high=2, size=(150,)).numpy()
+input_ids = torch.randint(low=0, high=10000, size=(DATA_SIZE, args.max_len)).numpy()
+labels = torch.randint(low=0, high=2, size=(DATA_SIZE,)).numpy()
 
 
 ### Attention masks
@@ -80,7 +80,7 @@ for seq in input_ids:
     seq_mask = (seq > 0).astype(np.float)
     attention_masks.append(seq_mask)
 '''
-attention_masks = torch.rand(150, 128).numpy()
+attention_masks = torch.rand(DATA_SIZE, args.max_len).numpy()
 
 
 ### Dataset split into training & validation
@@ -118,7 +118,7 @@ config = transformers.BertConfig(
     vocab_size=10000,
     hidden_size=768,
     num_hidden_layers=6,
-    max_position_embeddings=128,
+    max_position_embeddings=args.max_len,
     type_vocab_size=1,
 )
 model = transformers.BertForSequenceClassification(config)
