@@ -100,7 +100,6 @@ Ellipsis.__mro__ = (Ellipsis, object)
 Ellipsis.__name__ = "Ellipsis"
 
 
-
 def _tuple__getitem__(self, index):
     if isinstance(index, int):
         return self[index]
@@ -127,11 +126,13 @@ def _tuple__getitem__(self, index):
                 return (self[i] for i in range(start, stop))
 
 
+
 tuple.__getitem__ = _tuple__getitem__
 
 
 def _list_append(self, item):
     LibCall.builtins.list_append(self, item)
+
 
 list.append = _list_append
 
@@ -161,6 +162,7 @@ def _list__getitem__(self, index):
                 # index by [start:stop]
                 return [self[i] for i in range(start, stop)]
 
+
 list.__getitem__ = _list__getitem__
 
 
@@ -171,6 +173,7 @@ def _list__add__(self, items):
     for item in items:
         LibCall.builtins.list_append(ret, item)
     return ret
+
 
 list.__add__ = _list__add__
 
@@ -183,7 +186,9 @@ def _tuple__add__(self, items):
         LibCall.builtins.list_append(ret, item)
     return ret
 
+
 tuple.__add__ = _tuple__add__
+
 
 def _dict_items(self):
     return LibCall.builtins.dict_items(self)
@@ -225,7 +230,9 @@ def _str_replace(self, old, new, count=None):
     # TODO: replace it.
     return self
 
+
 str.replace = _str_replace
+
 
 def sum(values):
     a = 0
@@ -279,6 +286,13 @@ class zip:
 
     def __len__(self):
         return self.len
+
+
+def _TERNARY_IF_ELSE_(case, left, right):
+    if case:
+        return left
+    else:
+        return right
 
 
 class BaseException:
