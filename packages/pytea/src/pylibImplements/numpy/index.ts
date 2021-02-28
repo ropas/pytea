@@ -527,6 +527,33 @@ export namespace NumpyLCImpl {
         }
     }
 
+    export function flatten(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length < 1) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.flatten': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [inputAddr, startDimAddr, endDimAddr] = params;
+
+        // TODO: use kwargs info.
+        // TODO: handle negative indexing
+
+        const inputSize = fetchSize(inputAddr, heap);
+        if (typeof inputSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.flatten': ${inputSize}`, source);
+        }
+        const inputShape = inputSize.shape;
+
+        // np.flatten only outputs 1-D array
+        const returnShape = ExpShape.fromConst(1, [ExpNum.numel(inputShape, source)], source);
+
+        return ctx.require([]).flatMap((ctx) => genNdarray(ctx, returnShape, source));
+    }
+
     function genNdarray<T>(ctx: Context<T>, shape: ExpShape, source?: CodeSource): ContextSet<ShValue> {
         const newShape = simplifyShape(ctx.ctrSet, shape);
 
@@ -567,6 +594,7 @@ export namespace NumpyLCImpl {
         concatenate,
         copyOut,
         reduce,
+        flatten,
     };
 }
 

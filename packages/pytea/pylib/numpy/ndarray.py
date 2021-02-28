@@ -1,6 +1,7 @@
 import LibCall
 import numpy
 
+
 class ndarray:
     def __init__(
         self, shape, dtype=float, buffer=None, offset=0, strides=None, order=None
@@ -44,8 +45,19 @@ class ndarray:
     def __rfloordiv__(self, other):
         return numpy._bop(self, other)
 
+    def __eq__(self, other):
+        return numpy._bop(self, other)
+
     def __matmul__(self, other):
         return LibCall.numpy.matmul(self, other)
 
     def __rmatmul__(self, other):
         return LibCall.numpy.matmul(other, self)
+
+    def __len__(self):
+        if len(self.shape) == 0:
+            raise TypeError("len() of a 0-d tensor")
+        return self.shape[0]
+
+    def flatten(self, order="C"):
+        return LibCall.numpy.flatten(self)

@@ -906,11 +906,10 @@ export class TorchIRFrontend {
     }
 
     visitTernary(node: TernaryNode): ThExpr {
-        // x ? y : z => (x and y) or z  (from Lua's trick)
         const cond = this.visitExprNode(node.testExpression);
         const left = this.visitExprNode(node.ifExpression);
         const right = this.visitExprNode(node.elseExpression);
-        return TEBinOp.create(TEBopType.Or, TEBinOp.create(TEBopType.And, cond, left, node), right, node);
+        return TECall.create(TEName.create('_TERNARY_IF_ELSE_', node), [cond, left, right], node);
     }
 
     visitBreak(node: BreakNode): ThStmt {

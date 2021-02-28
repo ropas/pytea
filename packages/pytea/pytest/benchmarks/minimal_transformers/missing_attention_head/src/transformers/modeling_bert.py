@@ -176,10 +176,15 @@ class BertSelfAttention(nn.Module):
         context_layer = torch.matmul(attention_probs, value_layer)
 
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
-        ### new_context_layer_shape = context_layer.size()[:-2]  # error
-        # new_context_layer_shape = (context_layer.shape[0], context_layer.shape[1])  # error
-        ### new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)  # correct
-        new_context_layer_shape = (context_layer.shape[0], context_layer.shape[1]) + (self.all_head_size,)  # correct
+
+        ### ERROR CODE:
+        # new_context_layer_shape = (context_layer.shape[0], context_layer.shape[1])
+        ###############
+
+        ### CORRECT CODE:
+        new_context_layer_shape = (context_layer.shape[0], context_layer.shape[1]) + (self.all_head_size,)
+        #################
+
         context_layer = context_layer.view(*new_context_layer_shape)
 
         outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
