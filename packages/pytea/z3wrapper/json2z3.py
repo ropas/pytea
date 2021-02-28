@@ -194,7 +194,7 @@ class CtrSet:
         softCtr: indices of ctrPool, whose ctr can be violated.
         pathCtr: indices of ctrPool, whose ctr indicates path conditions.
         """
-        self.ctrPool = list(map(lambda jsonCtr: Ctr(jsonCtr), jsonCtrSet["ctrPool"]))
+        self.ctrPool = list(map(Ctr, jsonCtrSet["ctrPool"]))
         self.hardCtr = jsonCtrSet["hardCtr"]
         self.softCtr = jsonCtrSet["softCtr"]
         self.pathCtr = jsonCtrSet["pathCtr"]
@@ -384,6 +384,7 @@ class CtrSet:
 
 class Ctr:
     def __init__(self, jsonCtr):
+        self.json = jsonCtr
         self.formula = self.encode(jsonCtr)
         if "source" in jsonCtr:
             self.source = jsonCtr["source"]
@@ -840,20 +841,29 @@ class DefaultConsole:
         print(message)
 
 
-def run_default(json_path):
+class NullConsole:
+    def log(self, message):
+        pass
+
+
+def run_default(json_path, args):
     start_time = time.time()
     json_path = Path(json_path)
 
+    console = DefaultConsole() if not args.silent else NullConsole()
+
+    console.log("\n------------- z3 result -------------")
+
     if not json_path.exists():
-        print(f"result json '{json_path}' does not exist")
+        console.log(f"result json '{json_path}' does not exist")
         return
 
     with json_path.open("r") as f:
         ctr_set = json.load(f)
-        encoder = Z3Encoder(DefaultConsole())
+        encoder = Z3Encoder(console)
         encoder.analyze(ctr_set)
 
-        print(f"z3 runtime: {time.time() - start_time:.4f}")
+        console.log(f"z3 runtime: {time.time() - start_time:.4f}")
 
 
 if __name__ == "__main__":
@@ -862,5 +872,5 @@ if __name__ == "__main__":
         sys.exit()
 
     json_path = str(sys.argv[1])
-    run_default(json_path)
+    run_default(json_path, dict(silent=False))
 

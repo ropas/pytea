@@ -227,6 +227,7 @@ export interface ContextSet<T> {
     getList(): List<Context<T>>;
     getFailed(): List<Context<SVError>>;
     getStopped(): List<Context<SVError>>;
+    getRunningCount(): number;
 
     isEmpty(): boolean;
     addLog(message: string, source?: CodeSource): ContextSet<T>;
@@ -775,6 +776,10 @@ export class ContextSetImpl<T> implements ContextSet<T> {
 
     getStopped(): List<Context<SVError>> {
         return this._stopped;
+    }
+
+    getRunningCount(): number {
+        return this._ctxList.count();
     }
 
     filter(tester: (ctx: Context<T>) => boolean): ContextSet<T> {

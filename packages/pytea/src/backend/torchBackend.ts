@@ -121,7 +121,39 @@ export namespace TorchBackend {
         return runModule(stmt as TSLet, relPath).map((ctx) => ctx.asDefault());
     }
 
-    export function run<T>(ctxSet: ContextSet<T>, stmt: ThStmt): ContextSet<ShValue | ShContFlag> {
+    let _pathCount = 0;
+    // milisecond timeout & path count timeout
+    // if unset, run until memory error.
+    export function runWithFailure<T>(
+        ctxSet: ContextSet<T>,
+        stmt: ThStmt,
+        timeout?: number,
+        maxPath?: number
+    ): Promise<ContextSet<ShValue | ShContFlag>> {
+        const runner: Promise<ContextSet<ShValue | ShContFlag>> = new Promise((resolve, reject) => {
+            try {
+                const retVal = run(ctxSet, stmt, maxPath);
+                resolve(retVal);
+            } catch (pathCount) {
+                reject(`path count overflow: ${pathCount} paths (max: ${maxPath})`);
+            }
+        });
+        if (timeout) {
+            const referee: Promise<never> = new Promise((_, reject) => {
+                setTimeout(() => reject(`timeout expired`), timeout);
+            });
+            return Promise.race([runner, referee]);
+        } else {
+            return runner;
+        }
+    }
+
+    export function run<T>(ctxSet: ContextSet<T>, stmt: ThStmt, maxPath?: number): ContextSet<ShValue | ShContFlag> {
+        _pathCount = ctxSet.getRunningCount();
+        if (maxPath && _pathCount > maxPath) {
+            throw _pathCount;
+        }
+
         switch (stmt.stype) {
             case TSType.Pass:
                 return _runPass(ctxSet, stmt);

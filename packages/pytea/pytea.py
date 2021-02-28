@@ -43,6 +43,9 @@ def parse_arg():
     parser.add_argument(
         "--node-arguments", default="", help="arguments for constraint generator"
     )
+    parser.add_argument(
+        "--silent", action="store_true", help="do not print result (for server)"
+    )
 
     return parser.parse_args()
 
@@ -71,8 +74,7 @@ def main():
 
     # run backend with json formatted constraints.
     if not args.no_z3:
-        print("\n------------- z3 result -------------")
-        run_default(json_path)
+        run_default(json_path, args)
 
 
 if __name__ == "__main__":
