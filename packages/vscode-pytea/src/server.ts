@@ -216,18 +216,6 @@ export class PyteaServer {
                     );
                     executionPaths.push(path);
                     id++;
-
-                    const error = p.retVal;
-                    const sourceRange = pyteaService.getSourceRange(error.source);
-                    if (sourceRange) {
-                        const [filePath, range] = sourceRange;
-                        this._connection.sendDiagnostics({
-                            uri: convertPathToUri(filePath),
-                            diagnostics: this._convertDiagnostics([
-                                new AnalyzerDiagnostic(DiagnosticCategory.Warning, error.reason, range),
-                            ]),
-                        });
-                    }
                 });
 
                 failed?.forEach((p) => {
@@ -240,18 +228,6 @@ export class PyteaServer {
                     );
                     executionPaths.push(path);
                     id++;
-
-                    const error = p.retVal;
-                    const sourceRange = pyteaService.getSourceRange(error.source);
-                    if (sourceRange) {
-                        const [filePath, range] = sourceRange;
-                        this._connection.sendDiagnostics({
-                            uri: convertPathToUri(filePath),
-                            diagnostics: this._convertDiagnostics([
-                                new AnalyzerDiagnostic(DiagnosticCategory.Error, error.reason, range),
-                            ]),
-                        });
-                    }
                 });
 
                 setTimeout(() => {
@@ -259,21 +235,8 @@ export class PyteaServer {
                     pyteaService.printLog(result);
                 }, 10);
 
-                // if (failed && failed.count() > 0) {
-                //     const failPath = failed.get(0)!;
-                //     const error = failPath.retVal;
-                //     const sourceRange = pyteaService.getSourceRange(error.source);
-                //     if (sourceRange) {
-                //         const [filePath, range] = sourceRange;
-                //         this._connection.sendDiagnostics({
-                //             uri: convertPathToUri(filePath),
-                //             diagnostics: this._convertDiagnostics([
-                //                 new AnalyzerDiagnostic(DiagnosticCategory.Error, error.reason, range),
-                //             ]),
-                //         });
-                //     }
-                // }
-                // return ['a'];
+                workspace.paths = executionPaths;
+
                 return executionPaths.map((p) => p.props);
             } else {
                 this.console.error('Analyzer returned undefined');
@@ -283,7 +246,19 @@ export class PyteaServer {
         }
     }
 
-    selectDiagnostics(pathId: number): void {}
+    selectPath(pathId: number): void {
+        // const error = p.retVal;
+        // const sourceRange = pyteaService.getSourceRange(error.source);
+        // if (sourceRange) {
+        //     const [filePath, range] = sourceRange;
+        //     this._connection.sendDiagnostics({
+        //         uri: convertPathToUri(filePath),
+        //         diagnostics: this._convertDiagnostics([
+        //             new AnalyzerDiagnostic(DiagnosticCategory.Warning, error.reason, range),
+        //         ]),
+        //     });
+        // }
+    }
 
     restart() {
         this._workspaceMap.forEach((workspace) => {

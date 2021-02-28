@@ -218,8 +218,15 @@ export class PathManager {
             new ConstraintDataProvider(CtrType.Path),
             new ConstraintDataProvider(CtrType.Hard),
         ];
-        this._pathTree = window.createTreeView('executionPaths', { treeDataProvider: this._mainProvider });
-        this._varTree = window.createTreeView('variables', { treeDataProvider: providers[0] });
+        this._pathTree = window.createTreeView('executionPaths', {
+            treeDataProvider: this._mainProvider,
+            canSelectMany: false,
+        });
+        this._varTree = window.createTreeView('variables', {
+            treeDataProvider: providers[0],
+            showCollapseAll: true,
+            canSelectMany: false,
+        });
         this._stackTree = window.createTreeView('callStack', { treeDataProvider: providers[1] });
         this._softCtrTree = window.createTreeView('softConstraints', { treeDataProvider: providers[2] });
         this._pathCtrTree = window.createTreeView('pathConstraints', { treeDataProvider: providers[3] });

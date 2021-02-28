@@ -57,7 +57,7 @@
             },
             {
                 "command": "pytea.inspectVariable",
-                "title": "Inspect the value of the variable from environment",
+                "title": "Inspect The Value Of The Variable From Environment",
                 "category": "Pytea"
             },
             {
@@ -94,13 +94,6 @@
                     "title": "Pytea Analysis",
                     "icon": "images/sidebar.svg"
                 }
-            ],
-            "panel": [
-                {
-                    "id": "pytea-explorer",
-                    "title": "Pytea",
-                    "icon": "images/sidebar.svg"
-                }
             ]
         },
         "views": {
@@ -119,21 +112,18 @@
                 },
                 {
                     "id": "softConstraints",
-                    "name": "Soft Constraints"
+                    "name": "Soft Constraints",
+                    "visibility": "collapsed"
                 },
                 {
                     "id": "pathConstraints",
-                    "name": "Path Constraints"
+                    "name": "Path Constraints",
+                    "visibility": "collapsed"
                 },
                 {
                     "id": "hardConstraints",
-                    "name": "Hard Constraints"
-                }
-            ],
-            "pytea-explorer": [
-                {
-                    "id": "analyzerLog",
-                    "name": "Analyzer Log"
+                    "name": "Hard Constraints",
+                    "visibility": "collapsed"
                 }
             ]
         }
