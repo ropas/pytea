@@ -69,8 +69,8 @@ enum PathResultType {
 interface PathResult {
     type: PathResultType,
     extras: {
-        counterexample?: string // if type == MayInvalid
-        conflict?: number // index of conflicted constraint (type == Invalid)
+        conflict?: number // first index of conflicted constraint (type == Invalid)
+        undecide?: number // first index of undecidable constraint (type == Undecidable)
     }
 }
 ```

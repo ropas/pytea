@@ -7,21 +7,8 @@
  * Client for Pytea Python language server.
  */
 import * as path from 'path';
-import { ExecutionPath, ExecutionPathProps } from 'pytea/service/executionPaths';
-import {
-    commands,
-    ExtensionContext,
-    extensions,
-    OutputChannel,
-    TextEdit,
-    TextEditor,
-    TextEditorEdit,
-    TreeDataProvider,
-    TreeItem,
-    TreeItemCollapsibleState,
-    Uri,
-    window,
-} from 'vscode';
+import { ExecutionPathProps } from 'pytea/service/executionPaths';
+import { commands, ExtensionContext, extensions, OutputChannel, TextEditor, TextEditorEdit, Uri } from 'vscode';
 import {
     CancellationToken,
     ConfigurationParams,

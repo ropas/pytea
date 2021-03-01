@@ -204,15 +204,19 @@ class CtrSet:
         softCtr: indices of ctrPool, whose ctr can be violated.
         pathCtr: indices of ctrPool, whose ctr indicates path conditions.
         """
-        self.ctrPool = list(map(Ctr, jsonCtrSet["ctrPool"]))
-        self.hardCtr = jsonCtrSet["hardCtr"]
-        self.softCtr = jsonCtrSet["softCtr"]
-        self.pathCtr = jsonCtrSet["pathCtr"]
+        self.ctrPool = [Ctr(c) for c in jsonCtrSet["ctrPool"]]
+        self.hardIdx = jsonCtrSet["hardCtr"]
+        self.softIdx = jsonCtrSet["softCtr"]
+        self.pathIdx = jsonCtrSet["pathCtr"]
+
+        self.assumptions = [self.ctrPool[i].formula for i in self.hardIdx]
+        self.pathCtrs = [self.ctrPool[i].formula for i in self.pathIdx]
+        self.softCtrs = [self.ctrPool[i].formula for i in self.softIdx]
 
     def toString(self):
-        assumptions = list(map(lambda i: self.ctrPool[i], self.hardCtr))
-        pathCtrs = list(map(lambda i: self.ctrPool[i], self.pathCtr))
-        softCtrs = list(map(lambda i: self.ctrPool[i], self.softCtr))
+        assumptions = [self.ctrPool[i].formula for i in self.hardIdx]
+        pathCtrs = [self.ctrPool[i].formula for i in self.pathIdx]
+        softCtrs = [self.ctrPool[i].formula for i in self.softIdx]
 
         log = ""
 
@@ -240,162 +244,75 @@ class CtrSet:
 
         if self.pathCondCheck() == "unsat":
             log = "Nonexistent path: Conflicted branch conditions."
-            return PathResult.Unavailable.value, log
+            return PathResult.Unavailable.value, log, extras
 
-        validity, counterEx = self.checkValidity()
+        validity = self.checkValidity()
         if validity == "valid":
-            log = "Valid path: Constraints are always satisfiable."
-            return PathResult.Valid.value, log
+            log = "Valid path: Constraints are satisfiable."
+            return PathResult.Valid.value, log, extras
 
         sat, unsatIndice = self.checkSat()
         if sat == PathResult.Sat.value:
-            counter_str = str(counterEx)
-            log = "Potentially Invalid path: Found counter example.\n\n"
-            log += "counter example:\n"
-            log += counter_str + "\n"
-            extras["counterexample"] = counter_str
-        elif sat == PathResult.Unavailable.value:
-            log = "Nonexistent path: Conflicted branch conditions."
+            log = "Valid path: Constraints are satisfiable."
+            return PathResult.Valid.value, log, extras
         elif sat == PathResult.Unsat.value:
             log = "Invalid path: Found conflicted constraints.\n\n"
-            log += "unsat constraint:\n"
-            log += self.ctrPool[unsatIndice[-1]].toString() + "\n"
-            log += "conflict constraints: \n"
-            for idx in unsatIndice[:-1]:
-                log += self.ctrPool[idx].toString() + "\n"
-            extras["conflict"] = unsatIndice[-1]
+            log += "first conflicted hard constraint:\n"
+            log += self.ctrPool[unsatIndice].toString() + "\n"
+            extras["conflict"] = unsatIndice
         else:
+            sat = PathResult.DontKnow.value
             log = "Undecidable path: Z3 failed to solve constraints.\n\n"
+            log += "first undecidable hard constraint:\n"
+            log += self.ctrPool[unsatIndice].toString() + "\n"
+            extras["undecide"] = unsatIndice
 
         return sat, log, extras
 
     # check sat with only hardCtr and pathCtr.
     def pathCondCheck(self):
-        assumptions = list(map(lambda i: self.ctrPool[i].formula, self.hardCtr))
-        pathConds = list(map(lambda i: self.ctrPool[i].formula, self.pathCtr))
-        formula = And(pathConds)
+        formula = And(self.pathCtrs)
 
         s = Solver()
         s.add(formula)
 
-        return str(s.check(assumptions))
+        return str(s.check(self.assumptions))
 
     # check validity and find counter-example if invalid.
     # return (validity, counter-example).
     def checkValidity(self):
-        assumptions = list(map(lambda i: self.ctrPool[i].formula, self.hardCtr))
-        ctrs = (
-            self.softCtr + self.pathCtr
-        )  # currently, do not distinguish softCtr and path Ctr.
-        ctrs.sort()
-        constraints = list(map(lambda i: self.ctrPool[i].formula, ctrs))
+        assumptions = self.assumptions + self.pathCtrs
+        constraints = self.softCtrs
         formula = Implies(And(assumptions), And(constraints))
         neg = Not(formula)
 
         s = Solver()
         s.add(neg)
         if str(s.check()) == "unsat":
-            return "valid", None
+            return "valid"
         else:
-            return "invalid", s.model()
+            return "invalid"
 
     def checkSat(self, minimize=False):
-        def findIndiceOfCtrs(ctrPool, ctrs):
-            indices = []
-            for ctr in ctrs:
-                for idx, ctr_ in enumerate(ctrPool):
-                    if ctr == ctr_.formula:
-                        indices.append(idx)
-                        break
-            indices.sort()
-            return indices
-
-        constraints = list(map(lambda ctr: ctr.formula, self.ctrPool))
         s = Solver()
-        if minimize:
-            s.set(":core.minimize", True)
-        result = str(s.check(constraints))
-        if result == "sat":
-            return PathResult.Sat.value, None
-        elif result == "unsat":
-            unsatCore = s.unsat_core()
-            unsatIndice = findIndiceOfCtrs(self.ctrPool, unsatCore)
-            if unsatIndice[-1] in self.pathCtr:
-                return PathResult.Unavailable.value, unsatIndice
-            return PathResult.Unsat.value, unsatIndice
-        else:
-            return PathResult.DontKnow.value, None
+        last_hard_idx = 0
 
-    # track constraint which causes unsat.
-    # direction can be "forward" | "backward" | "binary".
-    # TODO: Is there cases that checkSat() can't distinguish unavailable path, but trackUnsatCtrs() can?
-    #       If not, this function is not needed.
-    def trackUnsatCtrs(self, direction="forward"):
-        def checkCtrs(ctrPool):
-            s = Solver()
-            ctrs = list(map(lambda ctr: ctr.formula, ctrPool))
-            s.add(ctrs)
-            return str(s.check())
+        for curr_hard_idx in self.hardIdx:
+            curr_list = self.ctrPool[last_hard_idx:curr_hard_idx]
+            curr_hard = self.ctrPool[curr_hard_idx]
+            s.add(And(And(curr_list), Not(curr_hard)))
 
-        def checkCtrUnderAssumptions(assumptionPool, ctr):
-            s = Solver()
-            s.add(ctr.formula)
-            assumptions = list(
-                map(lambda assumption: assumption.formula, assumptionPool)
-            )
-            result = s.check(assumptions)
-            conflicts = s.unsat_core()
-            return str(result), conflicts
+            result = s.check()
+            if result == "sat":
+                return PathResult.Unsat.value, curr_hard_idx
+            elif result == "unsat":
+                pass
+            else:
+                return PathResult.DontKnow.value, curr_hard_idx
 
-        def findIndicesOfCtrs(ctrPool, ctrs):
-            indices = []
-            for ctr in ctrs:
-                for idx, ctr_ in enumerate(ctrPool):
-                    if ctr == ctr_.formula:
-                        indices.append(idx)
-                        break
-            return indices
+            last_hard_idx = curr_hard_idx
 
-        def trackForward(ctrPool, hardIndices):
-            for i in range(len(ctrPool)):
-                if i in hardIndices and i != len(ctrPool) - 1:
-                    continue
-                if checkCtrs(ctrPool[: i + 1]) == "unsat":
-                    break
-            return i
-
-        def trackBackward(ctrPool, hardIndices):
-            for i in reversed(range(len(ctrPool))):
-                if i in hardIndices and i != len(ctrPool) - 1:
-                    continue
-                if checkCtrs(ctrPool[: i + 1]) == "sat":
-                    break
-            return i + 1
-
-        def trackBinary(ctrPool, lb, ub, before):
-            if lb > ub:
-                return lb
-            idx = (lb + ub) // 2
-            check = checkCtrs(ctrPool[: idx + 1])
-            if check == "sat":
-                return trackBinary(ctrPool, idx + 1, ub, check)
-            if check == "unsat":
-                return trackBinary(ctrPool, lb, idx - 1, check)
-
-        if direction == "forward":
-            unsatIdx = trackForward(self.ctrPool, self.hardCtr)
-        elif direction == "backward":
-            unsatIdx = trackBackward(self.ctrPool, self.hardCtr)
-        elif direction == "binary":
-            unsatIdx = trackBinary(self.ctrPool, 0, len(self.ctrPool) - 1, "unsat")
-
-        if unsatIdx in self.pathCtr:
-            return PathResult.Unavailable.value, None
-        result, conflicts = checkCtrUnderAssumptions(
-            self.ctrPool[:unsatIdx], self.ctrPool[unsatIdx]
-        )
-        conflictIndices = findIndicesOfCtrs(self.ctrPool, conflicts)
-        return PathResult.Unsat.value, conflictIndices + [unsatIdx]
+        return PathResult.Sat.value, None
 
 
 class Ctr:
