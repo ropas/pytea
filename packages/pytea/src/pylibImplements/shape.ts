@@ -158,7 +158,7 @@ export namespace ShapeLCImpl {
         if (index.type === SVType.Int) {
             // index is contant int
             const indexNum = index.value;
-            const indexDim = ExpNum.index(shape, indexNum, source);
+            const indexDim = ExpNum.index(shape, axisValue, source);
 
             return ctx
                 .require(
@@ -240,7 +240,11 @@ export namespace ShapeLCImpl {
                 const maskNum = maskCtx.retVal;
 
                 return maskCtx
-                    .require([maskCtx.genLte(maskNum, sizeNumel, source), maskCtx.genEq(shape, mask.shape, source)])
+                    .require(
+                        [maskCtx.genLte(maskNum, sizeNumel, source), maskCtx.genEq(shape, mask.shape, source)],
+                        `from 'LibCall.tensor.getItem: Shape of mask must match.`,
+                        source
+                    )
                     .flatMap((ctx) => {
                         return genTensor(ctx, ExpShape.fromConst(1, [maskNum], source));
                     });
@@ -255,11 +259,51 @@ export namespace ShapeLCImpl {
             .toSet();
     }
 
+    // shapeConcat(T[1, 2, 3], T[4, 5, 6], obj):
+    //     set size of 'obj' to be T[1, 2, 3, 4, 5, 6].
+    export function shapeConcat(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 3) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.shape.shapeConcat': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const { env, heap } = ctx;
+        const [leftAddr, rightAddr, objAddr] = params;
+
+        const left = fetchSize(leftAddr, heap);
+        const right = fetchSize(rightAddr, heap);
+        const obj = fetchAddr(objAddr, heap);
+
+        if (typeof left === 'string') {
+            return ctx.warnWithMsg(`from 'LibCall.shape.shapeConcat': left is not a Size type`, source).toSet();
+        }
+        if (typeof right === 'string') {
+            return ctx.warnWithMsg(`from 'LibCall.shape.shapeConcat': right is not a Size type`, source).toSet();
+        }
+        if (objAddr.type !== SVType.Addr || obj?.type !== SVType.Object) {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.shape.shapeConcat': not an object type:\n\t${objAddr.toString()} -> ${obj?.toString()}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const newShape = ExpShape.concat(left.shape, right.shape, source);
+        const sizeObj = SVSize.fromObject(ctx, obj, newShape);
+        const newHeap = heap.setVal(objAddr, obj.setAttr('shape', sizeObj));
+        return ctx.setHeap(newHeap).toSetWith(objAddr);
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         repeat,
         size_getitem,
         size_len,
         tensorGetItem,
+        shapeConcat,
     };
 }
 

@@ -2,14 +2,19 @@ from .. import LibCall
 import torch
 import numpy
 
+
 class Tensor:
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, dtype=None, **kwargs):
         LibCall.torch.tensorInit(self, args, kwargs)
+        if dtype is None:
+            self.dtype = torch.floatDefault
+        else:
+            self.dtype = dtype
         self.data = self
 
     # # TODO: make @staticmethod
     def __getattr__(self, attr):
-        if attr == 'ndim':
+        if attr == "ndim":
             return len(self.shape)
 
         return NotImplemented
@@ -22,7 +27,7 @@ class Tensor:
             return self.shape
         else:
             return self.shape[dim]
-    
+
     def dim(self):
         return len(self.shape)
 
@@ -68,20 +73,23 @@ class Tensor:
         return self
 
     def repeat(self, *sizes):
-        return LibCall.torch.repeat(self, sizes)
+        dtype = self.dtype
+        tensor = LibCall.torch.repeat(self, sizes)
+        tensor.dtype = dtype
+        return tensor
 
     def transpose(self, dim0, dim1):
-        return LibCall.torch.transpose(self, dim0, dim1)
+        return torch.transpose(self, dim0, dim1)
 
     def argmax(self, dim=None, keepdim=False):
-        return LibCall.torch.reduce(self, dim, keepdim)
+        return torch.argmax(self, dim, keepdim)
 
     def numpy(self):
         return numpy.ndarray(self.shape)
 
     # TODO: dim can be tuple. LibCall.torch.reduce must cover it.
     def sum(self, dim=None, keepdim=False, dtype=None):
-        return LibCall.torch.reduce(self, dim, keepdim)
+        return torch.sum(self, dim, keepdim, dtype)
 
     def item(self):
         return LibCall.torch.item(self)
@@ -90,7 +98,10 @@ class Tensor:
         return torch._bop(self, other)
 
     def view(self, *shape):
-        return LibCall.torch.view(self, shape)
+        dtype = self.dtype
+        tensor = LibCall.torch.view(self, shape)
+        tensor.dtype = dtype
+        return tensor
 
     def view_as(self, other):
         return self.view(other.size())
@@ -107,37 +118,63 @@ class Tensor:
     def bmm(self, batch2):
         return torch.bmm(self, batch2)
 
-    # TODO: Behavior of functions like to, type, long, item is dependent on dtype.
-    #      They should be fixed if info of ExpShape extends.
     def to(self, *args, **kwargs):
-        return self
+        firstArg = args[0]
+
+        if isinstance(firstArg, Tensor):
+            return self.type(firstArg.dtype)
+        elif isinstance(firstArg, str):  # device
+            dtype = self.dtype
+            tensor = LibCall.torch.identityShape(self)
+            tensor.dtype = dtype
+            tensor.device = firstArg
+            return tensor
+        else:
+            return self.type(firstArg)
+
+        return NotImplemented
 
     def type(self, dtype=None, **kwargs):
         if dtype is None:
-            # TODO: return dtype of self
-            return "UnknownTensorType"
-        else:
+            return self.dtype
+        elif self.dtype is dtype:
             return self
+        else:
+            tensor = LibCall.torch.identityShape(self)
+            tensor.dtype = dtype
+            return tensor
+
+    def bool(self):
+        return self.to(torch.bool)
 
     def long(self, **kwargs):
-        return self.to(self, kwargs)
-    
+        return self.to(torch.int64)
+
     def detach(self):
-        return LibCall.torch.identityShape(self)
-    
+        dtype = self.dtype
+        tensor = LibCall.torch.identityShape(self)
+        tensor.dtype = dtype
+        return tensor
+
     def cpu(self):
-        return LibCall.torch.identityShape(self)
-    
+        dtype = self.dtype
+        tensor = LibCall.torch.identityShape(self)
+        tensor.dtype = dtype
+        return tensor
+
     def flatten(self, start_dim=0, end_dim=-1):
-        return LibCall.torch.flatten(self, start_dim, end_dim)
+        dtype = self.dtype
+        tensor = LibCall.torch.flatten(self, start_dim, end_dim)
+        tensor.dtype = dtype
+        return tensor
 
     def expand(self, shape):
         # TODO: implement this
         pass
-    
+
     def device(self):
         return "cuda"
-    
+
     def permute(self, *args):
         ndim = self.dim()
         if ndim != len(args):
@@ -150,8 +187,12 @@ class Tensor:
             if arg < 0 or arg >= ndim:
                 raise ValueError("permute invalid index!")
             ret_shape.append(self.shape[arg])
-        return self.view(*ret_shape)
-    
+
+        dtype = self.dtype
+        tensor = self.view(*ret_shape)
+        tensor.dtype = dtype
+        return tensor
+
     def contiguous(self):
         return self
 
@@ -165,7 +206,7 @@ class Tensor:
 
         if isinstance(index, tuple):
             idx_len = len(index)
-            if len(self.shape) > idx_len:
+            if idx_len > len(self.shape):
                 raise IndexError("too many indices for tensor")
             for axis in range(idx_len - 1, -1, -1):
                 temp = LibCall.shape.tensorGetItem(temp, axis, index[axis])
@@ -210,13 +251,26 @@ class Tensor:
         return torch._bop(self, other)
 
     def __matmul__(self, other):
-        return LibCall.torch.matmul(self, other)
+        dtype = self.dtype
+        tensor = LibCall.torch.matmul(self, other)
+        tensor.dtype = dtype
+        return tensor
 
     def __rmatmul__(self, other):
-        return LibCall.torch.matmul(other, self)
+        dtype = self.dtype
+        tensor = LibCall.torch.matmul(other, self)
+        tensor.dtype = dtype
+        return tensor
 
     def __eq__(self, other):
         return torch._bop(self, other)
+
+    ###
+    def max(self, dim=None, keepdim=False):
+        return torch.max(self, dim, keepdim)
+
+    def sqrt(self):
+        return torch.sqrt(self)
 
 
 class tensor(Tensor):

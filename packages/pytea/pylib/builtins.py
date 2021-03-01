@@ -33,6 +33,11 @@ def exit(code=0):
     return LibCall.builtins.exit(code)
 
 
+# temp
+def round(number, digits):
+    return number
+
+
 class slice:
     def __init__(self, start=None, stop=None, step=None):
         self.start = start
@@ -127,6 +132,7 @@ def _tuple__getitem__(self, index):
 
 
 
+
 tuple.__getitem__ = _tuple__getitem__
 
 
@@ -144,6 +150,9 @@ def _list__getitem__(self, index):
         start, stop = None, None
         if index.start is not None:
             start = index.start if index.start >= 0 else len(self) + index.start
+        else:
+            start = None
+
         if index.stop is not None:
             stop = index.stop if index.stop >= 0 else len(self) + index.stop
 
@@ -161,6 +170,7 @@ def _list__getitem__(self, index):
             else:
                 # index by [start:stop]
                 return [self[i] for i in range(start, stop)]
+
 
 
 list.__getitem__ = _list__getitem__
@@ -232,6 +242,14 @@ def _str_replace(self, old, new, count=None):
 
 
 str.replace = _str_replace
+
+# temp
+def _str_ljust(self, length, character=" "):
+    # TODO:
+    return self
+
+
+str.ljust = _str_ljust
 
 
 def sum(values):

@@ -1,6 +1,6 @@
 import { fetchAddr, sanitizeAddr, trackMro } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
-import { isInstanceOf, strLen } from '../backend/expUtils';
+import { fetchSize, isInstanceOf, isSize, simplifyNum, strLen } from '../backend/expUtils';
 import {
     CodeSource,
     PrimitiveType,
@@ -108,6 +108,10 @@ export namespace BuiltinsLCImpl {
         if (value.type === SVType.None) {
             let typename: string;
             switch (type.value) {
+                case PrimitiveType.Int:
+                    return ctx.toSetWith(SVInt.create(0, source));
+                case PrimitiveType.Float:
+                    return ctx.toSetWith(SVFloat.create(0.0, source));
                 case PrimitiveType.Tuple:
                     typename = 'tuple';
                     break;
@@ -156,6 +160,23 @@ export namespace BuiltinsLCImpl {
                             }
                         }
                         break;
+                    case SVType.Object: {
+                        const size = fetchSize(value, heap);
+                        if (typeof size !== 'string') {
+                            const ctrRank0 = ctx.genEq(size.rank(), 0, source);
+                            const ctrRank1 = ctx.genAnd(
+                                ctx.genEq(size.rank(), 1, source),
+                                ctx.genEq(ExpNum.index(size.shape, 0, source), 1, source)
+                            );
+                            return ctx
+                                .require(
+                                    [ctx.genOr(ctrRank0, ctrRank1)],
+                                    `from 'LibCall.builtins.cast': must be scalar or tensor with 1 elem`,
+                                    source
+                                )
+                                .return(SVInt.create(ExpNum.fromSymbol(ctx.genSymInt('tensorElem', source)), source));
+                        }
+                    }
                     default:
                         break;
                 }
@@ -198,7 +219,47 @@ export namespace BuiltinsLCImpl {
                 }
                 break;
             }
-            case PrimitiveType.Float:
+            case PrimitiveType.Float: {
+                switch (value.type) {
+                    case SVType.Int:
+                        return ctx.toSetWith(SVFloat.create(value.value, source));
+                    case SVType.Float:
+                        return ctx.toSetWith(value);
+                    case SVType.String:
+                        {
+                            if (typeof value.value === 'string') {
+                                const floatVal = Number.parseFloat(value.value);
+                                if (floatVal.toString() === value.value)
+                                    return ctx.toSetWith(SVFloat.create(floatVal, source));
+                            }
+                        }
+                        break;
+                    case SVType.Object: {
+                        const size = fetchSize(value, heap);
+                        if (typeof size !== 'string') {
+                            const ctrRank0 = ctx.genEq(size.rank(), 0, source);
+                            const ctrRank1 = ctx.genAnd(
+                                ctx.genEq(size.rank(), 1, source),
+                                ctx.genEq(ExpNum.index(size.shape, 0, source), 1, source)
+                            );
+                            return ctx
+                                .require(
+                                    [ctx.genOr(ctrRank0, ctrRank1)],
+                                    `from 'LibCall.builtins.cast': must be scalar or tensor with 1 elem`,
+                                    source
+                                )
+                                .return(
+                                    SVFloat.create(ExpNum.fromSymbol(ctx.genSymFloat('tensorElem', source)), source)
+                                );
+                        }
+                    }
+                    default:
+                        break;
+                }
+                return ctx
+                    .addLog('float parsing of unknown value', source)
+                    .toSetWith(SVFloat.create(ExpNum.fromSymbol(ctx.genSymFloat('parseFloat', source)), source));
+            }
             case PrimitiveType.Str:
             case PrimitiveType.Bool:
             case PrimitiveType.Dict:
@@ -327,23 +388,38 @@ export namespace BuiltinsLCImpl {
         }
 
         const { heap } = ctx;
-        const dict = fetchAddr(params[0], heap);
+        let dict = fetchAddr(params[0], heap);
         const key = fetchAddr(params[1], heap);
         const value = sanitizeAddr(params[2], heap);
+        let isNewKey: boolean = true;
 
-        if (dict?.type !== SVType.Object || key?.type !== SVType.String || !value) {
-            // currently, only supports string typed key
+        if (dict?.type !== SVType.Object || !key || !value) {
             return ctx.warnWithMsg(`from 'LibCall.builtins.dict_setitem': invalid value type`, source).toSet();
         }
-        if (typeof key.value !== 'string') {
+        if (key.type === SVType.Int) {
+            const keyRng = ctx.getCachedRange(key.value);
+            if (keyRng?.toIntRange()?.isConst()) {
+                if (dict.indices.has(keyRng.start)) isNewKey = false;
+                dict = dict.setIndice(keyRng.start, value);
+            } else {
+                return ctx.failWithMsg(`from 'LibCall.builtins.dict_setitem': invalid key type`, source).toSet();
+            }
+        } else if (key.type === SVType.String && typeof key.value === 'string') {
+            if (dict.keyValues.has(key.value)) isNewKey = false;
+            dict = dict.setKeyVal(key.value, value);
+        } else {
             return ctx
-                .warnWithMsg(`from 'LibCall.builtins.dict_setitem': does not supports symbolic string`, source)
+                .warnWithMsg(`from 'LibCall.builtins.dict_setitem': currently only supports int or string key`, source)
                 .toSet();
         }
 
-        const newDict = dict.setKeyVal(key.value, value);
+        if (isNewKey) {
+            const len = dict.getAttr('$length') as SVInt;
+            const newLen = simplifyNum(ctx.ctrSet, ExpNum.bop(NumBopType.Add, len.value, 1, source));
+            dict = dict.setAttr('$length', SVInt.create(newLen, source));
+        }
 
-        return ctx.setHeap(heap.setVal(dict.addr, newDict)).toSetWith(SVNone.create(source));
+        return ctx.setHeap(heap.setVal(dict.addr, dict)).toSetWith(SVNone.create(source));
     }
 
     // TODO: fix this to support non-string typed key
@@ -361,18 +437,28 @@ export namespace BuiltinsLCImpl {
         const { heap } = ctx;
         const dict = fetchAddr(params[0], heap);
         const key = fetchAddr(params[1], heap);
+        let value;
 
-        if (dict?.type !== SVType.Object || key?.type !== SVType.String) {
-            // currently, only supports string typed key
+        if (dict?.type !== SVType.Object || !key) {
             return ctx.warnWithMsg(`from 'LibCall.builtins.dict_getitem': invalid value type`, source).toSet();
         }
-        if (typeof key.value !== 'string') {
+        if (key.type === SVType.Int) {
+            const keyRng = ctx.getCachedRange(key.value);
+            if (keyRng?.toIntRange()?.isConst()) {
+                value = dict.getIndice(keyRng.start);
+            } else {
+                return ctx
+                    .failWithMsg(`from 'LibCall.builtins.dict_getitem': invalid key type ${keyRng}`, source)
+                    .toSet();
+            }
+        } else if (key.type === SVType.String && typeof key.value === 'string') {
+            value = dict.getKeyVal(key.value);
+        } else {
             return ctx
-                .warnWithMsg(`from 'LibCall.builtins.dict_getitem': does not supports symbolic string`, source)
+                .warnWithMsg(`from 'LibCall.builtins.dict_setitem': currently only supports int or string key`, source)
                 .toSet();
         }
 
-        const value = dict.getKeyVal(key.value);
         if (value === undefined) {
             return ctx.failWithMsg(`LibCall.builtins.dict_getitem': invalid key value`, source).toSet();
         }

@@ -68,6 +68,7 @@ import {
     SVUndef,
 } from './sharpValues';
 import { ExpNum, ExpString, NumBopType, SymExp } from './symExpressions';
+import { simplifyNum } from './expUtils';
 
 export namespace TorchBackend {
     export function runEmpty(stmt: ThStmt): ContextSet<ShValue | ShContFlag> {
@@ -779,6 +780,7 @@ export namespace TorchBackend {
                             .toSet() as CtxStmt;
                     } else {
                         length = len.value;
+                        length = typeof length === 'number' ? length : simplifyNum(ctx.ctrSet, length);
                         const lenRng = ctx.ctrSet.getCachedRange(length)?.toIntRange();
                         if (lenRng && lenRng.isConst() && lenRng.start >= 0) {
                             length = lenRng.start;
@@ -854,6 +856,7 @@ export namespace TorchBackend {
         stmt: TSForIn
     ): ContextSet<ShValue | ShContFlag> {
         // TODO: before implement SMT on a symbolic value, we require that loopCnt is bigger than 0
+        // TODO: When loopCnt is evaluated to 0. currently, 0 <= for$ident <= -1 -> hard constraints conflict.
         return ctx
             .require(ctx.genLte(0, loopCnt), 'length of iterator is less than 0', stmt.loopVal.source)
             .flatMap((ctx) => {

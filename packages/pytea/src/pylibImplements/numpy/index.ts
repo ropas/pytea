@@ -254,12 +254,14 @@ export namespace NumpyLCImpl {
                 )
                 .toSet();
         }
-
-        const newSize = SVSize.fromObject(ctx, arrSize, imgSize.shape);
+        const channel = ExpShape.fromConst(1, [ExpNum.index(imgSize.shape, 0, source)], source);
+        const widthHeight = ExpShape.slice(imgSize.shape, 1, 3, source);
+        const newShape = ExpShape.concat(widthHeight, channel, source);
+        const newSize = SVSize.fromObject(ctx, arrSize, newShape);
         const newArr = arrObj.setAttr('shape', newSize);
 
         const newHeap = heap.setVal(arrAddr, newArr);
-        return ctx.setHeap(newHeap).toSetWith(SVNone.create());
+        return ctx.setHeap(newHeap).toSetWith(newArr);
     }
 
     // Assumption: "tensors" is a constantRanked sequence, and each element is available.
@@ -585,6 +587,106 @@ export namespace NumpyLCImpl {
         return intTuple;
     }
 
+    /* Integer array indexing.
+     * https://numpy.org/doc/stable/reference/arrays.indexing.html#advanced-indexing
+     * assumption: each element of index arrays has no boundary error
+     *
+     * x = np.array([[ 0,  1,  2],
+     *               [ 3,  4,  5],
+     *               [ 6,  7,  8],
+     *               [ 9, 10, 11]])
+     * rows = np.array([[0, 0],
+     *                  [3, 3]], dtype=np.intp)
+     * columns = np.array([[0, 2],
+     *                     [0, 2]], dtype=np.intp)
+     * x[rows, columns] -> array([[ 0,  2],
+     *                            [ 9, 11]])
+     */
+    export function indexIntarrays(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 3) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.ndarray.indexIntarrays': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const { env, heap } = ctx;
+        const [sizeAddr, lenAddr, arraysAddr] = params;
+
+        const size = fetchAddr(sizeAddr, heap);
+        const len = fetchAddr(lenAddr, heap);
+        const arrays = fetchAddr(arraysAddr, heap);
+
+        if (!(size && size instanceof SVSize)) {
+            return ctx.warnWithMsg(`from 'LibCall.ndarray.indexIntarrays': input is not a Size type`, source).toSet();
+        }
+        if (len?.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(`from 'LibCall.ndarray.indexIntarrays': ${len}`, source);
+        }
+        if (arrays?.type !== SVType.Object) {
+            return ctx.warnTensorWithMsg(`from 'LibCall.ndarray.indexIntarrays': ${arrays}`, source);
+        }
+
+        // TODO: broadcasting, check all shapes of indice
+        const first = arrays.getIndice(0);
+        const firstSize = fetchSize(first, heap);
+        if (typeof firstSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.ndarray.indexIntarrays': ${firstSize}`, source);
+        }
+        const elemShape = ExpShape.slice(size.shape, len.value, size.rank(), source);
+        const indexShape = firstSize.shape;
+
+        return ctx
+            .require(
+                [ctx.genLte(len.value, size.rank(), source)],
+                `from 'LibCall.ndarray.indexIntarrays: too many indices.`,
+                source
+            )
+            .flatMap((ctx) => {
+                return genNdarray(ctx, ExpShape.concat(indexShape, elemShape, source), source);
+            });
+    }
+
+    export function indexBoolarray(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.ndarray.indexIntarray': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const { env, heap } = ctx;
+        const [sizeAddr, boolarrAddr] = params;
+
+        const size = fetchAddr(sizeAddr, heap);
+        const boolarray = fetchSize(boolarrAddr, heap);
+
+        if (!(size && size instanceof SVSize)) {
+            return ctx.warnWithMsg(`from 'LibCall.ndarray.indexIntarray': input is not a Size type`, source).toSet();
+        }
+        if (typeof boolarray === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.ndarray.indexIntarray': ${boolarray}`, source);
+        }
+
+        // mask indexing
+        const sizeNumel = ExpNum.numel(size.shape, source);
+        const mask = boolarray;
+        const maskCtx = ctx.genIntGte('indexBoolarray', 0, source);
+        const maskNum = maskCtx.retVal;
+
+        return maskCtx
+            .require(
+                [maskCtx.genLte(maskNum, sizeNumel, source), maskCtx.genEq(size.shape, mask.shape, source)],
+                `from 'LibCall.ndarray.indexBoolarray: mask shape mismatch`,
+                source
+            )
+            .flatMap((ctx) => {
+                return genNdarray(ctx, ExpShape.fromConst(1, [maskNum], source));
+            });
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         ndarrayInit,
         identityShape,
@@ -595,6 +697,8 @@ export namespace NumpyLCImpl {
         copyOut,
         reduce,
         flatten,
+        indexIntarrays,
+        indexBoolarray,
     };
 }
 
