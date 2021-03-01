@@ -728,7 +728,7 @@ export namespace TorchBackend {
             } else if (isTruthy === false) {
                 return run(ctx.toSet(), stmt_f);
             } else {
-                const [truePath, falsePath] = ctx.toSet().ifThenElse(isTruthy);
+                const [truePath, falsePath] = ctx.toSet().ifThenElse(isTruthy, exp.source);
                 return run(truePath, stmt_t).join(run(falsePath, stmt_f));
             }
         });

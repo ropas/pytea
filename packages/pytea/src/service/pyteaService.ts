@@ -261,29 +261,26 @@ export class PyteaService {
     }
 
     async runZ3Py(result: ContextSet<ShValue | ShContFlag>): Promise<unknown> {
-        const jsonList: string[] = [];
-        result.getList().forEach((ctx) => {
-            jsonList.push(ctx.ctrSet.getConstraintJSON());
-        });
-        result.getStopped().forEach((ctx) => {
-            jsonList.push(ctx.ctrSet.getConstraintJSON());
-        });
-
-        if (jsonList.length === 0) {
-            return;
-        }
-
-        const jsonStr = `[\n${jsonList.join(',\n')}\n]`;
-
-        if (!this._socket) {
-            this._socket = new zmq.Request();
-            const port = this._options?.z3Port ?? defaultOptions.z3Port;
-            this._socket.connect(`tcp://localhost:${port}`);
-        }
-
-        await this._socket.send(jsonStr);
-        const [z3Result] = await this._socket.receive();
-        console.log(z3Result);
+        // const jsonList: string[] = [];
+        // result.getList().forEach((ctx) => {
+        //     jsonList.push(ctx.ctrSet.getConstraintJSON());
+        // });
+        // result.getStopped().forEach((ctx) => {
+        //     jsonList.push(ctx.ctrSet.getConstraintJSON());
+        // });
+        // if (jsonList.length === 0) {
+        //     return;
+        // }
+        // const jsonStr = `[\n${jsonList.join(',\n')}\n]`;
+        // if (!this._socket) {
+        //     this._socket = new zmq.Request();
+        //     const port = this._options?.z3Port ?? defaultOptions.z3Port;
+        //     this._socket.connect(`tcp://localhost:${port}`);
+        // }
+        // await this._socket.send(jsonStr);
+        // const [z3Result] = await this._socket.receive();
+        // console.log(z3Result);
+        return Promise.resolve();
     }
 
     printLog(result: ContextSet<ShValue | ShContFlag>): void {
