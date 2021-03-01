@@ -6,11 +6,9 @@
  *
  * Utility functions for PyTea service.
  */
-import { spawn } from 'child_process';
 import { CommandLineOptions } from 'command-line-args';
 import * as fs from 'fs';
 import * as path from 'path';
-import tmp from 'tmp';
 import * as util from 'util';
 
 import { getFileInfo } from 'pyright-internal/analyzer/analyzerNodeInfo';
@@ -336,37 +334,6 @@ export function scanQualPath(qualPath: string, currPath?: string): string[] {
     }
 }
 
-export function runZ3Py<T>(result: ContextSet<T>): void {
-    const pyteaPath = path.join(__dirname, 'z3wrapper', 'json2z3.py');
-
-    if (!fs.existsSync(pyteaPath)) {
-        console.log(`cannot found json2z3.py at '${pyteaPath}'. skip z3`);
-        return;
-    }
-
-    const jsonList: string[] = [];
-    result.getList().forEach((ctx) => {
-        jsonList.push(ctx.ctrSet.getConstraintJSON());
-    });
-    result.getStopped().forEach((ctx) => {
-        jsonList.push(ctx.ctrSet.getConstraintJSON());
-    });
-
-    if (jsonList.length === 0) {
-        return;
-    }
-
-    const jsonStr = `[\n${jsonList.join(',\n')}\n]`;
-
-    tmp.file((err, path) => {
-        if (!err) {
-            console.log(`save constraint json file to ${path}`);
-            fs.writeFileSync(path, jsonStr);
-            spawn('python', [pyteaPath, path]);
-        }
-    });
-}
-
 export function exportConstraintSet<T>(result: ContextSet<T>, path: string): void {
     const jsonList: string[] = [];
     result.getList().forEach((ctx) => {
@@ -400,103 +367,6 @@ export function reducedToString(value: ShValue, heap: ShHeap): string {
 
 // make ParseNode to CodeRange
 export namespace CodeSourcePositioner {
-    // export function cleanContextSet<T>(ctxSet: ContextSet<T>, pathStore: FilePathStore): ContextSet<T> {
-    //     return ctxSet.map((ctx) => cleanContext(ctx, pathStore));
-    // }
-
-    // export function cleanContext<T>(ctx: Context<T>, pathStore: FilePathStore): Context<T> {
-    //     const { env, heap, ctrSet, callStack, logs, imported, failed, retVal } = ctx;
-
-    //     ctx = ctx
-    //         .set('env', cleanEnv(env, pathStore))
-    //         .set('heap', cleanHeap(heap, pathStore))
-    //         .set('ctrSet', cleanConstraintSet(ctrSet, pathStore))
-    //         .set(
-    //             'logs',
-    //             logs.map((value) => cleanShValue(value, pathStore))
-    //         )
-    //         .set('imported', cleanEnv(imported, pathStore));
-
-    //     ctx = ctx.set(
-    //         'callStack',
-    //         callStack.map(([func, source]) => [
-    //             typeof func === 'string' ? func : cleanShValue(func, pathStore),
-    //             cleanSource(source, pathStore),
-    //         ]) as typeof callStack
-    //     );
-
-    //     if (failed) {
-    //         ctx = ctx.set('failed', cleanShValue(failed, pathStore));
-    //     }
-
-    //     // force assume that source holder is Shvalue
-    //     if ('source' in retVal) {
-    //         ctx = (ctx.setRetVal(cleanShValue(retVal, pathStore)) as unknown) as Context<T>;
-    //     }
-
-    //     return ctx;
-    // }
-
-    // export function cleanEnv(env: ShEnv, pathStore: FilePathStore): ShEnv {
-    //     return env.set(
-    //         'addrMap',
-    //         env.addrMap.map((addr) => cleanShValue(addr, pathStore))
-    //     );
-    // }
-
-    // export function cleanHeap(heap: ShHeap, pathStore: FilePathStore): ShHeap {
-    //     return heap.set(
-    //         'valMap',
-    //         heap.valMap.map((value) => cleanShValue(value, pathStore))
-    //     );
-    // }
-
-    // export function cleanShValue(value: SVAddr, pathStore: FilePathStore): SVAddr;
-    // export function cleanShValue(value: SVError, pathStore: FilePathStore): SVError;
-    // export function cleanShValue(value: ShValue, pathStore: FilePathStore): ShValue {
-    //     switch (value.type) {
-    //         case SVType.Addr:
-    //             return SVAddr.create(value.addr, cleanSource(value.source, pathStore));
-    //         case SVType.Int:
-    //             return SVInt.create(cleanSymExp(value.value, pathStore), cleanSource(value.source, pathStore));
-    //         case SVType.Float:
-    //             return SVFloat.create(cleanSymExp(value.value, pathStore), cleanSource(value.source, pathStore));
-    //         case SVType.String:
-    //             return SVString.create(cleanSymExp(value.value, pathStore), cleanSource(value.source, pathStore));
-    //         case SVType.Bool:
-    //             return SVBool.create(cleanSymExp(value.value, pathStore), cleanSource(value.source, pathStore));
-    //         case SVType.Object: {
-    //             const attrs = {
-    //                 type: value.type,
-    //                 id: value.id,
-    //                 attrs: value.attrs.map(val => cleanShValue(val, pathStore)),
-    //                 indices: value.indices.map(val => cleanShValue(val, pathStore)),
-    //                 keyValues: value.keyValues.map(val => cleanShValue(val, pathStore)),
-    //                 addr: cleanShValue(value.addr, pathStore),
-    //                 shape: value.shape ? cleanSymExp(value.shape, pathStore) : value.shape,
-    //                 source: cleanSource(value.source, pathStore)
-    //             }
-
-    //             if (value instanceof SVSize) {
-    //                 return new SVSize(attrs)
-    //             }
-    //             return new SVObject(attrs)
-    //         }
-    //         case SVType.Func:
-    //             return SVFunc.create(value.addr, cleanSource(value.source, pathStore));
-    //         case SVType.None:
-    //             return SVNone.create(value.addr, cleanSource(value.source, pathStore));
-    //         case SVType.NotImpl:
-    //             return SVNotImpl.create(value.addr, cleanSource(value.source, pathStore));
-    //         case SVType.Undef:
-    //             return SVUndef.create(value.addr, cleanSource(value.source, pathStore));
-    //         case SVType.Error:
-    //             return SVError.create(value.reason, value.level, cleanSource(value.source, pathStore));
-    //         default:
-    //             return value;
-    //     }
-    // }
-
     export function cleanConstraint(ctr: Constraint, pathStore: FilePathStore): Constraint {
         switch (ctr.type) {
             case ConstraintType.ExpBool:

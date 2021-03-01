@@ -14,9 +14,22 @@ import importlib.util
 import json
 import sys
 import zmq
-from .json2z3 import Z3encoder, PathResult, CtrSet
+from json2z3 import Z3Encoder, PathResult, CtrSet
 
 DEFAULT_PORT = 17851
+
+
+def poll_socket(socket, timetick=100):
+    poller = zmq.Poller()
+    poller.register(socket, zmq.POLLIN)
+    # wait up to 100msec
+    try:
+        while True:
+            obj = dict(poller.poll(timetick))
+            if socket in obj and obj[socket] == zmq.POLLIN:
+                yield socket.recv()
+    except KeyboardInterrupt:
+        pass
 
 
 def respond_rpc(id, result):
@@ -30,28 +43,26 @@ def respond_rpc(id, result):
 class PyTeaServer:
     def __init__(self, port):
         self.port = port
-        self.encoder = Z3encoder(self)
+        self.encoder = Z3Encoder(self)
 
         self.ctx = zmq.Context()
         self.socket = self.ctx.socket(zmq.REP)
         self.socket.bind(f"tcp://127.0.0.1:{port}")
+        print(f"python server listening port {port}...")
 
     def listen(self):
-        while True:
-            try:
-                raw_message = self.socket.recv()
-                message = json.loads(raw_message)
-                result = []
-                message_id = message["id"]
+        for raw_message in poll_socket(self.socket):
+            raw_message = self.socket.recv()
+            message = json.loads(raw_message)
+            result = []
+            message_id = message["id"]
 
-                if message["method"] == "ping":
-                    result.append(respond_rpc(message_id, result))
-                elif message["method"] == "solve":
-                    result = self.analyze(message["result"])
+            if message["method"] == "ping":
+                result.append(respond_rpc(message_id, result))
+            elif message["method"] == "solve":
+                result = self.analyze(message["result"])
 
-                self.socket.send(json.dumps(result).encode("utf-8"))
-            except Exception as e:
-                pass
+            self.socket.send(json.dumps(result).encode("utf-8"))
 
     def analyze(self, paths):
         ctr_set_list = map(CtrSet, paths)
@@ -77,6 +88,7 @@ def parse_args():
         "--port",
         default=DEFAULT_PORT,
         type=int,
+        required=True,
         help="main port to communicate with PyTea node server",
     )
 
@@ -97,7 +109,7 @@ def main():
     ):
         sys.exit(-1)
 
-    server = PyTeaServer(args)
+    server = PyTeaServer(args.port)
     server.listen()
 
 

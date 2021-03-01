@@ -184,6 +184,7 @@ export class PyteaServer {
 
             // TODO: resolve rejected
             const result = await pyteaService.analyze();
+
             const success = result.getList();
             const stopped = result.getStopped();
             const failed = result.getFailed();

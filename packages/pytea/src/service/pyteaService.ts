@@ -8,9 +8,11 @@
  * Managing imported or will be imported scripts, parsed statements and lsp services.
  */
 import chalk from 'chalk';
+import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
+import * as zmq from 'zeromq';
 
 import { getFileInfo } from 'pyright-internal/analyzer/analyzerNodeInfo';
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
@@ -45,6 +47,7 @@ export class PyteaService {
 
     private _timeLog: [string, number][];
     private _currTime: number;
+    private _socket?: zmq.Request;
 
     constructor(service?: AnalyzerService, options?: PyteaOptions, console?: ConsoleInterface, setDefault?: boolean) {
         if (setDefault) _globalService = this;
@@ -211,6 +214,8 @@ export class PyteaService {
             return Promise.reject();
         }
 
+        this._spawnZ3Py();
+
         const builtinsPair = this._libStmt.get('builtins');
         if (!builtinsPair) {
             this._console.error('cannot find PyTea implemenation of Python builtins.');
@@ -256,7 +261,29 @@ export class PyteaService {
     }
 
     async runZ3Py(result: ContextSet<ShValue | ShContFlag>): Promise<unknown> {
-        return Promise.resolve();
+        const jsonList: string[] = [];
+        result.getList().forEach((ctx) => {
+            jsonList.push(ctx.ctrSet.getConstraintJSON());
+        });
+        result.getStopped().forEach((ctx) => {
+            jsonList.push(ctx.ctrSet.getConstraintJSON());
+        });
+
+        if (jsonList.length === 0) {
+            return;
+        }
+
+        const jsonStr = `[\n${jsonList.join(',\n')}\n]`;
+
+        if (!this._socket) {
+            this._socket = new zmq.Request();
+            const port = this._options?.z3Port ?? defaultOptions.z3Port;
+            this._socket.connect(`tcp://localhost:${port}`);
+        }
+
+        await this._socket.send(jsonStr);
+        const [z3Result] = await this._socket.receive();
+        console.log(z3Result);
     }
 
     printLog(result: ContextSet<ShValue | ShContFlag>): void {
@@ -615,5 +642,21 @@ export class PyteaService {
             .map(([func, node]) => `${typeof func === 'string' ? func : func.name} - ${formatCodeSource(node)}`)
             .reverse()
             .join('\n');
+    }
+
+    private _spawnZ3Py() {
+        if (!this.options?.pyteaLibPath) {
+            this._console.error(`pyteaLibPath is not set'. skip z3`);
+            return;
+        }
+
+        const pyteaPath = path.join(this.options.pyteaLibPath, '..', 'z3wrapper', 'pyteaserver.py');
+
+        if (!fs.existsSync(pyteaPath)) {
+            this._console.error(`cannot found pytea server script at '${pyteaPath}'. skip z3`);
+            return;
+        }
+
+        spawn('python', [pyteaPath, `--port=${this.options.z3Port}`]);
     }
 }

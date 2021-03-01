@@ -23,7 +23,7 @@ import { combinePaths } from 'pyright-internal/common/pathUtils';
 import { defaultOptions } from './service/pyteaOptions';
 
 import { PyteaService } from './service/pyteaService';
-import { buildPyteaOption, exportConstraintSet, runZ3Py } from './service/pyteaUtils';
+import { buildPyteaOption, exportConstraintSet } from './service/pyteaUtils';
 
 const toolName = 'pytea';
 
@@ -174,7 +174,7 @@ function runMain(args: CommandLineOptions) {
                     if (pyteaService && result) {
                         pyteaService!.printLog(result);
                         if (watch) {
-                            await runZ3Py(result);
+                            await pyteaService.runZ3Py(result);
                         } else {
                             exportConstraintSet(result, resultPath);
                         }
