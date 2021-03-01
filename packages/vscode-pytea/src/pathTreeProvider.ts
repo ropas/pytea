@@ -20,6 +20,8 @@ import {
     window,
 } from 'vscode';
 
+import { PyteaCommands } from './commands';
+
 interface PyteaTreeProvider {
     refresh(props?: ExecutionPathProps): void;
 }
@@ -196,6 +198,9 @@ export class ConstraintDataProvider implements TreeDataProvider<NumId>, PyteaTre
     }
 }
 
+export interface PathManagerCallback {
+    selectPath?: (pathId: number) => void;
+}
 export class PathManager {
     private _pathTree: TreeView<NumId>;
     private _varTree: TreeView<NumId>;
@@ -208,7 +213,7 @@ export class PathManager {
     private _mainProvider: PathSelectionProvider;
     private _providers: PyteaTreeProvider[];
 
-    constructor(context: ExtensionContext) {
+    constructor(context: ExtensionContext, callback: PathManagerCallback) {
         this._pathProps = [];
         this._mainProvider = new PathSelectionProvider(this._pathProps);
         const providers = [
@@ -240,10 +245,12 @@ export class PathManager {
         context.subscriptions.push(this._pathCtrTree);
         context.subscriptions.push(this._hardCtrTree);
 
-        commands.registerCommand('pytea.selectPath', (pathId) => {
+        commands.registerCommand(PyteaCommands.selectPath, (pathId) => {
+            if (callback.selectPath) callback.selectPath(pathId);
+
             if (pathId < 0 || pathId >= this._pathProps.length) {
                 console.log(`selected ${pathId}`);
-                return;
+                this._providers.forEach((p) => p.refresh(this._pathProps[pathId]));
             }
         });
         // commands.registerCommand('pytea.gotoCallStack', (frameId) => this.reveal());
@@ -251,6 +258,7 @@ export class PathManager {
     }
 
     applyPathProps(results: ExecutionPathProps[]) {
+        this._pathProps = results;
         this._mainProvider.refresh(results);
         let mainPath: ExecutionPathProps | undefined;
         if (results.length > 0) {

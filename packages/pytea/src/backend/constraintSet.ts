@@ -8,10 +8,10 @@
  */
 import chalk from 'chalk';
 import { List, Map, Record, Set } from 'immutable';
-import { FilePathStore } from 'src/service/executionPaths';
-import { formatCodeSource } from 'src/service/pyteaUtils';
 
+import { FilePathStore } from '../service/executionPaths';
 import { PyteaService } from '../service/pyteaService';
+import { formatCodeSource } from '../service/pyteaUtils';
 import { absIndexByLen, sanitizeSource } from './backUtils';
 import { ConstraintSolver, expToCtr } from './constraintSolver';
 import {

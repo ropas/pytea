@@ -125,12 +125,12 @@ export interface ExecutionPathProps {
 // this will be managed from server.
 export class ExecutionPath {
     readonly props: ExecutionPathProps;
+    readonly ctx: Context<ShValue | ShContFlag>;
 
     private _pathId: number;
     private _projectRoot: string;
     private _pathStore: FilePathStore;
 
-    private _ctx: Context<ShValue | ShContFlag>;
     private _status: ExecutionPathStatus;
 
     constructor(
@@ -140,7 +140,7 @@ export class ExecutionPath {
         status: ExecutionPathStatus,
         pathStore: FilePathStore
     ) {
-        this._ctx = result;
+        this.ctx = result;
 
         this._pathId = pathId;
         this._projectRoot = projectRoot;
@@ -157,7 +157,7 @@ export class ExecutionPath {
         const logs: SVError[] = [];
         const callStack: [string, CodeRange?][] = [];
 
-        const ctx = this._ctx;
+        const ctx = this.ctx;
         const { env, heap, ctrSet } = ctx;
 
         if (status === ExecutionPathStatus.Success) {

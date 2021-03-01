@@ -54,6 +54,10 @@ export class PyteaCommandController implements ServerCommand {
                 return this._analyzeFile.execute(cmdParams);
             }
 
+            case PyteaCommands.selectPath: {
+                return this.ls.selectPath(cmdParams.arguments![0]);
+            }
+
             default: {
                 return new ResponseError<string>(1, 'Unsupported command');
             }

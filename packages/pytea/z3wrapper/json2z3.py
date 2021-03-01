@@ -134,6 +134,10 @@ class Z3Encoder:
         self.console = console
 
     def analyze(self, jsonObj):
+        if len(jsonObj) == 0:
+            self.console.log("no paths entered")
+            return
+
         ctrSetList = map(CtrSet, jsonObj)
 
         # lists of path indices

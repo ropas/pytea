@@ -6,6 +6,7 @@
  * Implements pytea language server.
  */
 
+import { SVErrorLevel, SVType } from 'pytea/backend/sharpValues';
 import { ExecutionPath, ExecutionPathStatus } from 'pytea/service/executionPaths';
 import { defaultOptions, PyteaLogLevel, PyteaOptions } from 'pytea/service/pyteaOptions';
 import { PyteaService } from 'pytea/service/pyteaService';
@@ -67,6 +68,7 @@ export class PyteaServer {
 
     // We support running only one command at a time.
     private _pendingCommandCancellationSource: CancellationTokenSource | undefined;
+    private _selectedWorkspace?: PyteaWorkspaceInstance;
 
     // Global root path - the basis for all global settings.
     rootPath = '';
@@ -150,6 +152,7 @@ export class PyteaServer {
         this.console.info(`analyzing ${entryPath}...`);
 
         const workspace = this._workspaceMap.getWorkspaceForFile(entryPath);
+        this._selectedWorkspace = workspace;
 
         const baseOptions = workspace.pyteaOptions;
         baseOptions.entryPath = resolvePaths(
@@ -250,17 +253,64 @@ export class PyteaServer {
     }
 
     selectPath(pathId: number): void {
-        // const error = p.retVal;
-        // const sourceRange = pyteaService.getSourceRange(error.source);
-        // if (sourceRange) {
-        //     const [filePath, range] = sourceRange;
-        //     this._connection.sendDiagnostics({
-        //         uri: convertPathToUri(filePath),
-        //         diagnostics: this._convertDiagnostics([
-        //             new AnalyzerDiagnostic(DiagnosticCategory.Warning, error.reason, range),
-        //         ]),
-        //     });
-        // }
+        const service = this._selectedWorkspace?.pyteaService;
+        const paths = this._selectedWorkspace?.paths;
+        if (!(service && paths && paths[pathId])) {
+            return;
+        }
+
+        const currPath = paths[pathId];
+        const currProps = currPath.props;
+        const ctx = currPath.ctx;
+        const diagMap: Map<string, AnalyzerDiagnostic[]> = new Map();
+
+        function severityMap(level: SVErrorLevel): DiagnosticCategory {
+            switch (level) {
+                case SVErrorLevel.Error:
+                    return DiagnosticCategory.Error;
+                case SVErrorLevel.Warning:
+                    return DiagnosticCategory.Warning;
+                case SVErrorLevel.Log:
+                    return DiagnosticCategory.Information;
+            }
+        }
+
+        ctx.logs.forEach((log) => {
+            if (log.type === SVType.Error) {
+                const sourceRange = service.getSourceRange(log.source);
+                if (sourceRange) {
+                    const [filePath, range] = sourceRange;
+                    if (!diagMap.has(filePath)) {
+                        diagMap.set(filePath, []);
+                    }
+                    const diagnostics = diagMap.get(filePath)!;
+                    diagnostics.push(new AnalyzerDiagnostic(severityMap(log.level), log.reason, range));
+                }
+            }
+        });
+
+        if (currProps.status === ExecutionPathStatus.Stopped || currProps.status === ExecutionPathStatus.Failed) {
+            const retVal = ctx.retVal;
+            if (typeof retVal === 'object') {
+                const sourceRange = service.getSourceRange(retVal.source);
+                if (sourceRange) {
+                    const [filePath, range] = sourceRange;
+                    if (!diagMap.has(filePath)) {
+                        diagMap.set(filePath, []);
+                    }
+                    const diagnostics = diagMap.get(filePath)!;
+                    const reason = retVal.type === SVType.Error ? retVal.reason : 'unknown error';
+                    diagnostics.push(new AnalyzerDiagnostic(DiagnosticCategory.Error, reason, range));
+                }
+            }
+        }
+
+        diagMap.forEach((diagnostics, filePath) => {
+            this._connection.sendDiagnostics({
+                uri: convertPathToUri(filePath),
+                diagnostics: this._convertDiagnostics(diagnostics),
+            });
+        });
     }
 
     restart() {

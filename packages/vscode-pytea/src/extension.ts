@@ -146,7 +146,15 @@ export function activate(context: ExtensionContext) {
         })
     );
 
-    const pathManager = new PathManager(context);
+    const pathManager = new PathManager(context, {
+        selectPath: (pathId) => {
+            console.log(`send ${pathId}`);
+            languageClient.sendRequest('workspace/executeCommand', {
+                command: PyteaCommands.selectPath,
+                arguments: [pathId],
+            });
+        },
+    });
     const analyzeFileCommand = PyteaCommands.analyzeFile;
     context.subscriptions.push(
         commands.registerTextEditorCommand(

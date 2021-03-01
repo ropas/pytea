@@ -59,7 +59,7 @@
 
 ```typescript
 enum PathResultType {
-    Nonexistent = 0,
+    Unreachable = 0,
     Valid = 1,
     MayInvalid = 2,
     Invalid = 3,
