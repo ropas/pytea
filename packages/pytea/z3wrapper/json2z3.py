@@ -146,12 +146,6 @@ class Z3Encoder:
         for pathIdx, ctrSet in enumerate(ctrSetList):
             # comment out printing all constraints
 
-            # self.console.log(
-            #     "-----------------------------------\n"
-            #     f"PATH {str(pathIdx)}\n"
-            #     "-----------------------------------"
-            # )
-
             # log += ctrSet.toString()
             pathResult, pathLog, _ = ctrSet.analysis()  # side effect: print result
             # log += pathLog
@@ -176,13 +170,9 @@ class Z3Encoder:
             f"OVERALL (total {len(jsonObj)} paths)\n"
             "-----------------------------------"
         )
-
-        if len(ValidPaths) != 0:
-            self.console.log(f"Valid paths (no constraint error): {len(ValidPaths)}")
-        if len(SatPaths) != 0:
-            self.console.log(
-                f"Potentially Invalid paths (found counter example): {len(SatPaths)}"
-            )
+        valid_paths_len = len(ValidPaths) + len(SatPaths)
+        if valid_paths_len != 0:
+            self.console.log(f"Valid paths (no constraint error): {valid_paths_len}")
         if len(UnsatPaths) != 0:
             self.console.log(
                 f"Invalid paths (found conflicted constraints): {len(UnsatPaths)}"
@@ -191,7 +181,7 @@ class Z3Encoder:
             self.console.log(f"Undecidable paths (z3 timeout): {len(DontknowPaths)}")
         if len(UnavailablePaths) != 0:
             self.console.log(
-                f"Nonexistent paths (conflicted branch conditions): {len(UnavailablePaths)}"
+                f"Unreachable paths (conflicted branch conditions): {len(UnavailablePaths)}"
             )
 
 
@@ -243,7 +233,7 @@ class CtrSet:
         extras = dict()
 
         if self.pathCondCheck() == "unsat":
-            log = "Nonexistent path: Conflicted branch conditions."
+            log = "Unreachable path: Conflicted branch conditions."
             return PathResult.Unavailable.value, log, extras
 
         validity = self.checkValidity()
