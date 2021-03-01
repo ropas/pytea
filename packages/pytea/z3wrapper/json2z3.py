@@ -151,18 +151,21 @@ class Z3Encoder:
             # comment out printing all constraints
 
             # log = ctrSet.toString()
-            pathResult, pathLog, conflicts = ctrSet.analysis()  # side effect: print result
+            (
+                pathResult,
+                pathLog,
+                conflicts,
+            ) = ctrSet.analysis()  # side effect: print result
             # log += pathLog
-            log = f"--- PATH {pathIdx} ---\n{pathLog}"
+
+            # print only errornous pathes
+            log = f"--- Errornous Path: Path {pathIdx} ---\n{pathLog}"
 
             if pathResult == PathResult.Unreachable.value:
-                self.console.log(log)
                 UnreachablePaths.append(pathIdx)
             elif pathResult == PathResult.Valid.value:
-                self.console.log(log)
                 ValidPaths.append(pathIdx)
             elif pathResult == PathResult.Sat.value:
-                self.console.log(log)
                 SatPaths.append(pathIdx)
             elif pathResult == PathResult.Unsat.value:
                 self.console.log(log)
@@ -170,7 +173,6 @@ class Z3Encoder:
             else:
                 self.console.log(log)
                 DontknowPaths.append(pathIdx)
-                
 
         self.console.log(
             "-----------------------------------\n"
@@ -265,8 +267,8 @@ class CtrSet:
             extras["conflict"] = unsatIndice
         elif sat == PathResult.Unsat.value:
             log = "Invalid path: Found conflicted constraints.\n\n"
-            #log += "first conflicted hard constraint:\n"
-            #log += self.ctrPool[unsatIndice].toString() + "\n"
+            # log += "first conflicted hard constraint:\n"
+            # log += self.ctrPool[unsatIndice].toString() + "\n"
             log += "\nconflict constraints: \n"
             for idx in unsatIndice:
                 log += self.ctrPool[idx].toString() + "\n"
@@ -274,8 +276,8 @@ class CtrSet:
         else:
             sat = PathResult.DontKnow.value
             log = "Undecidable path: Z3 failed to solve constraints.\n\n"
-            #log += "first undecidable hard constraint:\n"
-            #log += self.ctrPool[unsatIndice].toString() + "\n"
+            # log += "first undecidable hard constraint:\n"
+            # log += self.ctrPool[unsatIndice].toString() + "\n"
             extras["undecide"] = unsatIndice
 
         return sat, log, extras
@@ -297,14 +299,12 @@ class CtrSet:
         s.set(":core.minimize", True)
         result = str(s.check(self.assumptions + self.pathCtrs))
 
-
         if result == "unsat":
             unsatCore = s.unsat_core()
             unsatIndice = self._findIndiceOfCtrs(self.ctrPool, unsatCore)
             return result, unsatIndice
         else:
             return None, None
-        
 
     # check validity and find counter-example if invalid.
     # return (validity, counter-example).
@@ -321,13 +321,14 @@ class CtrSet:
         else:
             return "invalid"
 
-    """
     def checkSat(self, minimize=False):
         s = Solver()
         last_hard_idx = 0
 
         for curr_hard_idx in self.hardIdx:
-            curr_list = [self.ctrPool[i].formula for i in range(last_hard_idx, curr_hard_idx)]
+            curr_list = [
+                self.ctrPool[i].formula for i in range(last_hard_idx, curr_hard_idx)
+            ]
             curr_hard = self.ctrPool[curr_hard_idx].formula
             s.add(And(And(curr_list), Not(curr_hard)))
 
@@ -342,24 +343,24 @@ class CtrSet:
             last_hard_idx = curr_hard_idx
 
         return PathResult.Sat.value, None
-    """
 
-    def checkSat(self, minimize=False):
-        constraints = list(map(lambda ctr: ctr.formula, self.ctrPool))
-        s = Solver()
-        if minimize:
-            s.set(":core.minimize", True)
-        result = str(s.check(constraints))
-        if result == "sat":
-            return PathResult.Sat.value, None
-        elif result == "unsat":
-            unsatCore = s.unsat_core()
-            unsatIndice = self._findIndiceOfCtrs(self.ctrPool, unsatCore)
-            if unsatIndice[-1] in self.pathCtr:
-                return PathResult.Unreachable.value, unsatIndice
-            return PathResult.Unsat.value, unsatIndice
-        else:
-            return PathResult.DontKnow.value, None
+    # def checkSat(self, minimize=False):
+    #     constraints = list(map(lambda ctr: ctr.formula, self.ctrPool))
+    #     s = Solver()
+    #     if minimize:
+    #         s.set(":core.minimize", True)
+    #     result = str(s.check(constraints))
+    #     if result == "sat":
+    #         return PathResult.Sat.value, None
+    #     elif result == "unsat":
+    #         unsatCore = s.unsat_core()
+    #         unsatIndice = self._findIndiceOfCtrs(self.ctrPool, unsatCore)
+    #         if unsatIndice[-1] in self.pathCtr:
+    #             return PathResult.Unreachable.value, unsatIndice
+    #         return PathResult.Unsat.value, unsatIndice
+    #     else:
+    #         return PathResult.DontKnow.value, None
+
 
 class Ctr:
     def __init__(self, jsonCtr):
@@ -829,7 +830,7 @@ def run_default(json_path, args):
     start_time = time.time()
     json_path = Path(json_path)
 
-    console = DefaultConsole() if not args["silent"] else NullConsole()
+    console = DefaultConsole() if not args.silent else NullConsole()
 
     console.log("\n------------- z3 result -------------")
 
