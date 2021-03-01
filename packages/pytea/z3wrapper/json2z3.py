@@ -151,7 +151,7 @@ class Z3Encoder:
             # comment out printing all constraints
 
             # log = ctrSet.toString()
-            pathResult, pathLog, _ = ctrSet.analysis()  # side effect: print result
+            pathResult, pathLog, conflicts = ctrSet.analysis()  # side effect: print result
             # log += pathLog
             log = f"--- PATH {pathIdx} ---\n{pathLog}"
 
@@ -242,8 +242,11 @@ class CtrSet:
         pathCond, unsatIndice = self.pathCondCheck()
         if pathCond == "unsat":
             log = "Unreachable path: Conflicted branch conditions."
-            extras["branchConflict"] = unsatIndice
-            return PathResult.Unavailable.value, log, extras
+            log += "\nconflict constraints: \n"
+            for idx in unsatIndice:
+                log += self.ctrPool[idx].toString() + "\n"
+            extras["conflict"] = unsatIndice
+            return PathResult.Unreachable.value, log, extras
 
         validity = self.checkValidity()
         if validity == "valid":
@@ -256,44 +259,44 @@ class CtrSet:
             return PathResult.Valid.value, log, extras
         elif sat == PathResult.Unreachable.value:
             log = "Unreachable path. Path condition is unsatisfiable."
-            log += "unsat constraint:\n"
-            log += self.ctrPool[unsatIndice[-1]].toString() + "\n"
-            log += "conflict constraints: \n"
-            for idx in unsatIndice[:-1]:
+            log += "\nconflict constraints: \n"
+            for idx in unsatIndice:
                 log += self.ctrPool[idx].toString() + "\n"
+            extras["conflict"] = unsatIndice
         elif sat == PathResult.Unsat.value:
             log = "Invalid path: Found conflicted constraints.\n\n"
-            log += "first conflicted hard constraint:\n"
-            log += self.ctrPool[unsatIndice].toString() + "\n"
+            #log += "first conflicted hard constraint:\n"
+            #log += self.ctrPool[unsatIndice].toString() + "\n"
+            log += "\nconflict constraints: \n"
+            for idx in unsatIndice:
+                log += self.ctrPool[idx].toString() + "\n"
             extras["conflict"] = unsatIndice
         else:
             sat = PathResult.DontKnow.value
             log = "Undecidable path: Z3 failed to solve constraints.\n\n"
-            log += "first undecidable hard constraint:\n"
-            log += self.ctrPool[unsatIndice].toString() + "\n"
+            #log += "first undecidable hard constraint:\n"
+            #log += self.ctrPool[unsatIndice].toString() + "\n"
             extras["undecide"] = unsatIndice
 
         return sat, log, extras
 
     def _findIndiceOfCtrs(self, ctrPool, ctrs):
-        indices = []
+        indice = []
         for ctr in ctrs:
             for idx, ctr_ in enumerate(ctrPool):
                 if ctr == ctr_.formula:
-                    indices.append(idx)
+                    indice.append(idx)
                     break
-        indices.sort()
-        return indices
+        indice.sort()
+        return indice
 
     # check sat with only hardCtr and pathCtr.
     # TODO: Optimize it
     def pathCondCheck(self):
-        formula = And(self.pathCtrs + self.assumptions)
-
         s = Solver()
         s.set(":core.minimize", True)
-        s.add(formula)
-        result = str(s.check())
+        result = str(s.check(self.assumptions + self.pathCtrs))
+
 
         if result == "unsat":
             unsatCore = s.unsat_core()

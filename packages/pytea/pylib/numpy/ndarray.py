@@ -105,7 +105,7 @@ class ndarray:
         return np._bop(self, other)
 
     def __eq__(self, other):
-        return numpy._bop(self, other)
+        return np._bop(self, other)
 
     def __matmul__(self, other):
         dtype = self.dtype
