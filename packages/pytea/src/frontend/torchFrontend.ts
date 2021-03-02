@@ -906,10 +906,22 @@ export class TorchIRFrontend {
     }
 
     visitTernary(node: TernaryNode): ThExpr {
+        const tempFun = this._getImm() + '_TERNARY';
+
         const cond = this.visitExprNode(node.testExpression);
         const left = this.visitExprNode(node.ifExpression);
         const right = this.visitExprNode(node.elseExpression);
-        return TECall.create(TEName.create('_TERNARY_IF_ELSE_', node), [cond, left, right], node);
+
+        const funBody = TSIf.create(
+            cond,
+            TSReturn.create(left, node.ifExpression),
+            TSReturn.create(right, node.elseExpression),
+            node
+        );
+
+        this._preStmtStack.push([tempFun, [], funBody]);
+
+        return TECall.create(TEName.create(tempFun, node), [], node);
     }
 
     visitBreak(node: BreakNode): ThStmt {

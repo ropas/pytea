@@ -131,8 +131,6 @@ def _tuple__getitem__(self, index):
                 return (self[i] for i in range(start, stop))
 
 
-
-
 tuple.__getitem__ = _tuple__getitem__
 
 
@@ -170,7 +168,6 @@ def _list__getitem__(self, index):
             else:
                 # index by [start:stop]
                 return [self[i] for i in range(start, stop)]
-
 
 
 list.__getitem__ = _list__getitem__
@@ -304,13 +301,6 @@ class zip:
 
     def __len__(self):
         return self.len
-
-
-def _TERNARY_IF_ELSE_(case, left, right):
-    if case:
-        return left
-    else:
-        return right
 
 
 class BaseException:
