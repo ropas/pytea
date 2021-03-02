@@ -8,61 +8,92 @@ Author: Ho Young Jhoo
 runs simple JSON-RPC server,
 analyze constraints by Z3 and serve it to HTML.
 """
-
+import time
 import argparse
 import importlib.util
 import json
 import sys
 import zmq
-from json2z3 import Z3Encoder, PathResult, CtrSet
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from http import HTTPStatus
+from json2z3 import Z3Encoder, PathResult, CtrSet, NullConsole
+
 
 DEFAULT_PORT = 17851
 
 
-def poll_socket(socket, timetick=100):
-    poller = zmq.Poller()
-    poller.register(socket, zmq.POLLIN)
-    # wait up to 100msec
-    try:
-        while True:
-            obj = dict(poller.poll(timetick))
-            if socket in obj and obj[socket] == zmq.POLLIN:
-                yield socket.recv()
-    except KeyboardInterrupt:
-        pass
-
-
-def respond_rpc(id, result):
+def respond_rpc(id, result, **kwargs):
     ret_val = dict()
     ret_val["jsonrpc"] = "2.0"
     ret_val["id"] = id
-    ret_val["result"] = json.dumps(result)
+    ret_val["result"] = result
+    for k, v in kwargs.items():
+        ret_val[k] = v
     return ret_val
+
+
+def gen_handler(req_handler):
+    class RequestHandler(BaseHTTPRequestHandler):
+        # Borrowing from https://gist.github.com/nitaku/10d0662536f37a087e1b
+        def _set_headers(self):
+            self.send_response(HTTPStatus.OK.value)
+            self.send_header("Content-type", "application/json")
+            # Allow requests from any origin, so CORS policies don't
+            # prevent local development.
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+
+        def do_POST(self):
+            length = int(self.headers.get("content-length"))
+            message = json.loads(self.rfile.read(length))
+            result = req_handler(message)
+            self._set_headers()
+            self.wfile.write(result)
+
+        def do_OPTIONS(self):
+            # Send allow-origin header for preflight POST XHRs.
+            self.send_response(HTTPStatus.NO_CONTENT.value)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "POST")
+            self.send_header("Access-Control-Allow-Headers", "content-type")
+            self.end_headers()
+
+    return RequestHandler
+
+
+class LocalLogger:
+    def __init__(self):
+        self.cache = []
+
+    def log(self, message):
+        self.cache.append(message)
+
+    def flush(self):
+        ret_val = "\n".join(self.cache)
+        self.cache.clear()
+        return ret_val
 
 
 class PyTeaServer:
     def __init__(self, port):
         self.port = port
-        self.encoder = Z3Encoder(self)
+        self.logger = LocalLogger()
+        self.encoder = Z3Encoder(self.logger)
 
-        self.ctx = zmq.Context()
-        self.socket = self.ctx.socket(zmq.REP)
-        self.socket.bind(f"tcp://127.0.0.1:{port}")
+        self.httpd = HTTPServer(("127.0.0.1", port), gen_handler(self.handler))
         print(f"python server listening port {port}...")
+        self.httpd.serve_forever()
 
-    def listen(self):
-        for raw_message in poll_socket(self.socket):
-            raw_message = self.socket.recv()
-            message = json.loads(raw_message)
-            result = []
-            message_id = message["id"]
+    def handler(self, message):
+        result = []
+        message_id = message["id"]
 
-            if message["method"] == "ping":
-                result.append(respond_rpc(message_id, result))
-            elif message["method"] == "solve":
-                result = self.analyze(message["result"])
+        if message["method"] == "ping":
+            result = message["params"]
+        elif message["method"] == "solve":
+            result, log = self.analyze(message["params"])
 
-            self.socket.send(json.dumps(result).encode("utf-8"))
+        return json.dumps(respond_rpc(message_id, result, log=log)).encode("utf-8")
 
     def analyze(self, paths):
         ctr_set_list = map(CtrSet, paths)
@@ -70,14 +101,14 @@ class PyTeaServer:
 
         for ctr_set in ctr_set_list:
             path_result = dict()
-            path_type, _, extras = ctr_set.analysis()  # side effect: print result
+            path_type, log, extras = ctr_set.analysis()  # side effect: print result
 
             path_result["type"] = path_type
             path_result["extras"] = extras
 
             result.append(path_result)
 
-        return result
+        return result, log
 
 
 def parse_args():
@@ -103,14 +134,11 @@ def main():
     if args is None:
         sys.exit(-1)
 
-    if (
-        importlib.util.find_spec("z3") is None
-        or importlib.util.find_spec("zmq") is None
-    ):
+    if importlib.util.find_spec("z3") is None:
         sys.exit(-1)
 
     server = PyTeaServer(args.port)
-    server.listen()
+    # server.listen()
 
 
 if __name__ == "__main__":

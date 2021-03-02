@@ -161,15 +161,16 @@ class Z3Encoder:
             # print only errornous pathes
             log = f"--- Errornous Path: Path {pathIdx} ---\n{pathLog}"
 
-            if pathResult == PathResult.Unreachable.value:
-                UnreachablePaths.append(pathIdx)
-            elif pathResult == PathResult.Valid.value:
+            if pathResult == PathResult.Valid.value:
                 ValidPaths.append(pathIdx)
             elif pathResult == PathResult.Sat.value:
                 SatPaths.append(pathIdx)
             elif pathResult == PathResult.Unsat.value:
                 self.console.log(log)
                 UnsatPaths.append(pathIdx)
+            elif pathResult == PathResult.Unreachable.value:
+                self.console.log(log)
+                UnreachablePaths.append(pathIdx)
             else:
                 self.console.log(log)
                 DontknowPaths.append(pathIdx)
@@ -311,36 +312,45 @@ class CtrSet:
     def checkValidity(self):
         assumptions = self.assumptions + self.pathCtrs
         constraints = self.softCtrs
-        formula = Implies(And(assumptions), And(constraints))
-        neg = Not(formula)
 
         s = Solver()
-        s.add(neg)
-        if str(s.check()) == "unsat":
-            return "valid"
+        if len(constraints) == 0:
+            formula = And(assumptions)
+            s.add(formula)
+
+            if str(s.check()) == "sat":
+                return "valid"
+            else:
+                return "invalid"
         else:
-            return "invalid"
+            formula = Not(Implies(And(assumptions), And(constraints)))
+            s.add(formula)
+
+            if str(s.check()) == "unsat":
+                return "valid"
+            else:
+                return "invalid"
 
     def checkSat(self, minimize=False):
         s = Solver()
-        last_hard_idx = 0
+        last_soft_idx = 0
 
-        for curr_hard_idx in self.hardIdx:
+        for curr_soft_idx in self.softIdx:
             curr_list = [
-                self.ctrPool[i].formula for i in range(last_hard_idx, curr_hard_idx)
+                self.ctrPool[i].formula for i in range(last_soft_idx, curr_soft_idx)
             ]
-            curr_hard = self.ctrPool[curr_hard_idx].formula
-            s.add(And(And(curr_list), Not(curr_hard)))
+            curr_soft = self.ctrPool[curr_soft_idx].formula
+            s.add(And(And(curr_list), Not(curr_soft)))
 
             result = s.check()
             if result == "sat":
-                return PathResult.Unsat.value, curr_hard_idx
+                return PathResult.Unsat.value, curr_soft_idx
             elif result == "unsat":
                 pass
             else:
-                return PathResult.DontKnow.value, curr_hard_idx
+                return PathResult.DontKnow.value, curr_soft_idx
 
-            last_hard_idx = curr_hard_idx
+            last_soft_idx = curr_soft_idx
 
         return PathResult.Sat.value, None
 

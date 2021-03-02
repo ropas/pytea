@@ -25,16 +25,15 @@
         "test:unit": "cross-env NODE_DEBUG=torch_debug jest --detectOpenHandles --forceExit pytea.unit"
     },
     "dependencies": {
-        "amqplib": "^0.7.0",
         "assert": "^2.0.0",
+        "axios": "^0.21.1",
         "chalk": "^4.1.0",
         "chokidar": "^3.5.1",
         "command-line-args": "^5.1.1",
         "immutable": "^4.0.0-rc.12",
         "source-map-support": "^0.5.19",
         "tmp": "^0.2.1",
-        "typescript-char": "^0.0.0",
-        "zeromq": "^6.0.0-beta.6"
+        "typescript-char": "^0.0.0"
     },
     "devDependencies": {
         "@types/chokidar": "^2.1.3",

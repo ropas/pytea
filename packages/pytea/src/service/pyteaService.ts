@@ -7,12 +7,12 @@
  * Main class of PyTea analyzer.
  * Managing imported or will be imported scripts, parsed statements and lsp services.
  */
+import axios from 'axios';
 import chalk from 'chalk';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
-import * as zmq from 'zeromq';
 
 import { getFileInfo } from 'pyright-internal/analyzer/analyzerNodeInfo';
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
@@ -28,7 +28,7 @@ import { IRWriter } from '../frontend/IRReaderWriter';
 import { ThStmt } from '../frontend/torchStatements';
 import { FilePathStore } from './executionPaths';
 import { defaultOptions, PyCmdArgs, PyteaOptions } from './pyteaOptions';
-import { formatCodeSource, getStmtsFromDir, reducedToString } from './pyteaUtils';
+import { formatCodeSource, getStmtsFromDir, PyZ3RPCRespond, PyZ3RPCResult, reducedToString } from './pyteaUtils';
 
 let _globalService: PyteaService | undefined;
 
@@ -47,7 +47,7 @@ export class PyteaService {
 
     private _timeLog: [string, number][];
     private _currTime: number;
-    private _socket?: zmq.Request;
+    private _requestId: number;
 
     constructor(service?: AnalyzerService, options?: PyteaOptions, console?: ConsoleInterface, setDefault?: boolean) {
         if (setDefault) _globalService = this;
@@ -62,6 +62,7 @@ export class PyteaService {
 
         this._libStmt = new Map();
         this._pathStore = new FilePathStore();
+        this._requestId = Math.floor(Math.random() * 10000000);
     }
 
     get options(): PyteaOptions | undefined {
@@ -260,27 +261,34 @@ export class PyteaService {
         return Promise.resolve(result);
     }
 
-    async runZ3Py(result: ContextSet<ShValue | ShContFlag>): Promise<unknown> {
-        // const jsonList: string[] = [];
-        // result.getList().forEach((ctx) => {
-        //     jsonList.push(ctx.ctrSet.getConstraintJSON());
-        // });
-        // result.getStopped().forEach((ctx) => {
-        //     jsonList.push(ctx.ctrSet.getConstraintJSON());
-        // });
-        // if (jsonList.length === 0) {
-        //     return;
-        // }
-        // const jsonStr = `[\n${jsonList.join(',\n')}\n]`;
-        // if (!this._socket) {
-        //     this._socket = new zmq.Request();
-        //     const port = this._options?.z3Port ?? defaultOptions.z3Port;
-        //     this._socket.connect(`tcp://localhost:${port}`);
-        // }
-        // await this._socket.send(jsonStr);
-        // const [z3Result] = await this._socket.receive();
-        // console.log(z3Result);
-        return Promise.resolve();
+    async runZ3Py(result: ContextSet<ShValue | ShContFlag>): Promise<PyZ3RPCResult[]> {
+        const port = this._options?.z3Port ?? defaultOptions.z3Port;
+        this._console.info(`connecting PyZ3 server... (port ${port})`);
+
+        const jsonList: string[] = [];
+        result.getList().forEach((ctx) => {
+            jsonList.push(ctx.ctrSet.getConstraintJSON());
+        });
+        result.getStopped().forEach((ctx) => {
+            jsonList.push(ctx.ctrSet.getConstraintJSON());
+        });
+        if (jsonList.length === 0) {
+            return Promise.resolve([]);
+        }
+
+        // random segmented id
+        this._requestId = (this._requestId + 1) % 10000000;
+        const jsonParams = `${jsonList.join(',')}`;
+        const jsonStr = `{"jsonrpc":"2.0","id":${this._requestId},"method":"solve","params":[${jsonParams}]}`;
+
+        const respond = await axios.post(`http://localhost:${port}/`, jsonStr);
+        const data = respond.data as PyZ3RPCRespond;
+
+        if (data.log) {
+            this._console.info(data.log);
+        }
+
+        return Promise.resolve(data.result);
     }
 
     printLog(result: ContextSet<ShValue | ShContFlag>): void {

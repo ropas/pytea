@@ -50,15 +50,16 @@
     "jsonrpc": "2.0",
     "id": 0, // number
     "result": [
-        { type: "valid" }, // type: PathResult
-    ] // results for each paths
+        { type: 1 }, // type: PathResult
+    ], // results for each paths
+    "log": "<some extra messages>"
 }
 ```
 
 ## Result type
 
 ```typescript
-enum PathResultType {
+enum PyZ3RPCResultType {
     Unreachable = 0,
     Valid = 1,
     MayInvalid = 2,
@@ -66,8 +67,8 @@ enum PathResultType {
     Undecidable = 4,
 }
 
-interface PathResult {
-    type: PathResultType,
+interface PyZ3RPCResult {
+    type: PyZ3RPCResultType,
     extras: {
         conflict?: number // first index of conflicted constraint (type == Invalid)
         undecide?: number // first index of undecidable constraint (type == Undecidable)

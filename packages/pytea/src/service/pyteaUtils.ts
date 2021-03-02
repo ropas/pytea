@@ -50,6 +50,28 @@ import { ThStmt } from '../frontend/torchStatements';
 import { FilePathStore } from './executionPaths';
 import { PyteaOptions } from './pyteaOptions';
 
+export enum PyZ3RPCResultType {
+    Unreachable = 0,
+    Valid = 1,
+    MayInvalid = 2,
+    Invalid = 3,
+    Undecidable = 4,
+}
+
+export interface PyZ3RPCResult {
+    type: PyZ3RPCResultType;
+    extras?: {
+        conflict?: number; // first index of conflicted constraint (type == Invalid)
+        undecide?: number; // first index of undecidable constraint (type == Undecidable)
+    };
+}
+export interface PyZ3RPCRespond {
+    jsonrpc: 2.0;
+    id: number;
+    result: PyZ3RPCResult[];
+    log: string;
+}
+
 export class NodeConsole implements ConsoleInterface {
     logger: ReturnType<typeof util.debuglog>;
 
