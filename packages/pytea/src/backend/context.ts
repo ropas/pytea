@@ -733,33 +733,60 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     }
 }
 
-let _maxPaths = 0;
-export function peekMaxPaths(): number {
-    return _maxPaths;
-}
+// mimic interval
+export namespace ContextSet {
+    // callback, start time, last call time, interval
+    let _callbacks: [(ctxSet: ContextSetImpl<unknown>) => void, number, number, number][] = [];
+    let _maxPaths = 0;
 
-export function setMaxPaths(count: number) {
-    _maxPaths = count;
+    export function clearAllInterval(): void {
+        _callbacks = [];
+    }
+
+    export function setInterval(callback: (ctxSet: ContextSetImpl<unknown>) => void, interval: number): void {
+        const time = new Date().getTime();
+        _callbacks.push([callback, time, time, interval]);
+    }
+
+    export function checkInterval(ctxSet: ContextSetImpl<unknown>) {
+        const currTime = new Date().getTime();
+        for (const callTime of _callbacks) {
+            const [callback, startTime, lastTime, interval] = callTime;
+
+            const doCount =
+                Math.floor((currTime - startTime) / interval) - Math.floor((lastTime - startTime) / interval);
+            callTime[2] = currTime;
+            for (let i = 0; i < doCount; i++) {
+                callback(ctxSet);
+            }
+        }
+    }
+
+    export function getMaxPaths(): number {
+        return _maxPaths;
+    }
+
+    export function setMaxPaths(count: number) {
+        _maxPaths = count;
+    }
 }
 
 export class ContextSetImpl<T> implements ContextSet<T> {
     env: false;
     // running path
-    private _ctxList: List<Context<T>>;
+    ctxList: List<Context<T>>;
     // failed path
-    private _failed: List<Context<SVError>>;
+    failed: List<Context<SVError>>;
     // stopped path: failed but possibly unreachable path
-    // TODO: path constraint resolution
-    private _stopped: List<Context<SVError>>;
+    stopped: List<Context<SVError>>;
 
     constructor(ctxList: List<Context<T>>, failed?: List<Context<SVError>>, stopped?: List<Context<SVError>>) {
-        const len = ctxList.count();
-        if (len > _maxPaths) _maxPaths = len;
-
         this.env = false;
-        this._ctxList = ctxList;
-        this._failed = failed ? failed : List();
-        this._stopped = stopped ? stopped : List();
+        this.ctxList = ctxList;
+        this.failed = failed ? failed : List();
+        this.stopped = stopped ? stopped : List();
+
+        ContextSet.checkInterval(this);
     }
 
     static fromCtx<A>(ctx: Context<A>): ContextSet<A> {
@@ -779,23 +806,23 @@ export class ContextSetImpl<T> implements ContextSet<T> {
     }
 
     getList(): List<Context<T>> {
-        return this._ctxList;
+        return this.ctxList;
     }
 
     getFailed(): List<Context<SVError>> {
-        return this._failed;
+        return this.failed;
     }
 
     getStopped(): List<Context<SVError>> {
-        return this._stopped;
+        return this.stopped;
     }
 
     getRunningCount(): number {
-        return this._ctxList.count();
+        return this.ctxList.count();
     }
 
     filter(tester: (ctx: Context<T>) => boolean): ContextSet<T> {
-        return new ContextSetImpl(this._ctxList.filter(tester), this._failed, this._stopped);
+        return new ContextSetImpl(this.ctxList.filter(tester), this.failed, this.stopped);
     }
 
     setCtxList<A>(ctxList: List<Context<A>>): ContextSet<A> {
@@ -816,71 +843,65 @@ export class ContextSetImpl<T> implements ContextSet<T> {
                 if (ctx.failId === -1) stopped = stopped.set('failId', getFailedId());
                 return stopped;
             });
-        return new ContextSetImpl(succeed, this._failed.concat(failed), this._stopped.concat(stopped));
+        return new ContextSetImpl(succeed, this.failed.concat(failed), this.stopped.concat(stopped));
     }
 
     map<A>(mapper: (ctx: Context<T>) => Context<A>): ContextSet<A> {
-        return this.setCtxList(this._ctxList.map(mapper));
+        return this.setCtxList(this.ctxList.map(mapper));
     }
 
     flatMap<A>(mapper: (ctx: Context<T>) => ContextSet<A>): ContextSet<A> {
-        const mapped = this._ctxList.map(mapper);
+        const mapped = this.ctxList.map(mapper);
         const succeed = mapped.toArray().flatMap((cs) => cs.getList().toArray());
         const failed = mapped.toArray().flatMap((cs) => cs.getFailed().toArray());
         const stopped = mapped.toArray().flatMap((cs) => cs.getStopped().toArray());
 
-        return new ContextSetImpl(
-            List(succeed),
-            List(failed).concat(this._failed),
-            List(stopped).concat(this._stopped)
-        );
+        return new ContextSetImpl(List(succeed), List(failed).concat(this.failed), List(stopped).concat(this.stopped));
     }
 
     return<A>(retVal: A): ContextSet<A> {
         return new ContextSetImpl(
-            this._ctxList.map((ctx) => ctx.setRetVal(retVal)),
-            this._failed,
-            this._stopped
+            this.ctxList.map((ctx) => ctx.setRetVal(retVal)),
+            this.failed,
+            this.stopped
         );
     }
 
     fail(errMsg: string, source?: CodeSource): ContextSet<SVError> {
         return new ContextSetImpl(
             List(),
-            this._ctxList
+            this.ctxList
                 .filter((ctx) => {
                     !ctx.hasPathCtr();
                 })
                 .map((ctx) => {
-                    const err = SVError.create(errMsg, SVErrorLevel.Error, source);
-                    return ctx.fail(err);
+                    return ctx.failWithMsg(errMsg);
                 })
-                .concat(this._failed),
-            this._ctxList
+                .concat(this.failed),
+            this.ctxList
                 .filter((ctx) => {
                     ctx.hasPathCtr();
                 })
                 .map((ctx) => {
-                    const err = SVError.create(errMsg, SVErrorLevel.Error, source);
-                    return ctx.fail(err);
+                    return ctx.failWithMsg(errMsg);
                 })
-                .concat(this._stopped)
+                .concat(this.stopped)
         );
     }
 
     join<A>(ctxSet: ContextSet<A>): ContextSet<A | T> {
-        const thisList: List<Context<T | A>> = this._ctxList;
+        const thisList: List<Context<T | A>> = this.ctxList;
         const thatList: List<Context<T | A>> = ctxSet.getList();
 
         // TODO: precalculate failed set.
         const failedSet: { [id: number]: Context<SVError> } = {};
         const thatFailed = ctxSet.getFailed();
-        this._failed.forEach((ctx) => (failedSet[ctx.failId] = ctx));
+        this.failed.forEach((ctx) => (failedSet[ctx.failId] = ctx));
         thatFailed.forEach((ctx) => (failedSet[ctx.failId] = ctx));
 
         const stoppedSet: { [id: number]: Context<SVError> } = {};
         const thatStopped = ctxSet.getStopped();
-        this._stopped.forEach((ctx) => (stoppedSet[ctx.failId] = ctx));
+        this.stopped.forEach((ctx) => (stoppedSet[ctx.failId] = ctx));
         thatStopped.forEach((ctx) => (stoppedSet[ctx.failId] = ctx));
 
         return new ContextSetImpl(
@@ -921,7 +942,7 @@ export class ContextSetImpl<T> implements ContextSet<T> {
         const ifPath: Context<T>[] = [];
         const elsePath: Context<T>[] = [];
 
-        this._ctxList.forEach((ctx) => {
+        this.ctxList.forEach((ctx) => {
             const ctrSet = ctx.ctrSet.addIf(ctr);
             if (ctrSet.valid !== false) {
                 ifPath.push(ctx.setCtrSet(ctrSet));
@@ -934,13 +955,13 @@ export class ContextSetImpl<T> implements ContextSet<T> {
         });
 
         return [
-            new ContextSetImpl(List(ifPath), this._failed, this._stopped),
-            new ContextSetImpl(List(elsePath), this._failed, this._stopped),
+            new ContextSetImpl(List(ifPath), this.failed, this.stopped),
+            new ContextSetImpl(List(elsePath), this.failed, this.stopped),
         ];
     }
 
     isEmpty(): boolean {
-        return this._ctxList.isEmpty();
+        return this.ctxList.isEmpty();
     }
 
     addLog(message: string, source?: CodeSource): ContextSet<T> {

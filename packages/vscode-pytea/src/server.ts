@@ -66,14 +66,11 @@ export class PyteaServer {
     private _serverOptions: ServerOptions;
     private _controller: PyteaCommandController;
 
-    // We support running only one command at a time.
     private _pendingCommandCancellationSource: CancellationTokenSource | undefined;
     private _selectedWorkspace?: PyteaWorkspaceInstance;
 
     // Global root path - the basis for all global settings.
     rootPath = '';
-
-    // File system abstraction.
     fs: FileSystem;
 
     readonly console: ConsoleInterface;
@@ -314,6 +311,7 @@ export class PyteaServer {
     }
 
     restart() {
+        // TODO: clear diagnostics and messages
         this._workspaceMap.forEach((workspace) => {
             workspace.serviceInstance.restart();
         });

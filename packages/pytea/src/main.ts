@@ -48,8 +48,8 @@ function parsePyrightArgs(): CommandLineOptions | undefined {
         { name: 'version', type: Boolean },
         { name: 'watch', alias: 'w', type: Boolean, defaultValue: false },
         { name: 'runZ3', type: Boolean, defaultValue: false },
-        { name: 'timeout', type: Boolean },
-        { name: 'maxPath', type: Boolean },
+        { name: 'timeout', type: Number },
+        { name: 'maxPath', type: Number },
     ];
 
     let args: CommandLineOptions;
@@ -174,6 +174,7 @@ function runMain(args: CommandLineOptions) {
                     if (pyteaService && result) {
                         pyteaService!.printLog(result);
                         if (watch) {
+                            pyteaService.spawnZ3Py();
                             await pyteaService.runZ3Py(result);
                         } else {
                             exportConstraintSet(result, resultPath);
@@ -221,6 +222,8 @@ function printUsage() {
             '  --logLevel                      Verbosity of log (none, result-only, reduced, full)\n' +
             '  --verbose                       Emit Pyright verbose diagnostics\n' +
             '  --version                       Print PyTea version\n' +
+            '  --maxPath                       Limit maximum path number\n' +
+            '  --timeout                       Set timeout in miliseconds\n' +
             '  -w,--watch                      Continue to run and watch for changes\n'
     );
 }
