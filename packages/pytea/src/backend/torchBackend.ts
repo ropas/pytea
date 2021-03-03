@@ -306,7 +306,6 @@ export namespace TorchBackend {
         });
 
         // assigning pos args and varargs
-        // TODO: set varargTuple as tuple class
         const posargLen =
             f.params.count() - (f.kwargsParam ? 1 : 0) - (f.varargsParam ? 1 : 0) - (f.keyOnlyNum ? f.keyOnlyNum : 0);
 
@@ -336,7 +335,6 @@ export namespace TorchBackend {
         }
 
         // assigning kwargs
-        // TODO: set kwargDict as dict class
         let kwargDict: SVObject | undefined;
         let kwargLen = 0;
         if (f.kwargsParam) {
@@ -671,25 +669,37 @@ export namespace TorchBackend {
 
                 return ctx.getAttrDeep(obj, '__setitem__').flatMap((ctx) => {
                     const func = BackUtils.fetchAddr(ctx.retVal, ctx.heap);
+
+                    // __setitem__ is not exist. assume lexpr is list and use default behaviour.
                     if (func === undefined) {
                         return evaluate(ctx.toSet(), exp2).flatMap((ctx) => {
-                            const n = BackUtils.fetchAddr(ctx.retVal, ctx.heap);
-                            if (n?.type !== SVType.Int) {
+                            const idx = BackUtils.fetchAddr(ctx.retVal, ctx.heap);
+                            if (idx?.type !== SVType.Int) {
                                 return ctx
-                                    .warnWithMsg(`__setitem__ index ${n} is not a number`, stmt.source)
+                                    .warnWithMsg(`__setitem__ index ${idx} is not a number`, stmt.source)
                                     .toSet() as CtxStmt;
                             }
                             const nextSet4 = ctx.toSet();
                             const nextSet5 = evaluate(nextSet4, exp3);
                             const nextSet6 = nextSet5.map((ctx) => {
                                 const value = ctx.retVal;
-                                if (typeof n.value === 'number') {
-                                    const newObj = obj.setIndice(n.value, value);
+                                if (typeof idx.value === 'number') {
+                                    const newObj = obj.setIndice(idx.value, value);
                                     const newHeap = ctx.heap.setVal(newObj.addr, newObj);
                                     return ctx.setHeap(newHeap);
                                 } else {
-                                    // TODO: when index n is a symbolic number.
-                                    return ctx.addLog('');
+                                    // n is symbolic value
+                                    const evaluated = ctx.ctrSet.getCachedRange(idx.value);
+                                    if (evaluated?.isConst()) {
+                                        const idxInt = evaluated.start;
+                                        const newObj = obj.setIndice(idxInt, value);
+                                        const newHeap = ctx.heap.setVal(newObj.addr, newObj);
+                                        return ctx.setHeap(newHeap);
+                                    }
+                                    return ctx.warnWithMsg(
+                                        `index ${idx} is a symbolic value, assigment operation is not executed.`,
+                                        stmt.source
+                                    );
                                 }
                             });
                             return nextSet6.return(ShContFlag.Run);
