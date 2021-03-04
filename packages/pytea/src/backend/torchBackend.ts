@@ -46,7 +46,8 @@ import { BuiltinsLCImpl } from '../pylibImplements/builtins';
 import { evalLibCall } from '../pylibImplements/evaluator';
 import { sanitizeAddrSet, SymOpUtils } from './backUtils';
 import * as BackUtils from './backUtils';
-import { Context, ContextSet, CtxExpr, CtxStmt, peekMaxPaths, setMaxPaths } from './context';
+import { Context, ContextSet, ContextSetImpl, CtxExpr, CtxStmt } from './context';
+import { simplifyNum } from './expUtils';
 import { ShEnv } from './sharpEnvironments';
 import {
     CodeSource,
@@ -68,7 +69,6 @@ import {
     SVUndef,
 } from './sharpValues';
 import { ExpNum, ExpString, NumBopType, SymExp } from './symExpressions';
-import { simplifyNum } from './expUtils';
 
 export namespace TorchBackend {
     export function runEmpty(stmt: ThStmt): ContextSet<ShValue | ShContFlag> {
@@ -125,42 +125,55 @@ export namespace TorchBackend {
 
     // milisecond timeout & path count timeout
     // if unset, run until memory error.
-    export async function runWithFailure<T>(
+    export function runWithFailure<T>(
         ctxSet: ContextSet<T>,
         stmt: ThStmt,
         console: ConsoleInterface,
         timeout?: number,
         maxPath?: number
-    ): Promise<ContextSet<ShValue | ShContFlag>> {
-        const runner: Promise<ContextSet<ShValue | ShContFlag>> = new Promise((resolve, reject) => {
-            setMaxPaths(1);
-            const pathCount = peekMaxPaths();
-            console.info(`start running with ${pathCount} paths...`);
+    ): ContextSet<ShValue | ShContFlag> {
+        const pathLimit = maxPath ? (maxPath > 0 ? maxPath : 0) : 0;
+        ContextSet.setMaxPaths(pathLimit);
 
-            const pathWatcher = setTimeout(() => {
-                const _pathCount = peekMaxPaths();
-                console.info(`running ${_pathCount} paths...`);
-                if (maxPath && pathCount > maxPath) {
-                    reject(`path count overflow: ${pathCount} paths (max: ${maxPath})`);
-                }
-            }, 1000);
-
-            const retVal = run(ctxSet, stmt);
-
-            clearInterval(pathWatcher);
-            console.info(`end running with ${pathCount} paths`);
-
-            resolve(retVal);
-        });
-
-        if (timeout) {
-            const referee: Promise<never> = new Promise((_, reject) => {
-                setTimeout(() => reject(`timeout expired`), timeout);
-            });
-            return Promise.race([runner, referee]);
+        if (timeout || maxPath) {
+            console.log(
+                `analyzer starts with maximum ${maxPath ?? 'unlimited'} paths & timeout ${timeout ?? 'none'} ms`
+            );
         } else {
-            return runner;
+            console.log(`analyzer starts!`);
         }
+
+        // check maxPath
+        if (pathLimit) {
+            ContextSet.setCallback((ctxSet: ContextSetImpl<unknown>) => {
+                const pathCnt = ctxSet.getRunningCount();
+
+                if (pathCnt > pathLimit) {
+                    ctxSet.failed = ctxSet.stopped.merge(
+                        ctxSet.ctxList.map((ctx) => ctx.failWithMsg(`path count exceeded limit (max: ${maxPath})`))
+                    );
+                    ctxSet.ctxList = List();
+                }
+            });
+        }
+
+        // check timeout
+        const startTime = new Date().getTime();
+        if (timeout) {
+            ContextSet.setCallback((ctxSet: ContextSetImpl<unknown>) => {
+                if (new Date().getTime() - startTime > timeout && ctxSet.ctxList.count() > 0) {
+                    ctxSet.failed = ctxSet.stopped.merge(
+                        ctxSet.ctxList.map((ctx) => ctx.failWithMsg(`timeout expired (${timeout}ms)`))
+                    );
+                    ctxSet.ctxList = List();
+                }
+            });
+        }
+
+        const retVal = run(ctxSet, stmt);
+        ContextSet.clearCallbacks();
+
+        return retVal;
     }
 
     export function run<T>(ctxSet: ContextSet<T>, stmt: ThStmt): ContextSet<ShValue | ShContFlag> {

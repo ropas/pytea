@@ -9,7 +9,7 @@
  */
 import axios from 'axios';
 import chalk from 'chalk';
-import { spawn } from 'child_process';
+import { ChildProcess, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
@@ -35,6 +35,7 @@ let _globalService: PyteaService | undefined;
 export class PyteaService {
     private _options?: PyteaOptions;
     private _service?: AnalyzerService;
+    private _z3Process?: ChildProcess;
 
     private _console: ConsoleInterface;
 
@@ -211,16 +212,12 @@ export class PyteaService {
 
     async analyze(): Promise<ContextSet<ShValue | ShContFlag>> {
         if (!this.validate()) {
-            this._console.error('failed to validate PyTea service.');
-            return Promise.reject();
+            return Promise.reject('failed to validate PyTea service.');
         }
-
-        this._spawnZ3Py();
 
         const builtinsPair = this._libStmt.get('builtins');
         if (!builtinsPair) {
-            this._console.error('cannot find PyTea implemenation of Python builtins.');
-            return Promise.reject();
+            return Promise.reject('cannot find PyTea implemenation of Python builtins.');
         }
         const builtins = builtinsPair[1];
 
@@ -233,8 +230,7 @@ export class PyteaService {
 
         if (!stmtPair) {
             this._mainStmt = undefined;
-            this._console.error(`cannot parse entry file '${entryPath}'`);
-            return Promise.reject();
+            return Promise.reject(`cannot parse entry file '${entryPath}'`);
         }
 
         const stmt = stmtPair[1];
@@ -248,7 +244,7 @@ export class PyteaService {
             return ctx.setRelPath(entryName).setEnv(ctx.env.setId('__name__', nameAddr)).setHeap(newHeap);
         });
 
-        const result = await TorchBackend.runWithFailure(
+        const result = TorchBackend.runWithFailure(
             startSet,
             stmt,
             this._console,
@@ -258,12 +254,40 @@ export class PyteaService {
 
         this._pushTimeLog('Running entry file');
 
-        return Promise.resolve(result);
+        return result;
+    }
+
+    spawnZ3Py(): ChildProcess | undefined {
+        if (this._z3Process) return this._z3Process;
+
+        if (!this.options?.pyteaLibPath) {
+            this._console.error(`pyteaLibPath is not set'. skip z3`);
+            return;
+        }
+
+        const pyteaPath = path.join(this.options.pyteaLibPath, '..', 'z3wrapper', 'pyteaserver.py');
+
+        if (!fs.existsSync(pyteaPath)) {
+            this._console.error(`cannot found pytea server script at '${pyteaPath}'. skip z3`);
+            return;
+        }
+
+        const child = spawn('python', [pyteaPath, `--port=${this.options.z3Port}`]);
+        child.on('exit', () => {
+            this._z3Process = undefined;
+        });
+        this._z3Process = child;
+
+        return child;
     }
 
     async runZ3Py(result: ContextSet<ShValue | ShContFlag>): Promise<PyZ3RPCResult[]> {
         const port = this._options?.z3Port ?? defaultOptions.z3Port;
         this._console.info(`connecting PyZ3 server... (port ${port})`);
+
+        if (!this._z3Process) {
+            return Promise.reject('z3 process is not spawned. please call spawnZ3Py before.');
+        }
 
         const jsonList: string[] = [];
         result.getList().forEach((ctx) => {
@@ -293,6 +317,8 @@ export class PyteaService {
 
     printLog(result: ContextSet<ShValue | ShContFlag>): void {
         const logLevel = this._options!.logLevel;
+
+        this._console.info('\n------------- constraint generator result -------------\n');
         switch (logLevel) {
             case 'none':
                 this._noneLog(result);
@@ -383,7 +409,7 @@ export class PyteaService {
             const source = ctx.retVal.source;
 
             this._console.info(
-                ` path #${i + 1}: ${ctx.retVal.reason} - ${formatCodeSource(source, this._pathStore)}\n\n`
+                `stopped path #${i + 1}: ${ctx.retVal.reason} - ${formatCodeSource(source, this._pathStore)}\n`
             );
         });
 
@@ -391,18 +417,18 @@ export class PyteaService {
             const source = ctx.retVal.source;
 
             this._console.info(
-                `failed path #${i + 1}: ${ctx.retVal.reason} - ${formatCodeSource(source, this._pathStore)}\n\n`
+                `failed path #${i + 1}: ${ctx.retVal.reason} - ${formatCodeSource(source, this._pathStore)}\n`
             );
         });
 
         this._pushTimeLog('printing results');
 
+        const totalPaths = success.count() + stopped.count() + failed.count();
         this._console.info(
-            chalk.green(`potential success path #: ${success.count()}\n`) +
+            `<OVERALL: total ${totalPaths} paths>\n` +
+                chalk.green(`potential success path #: ${success.count()}\n`) +
                 chalk.yellow(`potential unreachable path #: ${stopped.count()}\n`) +
-                chalk.red(`immediate failed path #: ${failed.count()}\n\n`) +
-                'RUNNING TIMES:\n' +
-                this._timeLog.map(([name, interval]) => `  ${name}: ${(interval / 1000).toFixed(4)}s`).join('\n')
+                chalk.red(`immediate failed path #: ${failed.count()}\n`)
         );
     }
 
@@ -492,8 +518,10 @@ export class PyteaService {
 
         this._pushTimeLog('printing results');
 
+        const totalPaths = success.count() + stopped.count() + failed.count();
         this._console.info(
-            chalk.green(`potential success path #: ${success.count()}\n`) +
+            `<OVERALL: total ${totalPaths} paths>\n` +
+                chalk.green(`potential success path #: ${success.count()}\n`) +
                 chalk.yellow(`potential unreachable path #: ${stopped.count()}\n`) +
                 chalk.red(`immediate failed path #: ${failed.count()}\n\n`) +
                 'RUNNING TIMES:\n' +
@@ -556,8 +584,10 @@ export class PyteaService {
 
         this._pushTimeLog('printing results');
 
+        const totalPaths = success.count() + stopped.count() + failed.count();
         this._console.info(
-            chalk.green(`potential success path #: ${success.count()}\n`) +
+            `<OVERALL: total ${totalPaths} paths>\n` +
+                chalk.green(`potential success path #: ${success.count()}\n`) +
                 chalk.yellow(`potential unreachable path #: ${stopped.count()}\n`) +
                 chalk.red(`immediate failed path #: ${failed.count()}\n\n`) +
                 'RUNNING TIMES:\n' +
@@ -647,21 +677,5 @@ export class PyteaService {
             .map(([func, node]) => `${typeof func === 'string' ? func : func.name} - ${formatCodeSource(node)}`)
             .reverse()
             .join('\n');
-    }
-
-    private _spawnZ3Py() {
-        if (!this.options?.pyteaLibPath) {
-            this._console.error(`pyteaLibPath is not set'. skip z3`);
-            return;
-        }
-
-        const pyteaPath = path.join(this.options.pyteaLibPath, '..', 'z3wrapper', 'pyteaserver.py');
-
-        if (!fs.existsSync(pyteaPath)) {
-            this._console.error(`cannot found pytea server script at '${pyteaPath}'. skip z3`);
-            return;
-        }
-
-        spawn('python', [pyteaPath, `--port=${this.options.z3Port}`]);
     }
 }
