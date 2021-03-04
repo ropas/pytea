@@ -172,7 +172,7 @@ class Z3Encoder:
             # log += pathLog
 
             # print only errornous pathes
-            log = f"--- {bcolors.WARNING}Errornous Path{bcolors.ENDC}: Path {pathIdx} ---\n{pathLog}"
+            log = f"--- {bcolors.WARNING}Errornous Path{bcolors.ENDC}: Path {pathIdx + 1} ---\n{pathLog}"
 
             if pathResult == PathResult.Valid.value:
                 ValidPaths.append(pathIdx)
@@ -277,21 +277,19 @@ class CtrSet:
             return PathResult.Valid.value, log, extras
         elif sat == PathResult.Unreachable.value:
             log = "Unreachable path. Path condition is unsatisfiable."
-            log += "\nconflict constraints: \n"
+            log += f"\nfirst conflicted constraint (constraint #{unsatIndice + 1}): \n"
             log += self.ctrPool[unsatIndice].toString() + "\n"
             extras["conflict"] = unsatIndice
         elif sat == PathResult.Unsat.value:
             log = "Invalid path: Found conflicted constraints.\n\n"
-            # log += "first conflicted hard constraint:\n"
-            # log += self.ctrPool[unsatIndice].toString() + "\n"
-            log += "\nconflict constraints: \n"
+            log += f"\nfirst conflicted constraint (constraint #{unsatIndice + 1}): \n"
             log += self.ctrPool[unsatIndice].toString() + "\n"
             extras["conflict"] = unsatIndice
         else:
             sat = PathResult.DontKnow.value
             log = "Undecidable path: Z3 failed to solve constraints.\n\n"
-            # log += "first undecidable hard constraint:\n"
-            # log += self.ctrPool[unsatIndice].toString() + "\n"
+            log += f"\nfirst undecidable constraint (constraint #{unsatIndice + 1}): \n"
+            log += self.ctrPool[unsatIndice].toString() + "\n"
             extras["undecide"] = unsatIndice
 
         return sat, log, extras
