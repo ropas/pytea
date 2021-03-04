@@ -202,7 +202,7 @@ class Z3Encoder:
             )
         if len(DontknowPaths) != 0:
             self.console.log(
-                f"  {bcolors.WARNING}Undecidable paths{bcolors.ENDC} (z3 timeout): {len(DontknowPaths)}"
+                f"  {bcolors.WARNING}Undecidable paths{bcolors.ENDC} (z3 unsolvable or timeout): {len(DontknowPaths)}"
             )
         if len(UnreachablePaths) != 0:
             self.console.log(
@@ -278,16 +278,14 @@ class CtrSet:
         elif sat == PathResult.Unreachable.value:
             log = "Unreachable path. Path condition is unsatisfiable."
             log += "\nconflict constraints: \n"
-            for idx in unsatIndice:
-                log += self.ctrPool[idx].toString() + "\n"
+            log += self.ctrPool[unsatIndice].toString() + "\n"
             extras["conflict"] = unsatIndice
         elif sat == PathResult.Unsat.value:
             log = "Invalid path: Found conflicted constraints.\n\n"
             # log += "first conflicted hard constraint:\n"
             # log += self.ctrPool[unsatIndice].toString() + "\n"
             log += "\nconflict constraints: \n"
-            for idx in unsatIndice:
-                log += self.ctrPool[idx].toString() + "\n"
+            log += self.ctrPool[unsatIndice].toString() + "\n"
             extras["conflict"] = unsatIndice
         else:
             sat = PathResult.DontKnow.value
@@ -359,9 +357,9 @@ class CtrSet:
             soft_list.append(curr_soft)
             s.add(And(curr_list))
             s.push()
-            s.add(Not(Or(soft_list)))
+            s.add(Not(And(soft_list)))
 
-            result = s.check()
+            result = str(s.check())
             if result == "sat":
                 return PathResult.Unsat.value, curr_soft_idx
             elif result == "unsat":
@@ -374,6 +372,16 @@ class CtrSet:
         return PathResult.Sat.value, None
 
     # def checkSat(self, minimize=False):
+    #     def findIndiceOfCtrs(ctrPool, ctrs):
+    #         indices = []
+    #         for ctr in ctrs:
+    #             for idx, ctr_ in enumerate(ctrPool):
+    #                 if ctr == ctr_.formula:
+    #                     indices.append(idx)
+    #                     break
+    #         indices.sort()
+    #         return indices
+
     #     constraints = list(map(lambda ctr: ctr.formula, self.ctrPool))
     #     s = Solver()
     #     if minimize:
@@ -383,9 +391,9 @@ class CtrSet:
     #         return PathResult.Sat.value, None
     #     elif result == "unsat":
     #         unsatCore = s.unsat_core()
-    #         unsatIndice = self._findIndiceOfCtrs(self.ctrPool, unsatCore)
+    #         unsatIndice = findIndiceOfCtrs(self.ctrPool, unsatCore)
     #         if unsatIndice[-1] in self.pathCtr:
-    #             return PathResult.Unreachable.value, unsatIndice
+    #             return PathResult.Unavailable.value, unsatIndice
     #         return PathResult.Unsat.value, unsatIndice
     #     else:
     #         return PathResult.DontKnow.value, None
