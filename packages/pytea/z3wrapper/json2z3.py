@@ -19,6 +19,19 @@ import sys
 import time
 
 
+class bcolors:
+    HEADER = "\033[95m"
+    OKBLUE = "\033[94m"
+    OKCYAN = "\033[96m"
+    OKGREEN = "\033[92m"
+    WARNING = "\033[93m"
+    FAIL = "\033[91m"
+    GRAY = "\033[90m"
+    ENDC = "\033[0m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"
+
+
 # z3 doesn't care of division by zero.
 # TODO: (on constraintGenerator)Add constraint(divisor != 0) for every div/mod op.
 def z3_div(a, b):
@@ -159,7 +172,7 @@ class Z3Encoder:
             # log += pathLog
 
             # print only errornous pathes
-            log = f"--- Errornous Path: Path {pathIdx} ---\n{pathLog}"
+            log = f"--- {bcolors.WARNING}Errornous Path{bcolors.ENDC}: Path {pathIdx} ---\n{pathLog}"
 
             if pathResult == PathResult.Valid.value:
                 ValidPaths.append(pathIdx)
@@ -176,22 +189,24 @@ class Z3Encoder:
                 DontknowPaths.append(pathIdx)
 
         self.console.log(
-            "-----------------------------------\n"
-            f"OVERALL (total {len(jsonObj)} paths)\n"
-            "-----------------------------------"
+            f"{bcolors.HEADER}OVERALL: total {len(jsonObj)} paths{bcolors.ENDC}"
         )
         valid_paths_len = len(ValidPaths) + len(SatPaths)
         if valid_paths_len != 0:
-            self.console.log(f"Valid paths (no constraint error): {valid_paths_len}")
+            self.console.log(
+                f"  {bcolors.OKGREEN}Valid paths{bcolors.ENDC} (no constraint error): {valid_paths_len}"
+            )
         if len(UnsatPaths) != 0:
             self.console.log(
-                f"Invalid paths (found conflicted constraints): {len(UnsatPaths)}"
+                f"  {bcolors.FAIL}Invalid paths{bcolors.ENDC} (found conflicted constraints): {len(UnsatPaths)}"
             )
         if len(DontknowPaths) != 0:
-            self.console.log(f"Undecidable paths (z3 timeout): {len(DontknowPaths)}")
+            self.console.log(
+                f"  {bcolors.WARNING}Undecidable paths{bcolors.ENDC} (z3 timeout): {len(DontknowPaths)}"
+            )
         if len(UnreachablePaths) != 0:
             self.console.log(
-                f"Unreachable paths (conflicted branch conditions): {len(UnreachablePaths)}"
+                f"  {bcolors.GRAY}Unreachable paths{bcolors.ENDC} (conflicted branch conditions): {len(UnreachablePaths)}"
             )
 
 
@@ -350,7 +365,7 @@ class CtrSet:
             else:
                 return PathResult.DontKnow.value, curr_soft_idx
 
-            last_soft_idx = curr_soft_idx
+            last_soft_idx = curr_soft_idx + 1
 
         return PathResult.Sat.value, None
 
@@ -842,7 +857,7 @@ def run_default(json_path, args):
 
     console = DefaultConsole() if not args.silent else NullConsole()
 
-    console.log("\n------------- z3 result -------------")
+    console.log("------------- z3 result -------------")
 
     if not json_path.exists():
         console.log(f"result json '{json_path}' does not exist")
@@ -852,8 +867,6 @@ def run_default(json_path, args):
         ctr_set = json.load(f)
         encoder = Z3Encoder(console)
         encoder.analyze(ctr_set)
-
-        console.log(f"z3 runtime: {time.time() - start_time:.4f}")
 
 
 if __name__ == "__main__":
