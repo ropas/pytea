@@ -77,7 +77,7 @@ class BertEmbeddings(nn.Module):
         #self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
         #self.position_ids = torch.arange(config.max_position_embeddings).expand((1, -1))  # TODO: change into this
         self.position_ids = torch.arange(config.max_position_embeddings).unsqueeze(0).cuda()
-        
+
     def forward(self, input_ids=None, token_type_ids=None, position_ids=None, inputs_embeds=None):
         if input_ids is not None:
             input_shape = input_ids.size()
@@ -178,11 +178,11 @@ class BertSelfAttention(nn.Module):
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
 
         ### ERROR CODE:
-        # new_context_layer_shape = (context_layer.shape[0], context_layer.shape[1])
+        new_context_layer_shape = (context_layer.shape[0], context_layer.shape[1])
         ###############
 
         ### CORRECT CODE:
-        new_context_layer_shape = (context_layer.shape[0], context_layer.shape[1]) + (self.all_head_size,)
+        # new_context_layer_shape = (context_layer.shape[0], context_layer.shape[1]) + (self.all_head_size,)
         #################
 
         context_layer = context_layer.view(*new_context_layer_shape)
@@ -346,7 +346,7 @@ class BertEncoder(nn.Module):
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             layer_head_mask = head_mask[i] if head_mask is not None else None
-            
+
             layer_outputs = layer_module(
                 hidden_states,
                 attention_mask,
@@ -385,8 +385,8 @@ class BertPooler(nn.Module):
         pooled_output = self.dense(first_token_tensor)
         pooled_output = self.activation(pooled_output)
         return pooled_output
-    
-    
+
+
 class BertPreTrainedModel(PreTrainedModel):
     """
     An abstract class to handle weights initialization and a simple interface for downloading and loading pretrained

@@ -274,7 +274,7 @@ train_dataset = datasets.CIFAR10(
 
 
 # hparams settings: list of (BATCH_SIZE, TOTAL_EPOCHS, TEMPERATURE) tuples.
-hparams_settings = ((256, 10, 0.07), (64, 10, 0.07))
+hparams_settings = ((256, 1, 0.07), (64, 1, 0.07))
 
 for B, E, T in hparams_settings:
     # change global variables.
@@ -290,7 +290,7 @@ for B, E, T in hparams_settings:
         batch_size=BATCH_SIZE,
         num_workers=4,
         shuffle=True,
-        # drop_last=True  # *ERROR*: drop_last=True is essential
+        drop_last=True,  # *ERROR*: drop_last=True is essential
     )
 
     net = SimCLRNet(26, 1, 10, 32)

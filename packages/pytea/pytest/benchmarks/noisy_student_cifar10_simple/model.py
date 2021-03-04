@@ -61,11 +61,11 @@ class StoDepth_BasicBlock(nn.Module):
             sample = self.m.sample().item()
 
             ### PATH EXPLOSION
-            if sample > 0:
+            # if sample > 0:
             ###
 
             ### BYPASS
-            # if True:
+            if True:
             ###
                 out = self.conv1(x)
                 out = self.bn1(out)

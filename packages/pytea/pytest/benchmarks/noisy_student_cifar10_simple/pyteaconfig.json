@@ -1,0 +1,6 @@
+{
+    "logLevel": "result-only",
+    "entryPath": "train.py",
+    "maxPath": 512,
+    "timeout": 5000
+}
