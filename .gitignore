@@ -123,4 +123,5 @@ packages/pytea-server/public/js/app.js
 # pythons
 *.pyc
 packages/pytea/constraint.json
+packages/pytea/build
 **/*/constraint.json

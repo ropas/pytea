@@ -161,7 +161,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
                 const result = `${str} - ${source}`;
 
                 if (this.hardCtr.contains(idx)) {
-                    return chalk.magenta(result);
+                    return chalk.gray(result);
                 } else if (this.pathCtr.contains(idx)) {
                     return chalk.yellow(result);
                 } else {

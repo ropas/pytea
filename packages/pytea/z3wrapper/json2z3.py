@@ -350,18 +350,22 @@ class CtrSet:
         s = Solver()
         last_soft_idx = 0
 
+        soft_list = []
         for curr_soft_idx in self.softIdx:
             curr_list = [
                 self.ctrPool[i].formula for i in range(last_soft_idx, curr_soft_idx)
             ]
             curr_soft = self.ctrPool[curr_soft_idx].formula
-            s.add(And(And(curr_list), Not(curr_soft)))
+            soft_list.append(curr_soft)
+            s.add(And(curr_list))
+            s.push()
+            s.add(Not(Or(soft_list)))
 
             result = s.check()
             if result == "sat":
                 return PathResult.Unsat.value, curr_soft_idx
             elif result == "unsat":
-                pass
+                s.pop()
             else:
                 return PathResult.DontKnow.value, curr_soft_idx
 

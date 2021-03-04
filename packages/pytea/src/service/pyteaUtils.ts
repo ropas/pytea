@@ -183,6 +183,11 @@ export function buildPyteaOption(
     // entry path is explicitly given && given path is not dir -> set entry path explicitly
     if (entryPath && !isDir) options.entryPath = entryPath;
 
+    // found config by directory, but entryPath is not set
+    if (isDir && configPath && fs.existsSync(configPath) && !options.entryPath) {
+        return `'entryPath' is not set from '${configPath}'`;
+    }
+
     if (!options.entryPath || !fs.existsSync(options.entryPath)) {
         return `file path '${options.entryPath}' does not exist`;
     }
@@ -371,7 +376,9 @@ export function exportConstraintSet<T>(result: ContextSet<T>, path: string): voi
 
 // if value is address, return fetchAddr(value, heap)
 // if that object has attr 'shape' and that is SVSize, return `Tensor ${value.size}`
-export function reducedToString(value: ShValue, heap: ShHeap): string {
+export function reducedToString(value: ShValue, heap: ShHeap, attrMax?: number): string {
+    attrMax = attrMax ?? 8;
+
     const obj = fetchAddr(value, heap);
     if (obj) {
         if (obj.type === SVType.Object) {
@@ -379,6 +386,19 @@ export function reducedToString(value: ShValue, heap: ShHeap): string {
             if (shape instanceof SVSize) {
                 return `Tensor ${SymExp.toString(shape.shape)}`;
             }
+
+            const attrStr =
+                obj.attrs.count() > attrMax ? `<${obj.attrs.count()} attrs>` : `${ShValue.toStringStrMap(obj.attrs)}`;
+            const indStr =
+                obj.indices.count() > attrMax
+                    ? `<${obj.indices.count()} indexed values>`
+                    : `${ShValue.toStringNumMap(obj.indices)}`;
+            const kvStr =
+                obj.keyValues.count() > attrMax
+                    ? `<${obj.keyValues.count()} keyed values>`
+                    : `${ShValue.toStringStrMap(obj.keyValues)}`;
+            const shapeStr = obj.shape ? `, ${ExpShape.toString(obj.shape)}` : '';
+            return `[${obj.addr.addr}]{ ${attrStr}, ${indStr}, ${kvStr}${shapeStr} }`;
         }
 
         return obj.toString();
