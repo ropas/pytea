@@ -309,7 +309,7 @@ class CtrSet:
     def pathCondCheck(self):
         s = Solver()
         s.set(":core.minimize", True)
-        result = str(s.check(self.assumptions + self.pathCtrs))
+        result = str(s.check(And(self.assumptions + self.pathCtrs)))
 
         if result == "unsat":
             unsatCore = s.unsat_core()
