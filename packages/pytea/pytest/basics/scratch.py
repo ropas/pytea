@@ -1,4 +1,6 @@
 import torch
 
-x = torch.rand(3, 5)
-
+n = 3
+x = torch.Tensor([2.0 / n])
+y = torch.sqrt(x)
+z = y.item()

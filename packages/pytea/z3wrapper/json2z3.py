@@ -182,7 +182,7 @@ class Z3Encoder:
                 self.console.log(log)
                 UnsatPaths.append(pathIdx)
             elif pathResult == PathResult.Unreachable.value:
-                self.console.log(log)
+                # self.console.log(log)
                 UnreachablePaths.append(pathIdx)
             else:
                 self.console.log(log)
@@ -206,9 +206,8 @@ class Z3Encoder:
             )
         if len(UnreachablePaths) != 0:
             self.console.log(
-                f"  {bcolors.GRAY}Unreachable paths{bcolors.ENDC} (conflicted branch conditions): {len(UnreachablePaths)}"
+                f"  {bcolors.GRAY}Unreachable paths (conflicted branch conditions): {len(UnreachablePaths)}{bcolors.ENDC}"
             )
-
 
 # constraint set of a path.
 class CtrSet:
@@ -260,9 +259,10 @@ class CtrSet:
         pathCond, unsatIndice = self.pathCondCheck()
         if pathCond == "unsat":
             log = "Unreachable path: Conflicted branch conditions."
-            log += "\nconflict constraints: \n"
-            for idx in unsatIndice:
-                log += self.ctrPool[idx].toString() + "\n"
+            if len(unsatIndice) > 0:
+                log += "\nconflicted constraints: \n"
+                for idx in unsatIndice:
+                    log += self.ctrPool[idx].toString() + "\n"
             extras["conflict"] = unsatIndice
             return PathResult.Unreachable.value, log, extras
 
@@ -276,20 +276,20 @@ class CtrSet:
             log = "Valid path: Constraints are satisfiable."
             return PathResult.Valid.value, log, extras
         elif sat == PathResult.Unreachable.value:
-            log = "Unreachable path. Path condition is unsatisfiable."
-            log += f"\nfirst conflicted constraint (constraint #{unsatIndice + 1}): \n"
-            log += self.ctrPool[unsatIndice].toString() + "\n"
+            log = "Unreachable path. Path condition is unsatisfiable.\n"
+            log += f"  first conflicted constraint (constraint #{unsatIndice + 1}): \n"
+            log += f"    {bcolors.BOLD}{self.ctrPool[unsatIndice].toString()}{bcolors.ENDC}\n"
             extras["conflict"] = unsatIndice
         elif sat == PathResult.Unsat.value:
-            log = "Invalid path: Found conflicted constraints.\n\n"
-            log += f"\nfirst conflicted constraint (constraint #{unsatIndice + 1}): \n"
-            log += self.ctrPool[unsatIndice].toString() + "\n"
+            log = "Invalid path: Found conflicted constraints.\n"
+            log += f"  first conflicted constraint (constraint #{unsatIndice + 1}): \n    "
+            log += f"    {bcolors.BOLD}{self.ctrPool[unsatIndice].toString()}{bcolors.ENDC}\n"
             extras["conflict"] = unsatIndice
         else:
             sat = PathResult.DontKnow.value
-            log = "Undecidable path: Z3 failed to solve constraints.\n\n"
-            log += f"\nfirst undecidable constraint (constraint #{unsatIndice + 1}): \n"
-            log += self.ctrPool[unsatIndice].toString() + "\n"
+            log = "Undecidable path: Z3 failed to solve constraints.\n"
+            log += f"  first undecidable constraint (constraint #{unsatIndice + 1}): \n    "
+            log += f"    {bcolors.BOLD}{self.ctrPool[unsatIndice].toString()}{bcolors.ENDC}\n"
             extras["undecide"] = unsatIndice
 
         return sat, log, extras

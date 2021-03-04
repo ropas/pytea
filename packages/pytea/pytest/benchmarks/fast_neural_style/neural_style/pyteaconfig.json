@@ -1,9 +1,13 @@
 {
     "pythonSubcommand": "train",
-    "pythonCmdArgs": { "batch-size": 32, "epochs": 1, "dataset": "./", "cuda": 0, "save-model-dir": "./" },
+    "pythonCmdArgs": {
+        "batch-size": 32,
+        "epochs": 1,
+        "dataset": "./",
+        "cuda": 0,
+        "save-model-dir": "./"
+    },
     "logLevel": "reduced",
-    "printIR": true,
     "entryPath": "./neural_style.py",
-    "immediateConstraintCheck": true,
-    "variableRange": {}
+    "variableRange": { "PILImgC_I1": [3, 3] }
 }
