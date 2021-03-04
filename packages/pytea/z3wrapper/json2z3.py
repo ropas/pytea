@@ -189,7 +189,7 @@ class Z3Encoder:
                 DontknowPaths.append(pathIdx)
 
         self.console.log(
-            f"{bcolors.HEADER}OVERALL: total {len(jsonObj)} paths{bcolors.ENDC}"
+            f"{bcolors.HEADER}<OVERALL: total {len(jsonObj)} paths>{bcolors.ENDC}"
         )
         valid_paths_len = len(ValidPaths) + len(SatPaths)
         if valid_paths_len != 0:

@@ -735,30 +735,41 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
 
 // mimic interval
 export namespace ContextSet {
-    // callback, start time, last call time, interval
-    let _callbacks: [(ctxSet: ContextSetImpl<unknown>) => void, number, number, number][] = [];
+    export type CtxConstructorCallback = (ctxSet: ContextSetImpl<unknown>) => void;
+
+    // callback, start time, call count, interval
+    let _callbacks: CtxConstructorCallback[] = [];
+    let _intervals: [CtxConstructorCallback, number, number, number][] = [];
     let _maxPaths = 0;
 
-    export function clearAllInterval(): void {
+    export function clearCallbacks(): void {
         _callbacks = [];
+        _intervals = [];
     }
 
     export function setInterval(callback: (ctxSet: ContextSetImpl<unknown>) => void, interval: number): void {
         const time = new Date().getTime();
-        _callbacks.push([callback, time, time, interval]);
+        _intervals.push([callback, time, 0, interval]);
     }
 
-    export function checkInterval(ctxSet: ContextSetImpl<unknown>) {
-        const currTime = new Date().getTime();
-        for (const callTime of _callbacks) {
-            const [callback, startTime, lastTime, interval] = callTime;
+    export function setCallback(callback: (ctxSet: ContextSetImpl<unknown>) => void): void {
+        _callbacks.push(callback);
+    }
 
-            const doCount =
-                Math.floor((currTime - startTime) / interval) - Math.floor((lastTime - startTime) / interval);
-            callTime[2] = currTime;
+    export function checkCallbacks(ctxSet: ContextSetImpl<unknown>) {
+        const currTime = new Date().getTime();
+        for (const callTime of _intervals) {
+            const [callback, startTime, callCount, interval] = callTime;
+
+            const doCount = Math.floor((currTime - startTime) / interval) - callCount;
+            callTime[2] = callCount + doCount;
             for (let i = 0; i < doCount; i++) {
                 callback(ctxSet);
             }
+        }
+
+        for (const callback of _callbacks) {
+            callback(ctxSet);
         }
     }
 
@@ -786,7 +797,7 @@ export class ContextSetImpl<T> implements ContextSet<T> {
         this.failed = failed ? failed : List();
         this.stopped = stopped ? stopped : List();
 
-        ContextSet.checkInterval(this);
+        ContextSet.checkCallbacks(this);
     }
 
     static fromCtx<A>(ctx: Context<A>): ContextSet<A> {

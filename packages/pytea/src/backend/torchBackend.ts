@@ -47,6 +47,7 @@ import { evalLibCall } from '../pylibImplements/evaluator';
 import { sanitizeAddrSet, SymOpUtils } from './backUtils';
 import * as BackUtils from './backUtils';
 import { Context, ContextSet, ContextSetImpl, CtxExpr, CtxStmt } from './context';
+import { simplifyNum } from './expUtils';
 import { ShEnv } from './sharpEnvironments';
 import {
     CodeSource,
@@ -68,7 +69,6 @@ import {
     SVUndef,
 } from './sharpValues';
 import { ExpNum, ExpString, NumBopType, SymExp } from './symExpressions';
-import { simplifyNum } from './expUtils';
 
 export namespace TorchBackend {
     export function runEmpty(stmt: ThStmt): ContextSet<ShValue | ShContFlag> {
@@ -136,43 +136,42 @@ export namespace TorchBackend {
         ContextSet.setMaxPaths(pathLimit);
 
         if (timeout || maxPath) {
-            console.log(`analyzer starts with maximum ${maxPath ?? 'unlimited'} paths & timeout ${timeout ?? 'none'}`);
+            console.log(
+                `analyzer starts with maximum ${maxPath ?? 'unlimited'} paths & timeout ${timeout ?? 'none'} ms`
+            );
         } else {
             console.log(`analyzer starts!`);
         }
 
         // check maxPath
         if (pathLimit) {
-            ContextSet.setInterval((ctxSet: ContextSetImpl<unknown>) => {
+            ContextSet.setCallback((ctxSet: ContextSetImpl<unknown>) => {
                 const pathCnt = ctxSet.getRunningCount();
-                if (pathCnt > 1) {
-                    console.log(`running ${pathCnt} paths`);
-                }
 
                 if (pathCnt > pathLimit) {
-                    ctxSet.stopped = ctxSet.stopped.merge(
-                        ctxSet.ctxList.map((ctx) => ctx.failWithMsg(`max path count exceeded ${maxPath}`))
+                    ctxSet.failed = ctxSet.stopped.merge(
+                        ctxSet.ctxList.map((ctx) => ctx.failWithMsg(`path count exceeded limit (max: ${maxPath})`))
                     );
                     ctxSet.ctxList = List();
                 }
-            }, 1000);
+            });
         }
 
         // check timeout
         const startTime = new Date().getTime();
         if (timeout) {
-            ContextSet.setInterval((ctxSet: ContextSetImpl<unknown>) => {
+            ContextSet.setCallback((ctxSet: ContextSetImpl<unknown>) => {
                 if (new Date().getTime() - startTime > timeout && ctxSet.ctxList.count() > 0) {
-                    ctxSet.stopped = ctxSet.stopped.merge(
-                        ctxSet.ctxList.map((ctx) => ctx.failWithMsg(`timeout expired`))
+                    ctxSet.failed = ctxSet.stopped.merge(
+                        ctxSet.ctxList.map((ctx) => ctx.failWithMsg(`timeout expired (${timeout}ms)`))
                     );
                     ctxSet.ctxList = List();
                 }
-            }, 1000);
+            });
         }
 
         const retVal = run(ctxSet, stmt);
-        ContextSet.clearAllInterval();
+        ContextSet.clearCallbacks();
 
         return retVal;
     }

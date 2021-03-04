@@ -317,6 +317,8 @@ export class PyteaService {
 
     printLog(result: ContextSet<ShValue | ShContFlag>): void {
         const logLevel = this._options!.logLevel;
+
+        this._console.info('\n------------- constraint generator result -------------\n');
         switch (logLevel) {
             case 'none':
                 this._noneLog(result);
@@ -407,7 +409,7 @@ export class PyteaService {
             const source = ctx.retVal.source;
 
             this._console.info(
-                ` path #${i + 1}: ${ctx.retVal.reason} - ${formatCodeSource(source, this._pathStore)}\n\n`
+                `stopped path #${i + 1}: ${ctx.retVal.reason} - ${formatCodeSource(source, this._pathStore)}\n`
             );
         });
 
@@ -415,16 +417,18 @@ export class PyteaService {
             const source = ctx.retVal.source;
 
             this._console.info(
-                `failed path #${i + 1}: ${ctx.retVal.reason} - ${formatCodeSource(source, this._pathStore)}\n\n`
+                `failed path #${i + 1}: ${ctx.retVal.reason} - ${formatCodeSource(source, this._pathStore)}\n`
             );
         });
 
         this._pushTimeLog('printing results');
 
+        const totalPaths = success.count() + stopped.count() + failed.count();
         this._console.info(
-            chalk.green(`potential success path #: ${success.count()}\n`) +
+            `<OVERALL: total ${totalPaths} paths>\n` +
+                chalk.green(`potential success path #: ${success.count()}\n`) +
                 chalk.yellow(`potential unreachable path #: ${stopped.count()}\n`) +
-                chalk.red(`immediate failed path #: ${failed.count()}\n\n`)
+                chalk.red(`immediate failed path #: ${failed.count()}\n`)
         );
     }
 
@@ -514,8 +518,10 @@ export class PyteaService {
 
         this._pushTimeLog('printing results');
 
+        const totalPaths = success.count() + stopped.count() + failed.count();
         this._console.info(
-            chalk.green(`potential success path #: ${success.count()}\n`) +
+            `<OVERALL: total ${totalPaths} paths>\n` +
+                chalk.green(`potential success path #: ${success.count()}\n`) +
                 chalk.yellow(`potential unreachable path #: ${stopped.count()}\n`) +
                 chalk.red(`immediate failed path #: ${failed.count()}\n\n`) +
                 'RUNNING TIMES:\n' +
@@ -578,8 +584,10 @@ export class PyteaService {
 
         this._pushTimeLog('printing results');
 
+        const totalPaths = success.count() + stopped.count() + failed.count();
         this._console.info(
-            chalk.green(`potential success path #: ${success.count()}\n`) +
+            `<OVERALL: total ${totalPaths} paths>\n` +
+                chalk.green(`potential success path #: ${success.count()}\n`) +
                 chalk.yellow(`potential unreachable path #: ${stopped.count()}\n`) +
                 chalk.red(`immediate failed path #: ${failed.count()}\n\n`) +
                 'RUNNING TIMES:\n' +
