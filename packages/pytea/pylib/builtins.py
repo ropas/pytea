@@ -204,6 +204,13 @@ def _dict_items(self):
 dict.items = _dict_items
 
 
+def _dict_contains(self, key):
+    return LibCall.builtins.has_key(self, key)
+
+
+dict.__contains__ = _dict_contains
+
+
 def _dict__setitem__(self, key, value):
     return LibCall.builtins.dict_setitem(self, key, value)
 
