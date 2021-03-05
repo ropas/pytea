@@ -497,6 +497,32 @@ export namespace BuiltinsLCImpl {
         return ctx.toSetWith(retVal);
     }
 
+    export function has_key(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx
+                .failWithMsg(
+                    `from 'LibCall.builtins.has_key': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const { heap } = ctx;
+        const value = fetchAddr(params[0], heap);
+        const key = fetchAddr(params[1], heap);
+
+        if (value?.type !== SVType.Object) {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.has_key': value is not an object`, source).toSet();
+        }
+
+        if (key?.type !== SVType.String || typeof key.value !== 'string') {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.has_key': key is not a constant string`, source).toSet();
+        }
+
+        return ctx.toSetWith(SVBool.create(value.keyValues.has(key.value), source));
+    }
+
     export function len(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
@@ -781,6 +807,7 @@ export namespace BuiltinsLCImpl {
         dict_getitem,
         dict_setitem,
         dict_pop,
+        has_key,
         len,
         randInt,
         randFloat,

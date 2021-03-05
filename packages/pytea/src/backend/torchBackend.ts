@@ -160,7 +160,17 @@ export namespace TorchBackend {
         // check timeout
         const startTime = new Date().getTime();
         if (timeout) {
+            // not so many datetime call
+            const checkInterval = 50;
+            let cnt = 0;
             ContextSet.setCallback((ctxSet: ContextSetImpl<unknown>) => {
+                if (cnt < checkInterval) {
+                    cnt++;
+                    return;
+                } else {
+                    cnt = 0;
+                }
+
                 if (new Date().getTime() - startTime > timeout && ctxSet.ctxList.count() > 0) {
                     ctxSet.failed = ctxSet.stopped.merge(
                         ctxSet.ctxList.map((ctx) => ctx.failWithMsg(`timeout expired (${timeout}ms)`))

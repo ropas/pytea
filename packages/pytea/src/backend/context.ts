@@ -739,17 +739,10 @@ export namespace ContextSet {
 
     // callback, start time, call count, interval
     let _callbacks: CtxConstructorCallback[] = [];
-    let _intervals: [CtxConstructorCallback, number, number, number][] = [];
     let _maxPaths = 0;
 
     export function clearCallbacks(): void {
         _callbacks = [];
-        _intervals = [];
-    }
-
-    export function setInterval(callback: (ctxSet: ContextSetImpl<unknown>) => void, interval: number): void {
-        const time = new Date().getTime();
-        _intervals.push([callback, time, 0, interval]);
     }
 
     export function setCallback(callback: (ctxSet: ContextSetImpl<unknown>) => void): void {
@@ -757,17 +750,6 @@ export namespace ContextSet {
     }
 
     export function checkCallbacks(ctxSet: ContextSetImpl<unknown>) {
-        const currTime = new Date().getTime();
-        for (const callTime of _intervals) {
-            const [callback, startTime, callCount, interval] = callTime;
-
-            const doCount = Math.floor((currTime - startTime) / interval) - callCount;
-            callTime[2] = callCount + doCount;
-            for (let i = 0; i < doCount; i++) {
-                callback(ctxSet);
-            }
-        }
-
         for (const callback of _callbacks) {
             callback(ctxSet);
         }
