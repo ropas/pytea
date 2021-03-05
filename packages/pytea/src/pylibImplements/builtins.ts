@@ -176,6 +176,7 @@ export namespace BuiltinsLCImpl {
                                 )
                                 .return(SVInt.create(ExpNum.fromSymbol(ctx.genSymInt('tensorElem', source)), source));
                         }
+                        break;
                     }
                     default:
                         break;
@@ -252,6 +253,7 @@ export namespace BuiltinsLCImpl {
                                     SVFloat.create(ExpNum.fromSymbol(ctx.genSymFloat('tensorElem', source)), source)
                                 );
                         }
+                        break;
                     }
                     default:
                         break;
@@ -286,12 +288,6 @@ export namespace BuiltinsLCImpl {
         const value = sanitizeAddr(params[1], heap);
 
         if (list?.type !== SVType.Object || !value) {
-            if (list?.type !== SVType.Object) {
-                console.log(params[0]?.type);
-                console.log(list?.type);
-                console.log(SVType.Object);
-            }
-            if (!value) console.log('two');
             return ctx.warnWithMsg(`from 'LibCall.builtins.list_append': invalid value type`, source).toSet();
         }
 
@@ -391,7 +387,7 @@ export namespace BuiltinsLCImpl {
         let dict = fetchAddr(params[0], heap);
         const key = fetchAddr(params[1], heap);
         const value = sanitizeAddr(params[2], heap);
-        let isNewKey: boolean = true;
+        let isNewKey = true;
 
         if (dict?.type !== SVType.Object || !key || !value) {
             return ctx.warnWithMsg(`from 'LibCall.builtins.dict_setitem': invalid value type`, source).toSet();

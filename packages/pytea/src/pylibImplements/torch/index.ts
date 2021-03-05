@@ -50,20 +50,53 @@ export namespace TorchLCImpl {
         const self = fetchAddr(selfAddr, heap)! as SVObject;
         const args = fetchAddr(argsAddr as SVAddr, heap)! as SVObject;
 
-        // if args is object that has 'shape'
-        let firstArg = fetchAddr(args.getIndice(0), heap);
+        // if first argument is object that has 'shape'
+        const firstArg = fetchAddr(args.getIndice(0), heap);
         if (firstArg?.type === SVType.Object) {
-            if (firstArg.shape === undefined) {
-                firstArg = fetchAddr(firstArg.getAttr('shape'), heap);
+            // if first argument is shaped value, cast it to Tensor
+            let mayShaped: ShValue | undefined = firstArg;
+            if (!mayShaped.shape) {
+                mayShaped = fetchAddr(firstArg.getAttr('shape'), heap);
+            }
+            if (mayShaped?.type === SVType.Object && mayShaped?.shape !== undefined) {
+                const size = SVSize.createSize(ctx, mayShaped.shape, source);
+                const newHeap = heap.setVal(addr, self.setAttr('shape', size));
+                return ctx.setHeap(newHeap).setRetVal(SVNone.create()).toSet();
             }
 
-            if (firstArg && firstArg.type === SVType.Object && firstArg?.shape !== undefined) {
-                const newHeap = heap.setVal(addr, self.setAttr('shape', firstArg));
-                return ctx.setHeap(newHeap).setRetVal(SVNone.create()).toSet();
+            // else, check value is list of ... list of number
+            const structure: (number | ExpNum)[] = [];
+            let obj: ShValue | undefined = firstArg;
+            let length = fetchAddr(firstArg.getAttr('$length'), heap);
+            let shaped = true;
+
+            if (length && length.type === SVType.Int) {
+                // if argument is list of ... list of number, return that shape
+                structure.push(length.value);
+                obj = fetchAddr(obj.getIndice(0), heap);
+
+                // simply fetch only first values
+                while (obj?.type === SVType.Object) {
+                    length = fetchAddr(obj.getAttr('$length'), heap);
+                    if (length?.type === SVType.Int) {
+                        structure.push(length.value);
+                        obj = fetchAddr(obj.getIndice(0), heap);
+                    } else {
+                        shaped = false;
+                        break;
+                    }
+                }
+
+                // traversed list and ends with integer or float
+                if (shaped && (obj?.type === SVType.Int || obj?.type === SVType.Float)) {
+                    const size = SVSize.createSize(ctx, ExpShape.fromConst(structure.length, structure, source));
+                    const newHeap = heap.setVal(addr, self.setAttr('shape', size));
+                    return ctx.setHeap(newHeap).setRetVal(SVNone.create()).toSet();
+                }
             }
         }
 
-        // if args is list of integer
+        // if varargs is list of integer
         return ctx.parseSize(args, source).map((ctx) => {
             let shape: ExpShape;
             let newCtx: Context<any> = ctx;

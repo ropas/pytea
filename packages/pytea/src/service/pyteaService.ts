@@ -697,13 +697,11 @@ export class PyteaService {
 
     private _callStackToString(ctx: Context<unknown>): string {
         return ctx.callStack
-            .filter(([f, _]) => {
-                // filter callKV libcall
-                if (typeof f === 'string') {
-                    return f !== 'callKV';
-                } else {
-                    return f.name !== 'callKV';
-                }
+            .filter(([f, source]) => {
+                // filter callKV libcall / internal $call
+                if (typeof f !== 'string') f = f.name;
+
+                return !(f === 'callKV' || (f.endsWith('self$call') && !source));
             })
             .map(([func, node]) => `${typeof func === 'string' ? func : func.name} - ${formatCodeSource(node)}`)
             .reverse()

@@ -178,11 +178,11 @@ class BertSelfAttention(nn.Module):
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
 
         ### ERROR CODE:
-        new_context_layer_shape = (context_layer.shape[0], context_layer.shape[1])
+        # new_context_layer_shape = (context_layer.shape[0], context_layer.shape[1])
         ###############
 
         ### CORRECT CODE:
-        # new_context_layer_shape = (context_layer.shape[0], context_layer.shape[1]) + (self.all_head_size,)
+        new_context_layer_shape = (context_layer.shape[0], context_layer.shape[1]) + (self.all_head_size,)
         #################
 
         context_layer = context_layer.view(*new_context_layer_shape)

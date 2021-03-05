@@ -19,6 +19,9 @@ class Tensor:
 
         return NotImplemented
 
+    def new_tensor(self, data, dtype=None, device=None, requires_grad=False):
+        return Tensor(data, dtype=dtype, device=device, requires_grad=requires_grad)
+
     def backward(self):
         return self
 

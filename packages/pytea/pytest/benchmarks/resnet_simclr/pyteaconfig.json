@@ -1,4 +1,4 @@
 {
-    "logLevel": "reduced",
+    "logLevel": "result-only",
     "entryPath": "train.py"
 }

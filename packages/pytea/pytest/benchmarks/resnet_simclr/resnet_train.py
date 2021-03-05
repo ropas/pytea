@@ -215,13 +215,14 @@ class NTXentLoss(torch.nn.Module):
         r_pos = torch.diag(similarity_matrix, -self.batch_size)
         positives = torch.cat([l_pos, r_pos]).view(2 * self.batch_size, 1)
 
-        # challenge part: tensor shape's requirement condition depends on the tensor data
-        negatives = similarity_matrix[self.mask_samples_from_same_repr].view(
-            2 * self.batch_size, -1
-        )
+        # # challenge part: tensor shape's requirement condition depends on the tensor data
+        # negatives = similarity_matrix[self.mask_samples_from_same_repr].view(
+        #     2 * self.batch_size, -1
+        # )
+        # logits = torch.cat((positives, negatives), dim=1)
 
-        logits = torch.cat((positives, negatives), dim=1)
         logits = logits / self.temperature
+        logits = positives
 
         labels = torch.zeros(2 * self.batch_size).cuda().long()
         loss = self.criterion(logits, labels)
@@ -290,7 +291,7 @@ for B, E, T in hparams_settings:
         batch_size=BATCH_SIZE,
         num_workers=4,
         shuffle=True,
-        drop_last=True,  # *ERROR*: drop_last=True is essential
+        # drop_last=True,  # *ERROR*: drop_last=True is essential
     )
 
     net = SimCLRNet(26, 1, 10, 32)
