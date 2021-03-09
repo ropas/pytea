@@ -132,6 +132,12 @@ class Tensor:
             tensor.dtype = dtype
             tensor.device = firstArg
             return tensor
+        elif isinstance(firstArg, torch.device):
+            dtype = self.dtype
+            tensor = LibCall.torch.identityShape(self)
+            tensor.dtype = dtype
+            tensor.device = firstArg
+            return tensor
         else:
             return self.type(firstArg)
 
