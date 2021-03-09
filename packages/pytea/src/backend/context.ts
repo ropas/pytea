@@ -203,8 +203,11 @@ interface ContextMethods<T> {
     getCachedRange(num: number | ExpNum): NumRange | undefined; // return conservative range
     checkImmediate(constraint: Constraint): boolean | undefined; // return true if always true, false if always false, undefined if don't know
 
-    // Check if this ctx has path constraints.
+    // check if this ctx has path constraints.
     hasPathCtr(): boolean;
+
+    // check this path is timeouted
+    isTimedOut(): boolean;
 }
 
 export interface ContextSet<T> {
@@ -727,9 +730,16 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         return this.ctrSet.checkImmediate(constraint);
     }
 
-    // Check if this ctx has path constraints.
     hasPathCtr(): boolean {
         return !this.ctrSet.pathCtr.isEmpty();
+    }
+
+    isTimedOut(): boolean {
+        const reason = this.failed;
+        if (reason && reason.reason.startsWith('timeout expired')) {
+            return true;
+        }
+        return false;
     }
 }
 

@@ -220,9 +220,9 @@ class NTXentLoss(torch.nn.Module):
         #     2 * self.batch_size, -1
         # )
         # logits = torch.cat((positives, negatives), dim=1)
+        logits = positives
 
         logits = logits / self.temperature
-        logits = positives
 
         labels = torch.zeros(2 * self.batch_size).cuda().long()
         loss = self.criterion(logits, labels)
@@ -291,7 +291,7 @@ for B, E, T in hparams_settings:
         batch_size=BATCH_SIZE,
         num_workers=4,
         shuffle=True,
-        # drop_last=True,  # *ERROR*: drop_last=True is essential
+        drop_last=True,  # *ERROR*: drop_last=True is essential
     )
 
     net = SimCLRNet(26, 1, 10, 32)

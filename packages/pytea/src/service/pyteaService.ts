@@ -425,8 +425,13 @@ export class PyteaService {
             );
         });
 
+        let timeout = 0;
         failed.forEach((ctx, i) => {
             const source = ctx.retVal.source;
+            if (ctx.isTimedOut()) {
+                timeout++;
+                return;
+            }
 
             this._console.info(
                 `failed path #${succCnt + stopCnt + i + 1}: ${ctx.retVal.reason} - ${formatCodeSource(
@@ -443,7 +448,8 @@ export class PyteaService {
             `${chalk.bold('<OVERALL: total ' + totalPaths.toString() + ' paths>\n')}` +
                 chalk.green(`potential success path #: ${success.count()}\n`) +
                 chalk.yellow(`potential unreachable path #: ${stopped.count()}\n`) +
-                chalk.red(`immediate failed path #: ${failed.count()}\n`)
+                chalk.red(`immediate failed path #: ${failed.count()}\n`) +
+                (timeout ? `  - timed out path #: ${timeout}\n` : '')
         );
     }
 
