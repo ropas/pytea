@@ -107,13 +107,19 @@ Ellipsis.__name__ = "Ellipsis"
 
 def _tuple__getitem__(self, index):
     if isinstance(index, int):
-        return self[index]
+        return LibCall.builtins.getItemByIndex(self, index)
     elif isinstance(index, slice):
         start, stop = None, None
         if index.start is not None:
             start = index.start if index.start >= 0 else len(self) + index.start
         if index.stop is not None:
-            stop = index.stop if index.stop >= 0 else len(self) + index.stop
+            len_self = len(self)
+            if index.stop >= len_self:
+                stop = len_self
+            elif index.stop >= 0:
+                stop = index.stop
+            else:
+                stop = len(self) + index.stop
 
         if index.start is None:
             if index.stop is None:

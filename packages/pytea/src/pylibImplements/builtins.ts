@@ -1,12 +1,13 @@
 import { fetchAddr, sanitizeAddr, trackMro } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
-import { fetchSize, isInstanceOf, isSize, simplifyNum, strLen } from '../backend/expUtils';
+import { fetchSize, isInstanceOf, simplifyNum, strLen } from '../backend/expUtils';
 import {
     CodeSource,
     PrimitiveType,
     ShValue,
     SVAddr,
     SVBool,
+    SVErrorLevel,
     SVFloat,
     SVInt,
     SVNone,
@@ -16,7 +17,7 @@ import {
     SVString,
     SVType,
 } from '../backend/sharpValues';
-import { ExpNum, ExpNumSymbol, NumBopType, NumUopType } from '../backend/symExpressions';
+import { ExpNum, ExpNumSymbol, NumBopType, NumUopType, SymExp } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
 import { PyteaService } from '../service/pyteaService';
 import { LCImpl } from '.';
@@ -770,6 +771,56 @@ export namespace BuiltinsLCImpl {
         return ctx.setHeap(heap.setVal(obj.addr, obj.setIndice(indice.value, value))).toSetWith(SVNone.create(source));
     }
 
+    // wrapper of getItemByIndexExpNum
+    export function getItemByIndex(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.builtins.getItemByIndex': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+        const heap = ctx.heap;
+        const [objAddr, indiceAddr] = params;
+
+        const obj = fetchAddr(objAddr, heap);
+        const indice = fetchAddr(indiceAddr, heap);
+
+        if (indice?.type !== SVType.Int) {
+            return ctx
+                .warnWithMsg(`from 'LibCall.builtins.getItemByIndex': attribute is not an integer`, source)
+                .toSet();
+        }
+
+        if (obj?.type !== SVType.Object) {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.getItemByIndex': got non-object`, source).toSet();
+        }
+
+        const item = TorchBackend.getItemByIndex(ctx, obj, indice.value, source);
+        if (!item) {
+            const indiceStr = SymExp.toString(indice.value);
+            let lengthStr = 'unknown';
+            const objLen = obj.getAttr('$length');
+            if (objLen && objLen.type === SVType.Int) {
+                lengthStr = SymExp.toString(objLen.value);
+            }
+            return ctx.failWithMsg(`index out of range (indice: ${indiceStr}, length: ${lengthStr})`, source).toSet();
+        } else if (item.type === SVType.Error) {
+            switch (item.level) {
+                case SVErrorLevel.Error:
+                    return ctx.failWithMsg(item.reason, source).toSet();
+                case SVErrorLevel.Warning:
+                    return ctx.warnWithMsg(item.reason, source).toSet();
+                case SVErrorLevel.Log:
+                    return ctx.addLog(item.reason, source).toSetWith(item);
+            }
+        }
+
+        return ctx.toSetWith(item);
+    }
+
     // explicit setAttr by value
     export function setAttr(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
@@ -816,6 +867,7 @@ export namespace BuiltinsLCImpl {
         warn,
         setAttr,
         setIndice,
+        getItemByIndex,
     };
 }
 
