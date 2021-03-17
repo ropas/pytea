@@ -1,6 +1,7 @@
-import torch
+import LibCall
 
-n = 3
-x = torch.Tensor([2.0 / n])
-y = torch.sqrt(x)
-z = y.item()
+a = LibCall.builtins.randFloat(0, 10, "AXX")
+b = 1
+
+if a > 5:
+    b = 2

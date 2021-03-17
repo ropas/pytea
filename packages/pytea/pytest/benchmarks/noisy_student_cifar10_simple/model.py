@@ -61,12 +61,12 @@ class StoDepth_BasicBlock(nn.Module):
             sample = self.m.sample().item()
 
             ### PATH EXPLOSION
-            # if sample > 0:
-            ###
+            if sample > 0:
+                ###
 
-            ### BYPASS
-            if True:
-            ###
+                ### BYPASS
+                # if True:
+                ###
                 out = self.conv1(x)
                 out = self.bn1(out)
                 out = self.relu1(out)
@@ -136,12 +136,10 @@ class StoDepth_ResNet(nn.Module):
         for module in self.modules():
             if isinstance(module, nn.Conv2d):
                 n = module.kernel_size[0] * module.kernel_size[1] * module.out_channels
-                # module.weight.data.normal_(
-                #     0, torch.sqrt(torch.Tensor([2.0 / n])).item()
-                # )
                 module.weight.data.normal_(
-                    0, torch.sqrt(torch.Tensor([2.0 / n]))
+                    0, torch.sqrt(torch.Tensor([2.0 / n])).item()
                 )
+                module.weight.data.normal_(0, torch.sqrt(torch.Tensor([2.0 / n])))
 
     def _make_layers(self, planes, stride):
         if stride == 2:

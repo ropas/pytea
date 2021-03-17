@@ -1,6 +1,6 @@
+import LibCall
 import torch
 from .distribution import Distribution
-import random
 
 
 class Bernoulli(Distribution):
@@ -27,7 +27,12 @@ class Bernoulli(Distribution):
 
     def sample(self, sample_shape):
         if self.is_scalar:
-            return Sample(random.randint(0, 1))
+            sample = LibCall.builtins.randFloat(0, 1, "ThBer")
+            if sample > self._param:
+                return Sample(1.0)
+            else:
+                return Sample(0.0)
+
         return torch.rand(self._batch_shape)
 
 

@@ -584,9 +584,23 @@ export namespace BuiltinsLCImpl {
 
         // inject explicit variable range
         const varRangeMap = PyteaService.getVariableRange();
+        const varRng = PyteaService.getVariableSeedRng(prefix);
+
         if (prefix in varRangeMap) {
             const range = varRangeMap[prefix];
-            let num: ExpNumSymbol | undefined;
+            let num: ExpNumSymbol | number | undefined;
+
+            if (varRng) {
+                if (range === null) {
+                    num = varRng.nextInt();
+                } else if (typeof range === 'number') {
+                    num = range;
+                } else {
+                    num = varRng.nextInt(range[0], range[1]);
+                }
+
+                return ctx.toSetWith(SVInt.create(num, source));
+            }
 
             if (range === null) {
                 num = ExpNum.fromSymbol(ctx.genSymInt(prefix, source));
@@ -622,6 +636,11 @@ export namespace BuiltinsLCImpl {
             return ctx.warnWithMsg(`from 'LibCall.builtins.randInt: value b is non-numeric`, source).toSet();
         }
 
+        if (varRng && typeof aVal.value === 'number' && typeof bVal.value === 'number') {
+            const num = varRng.nextInt(aVal.value, bVal.value);
+            return ctx.toSetWith(SVInt.create(num, source));
+        }
+
         let symCtx = ctx.genIntGte(prefix, aVal.value, source);
         const num = symCtx.retVal;
         symCtx = symCtx.guarantee(symCtx.genLte(num, bVal.value, source));
@@ -650,9 +669,23 @@ export namespace BuiltinsLCImpl {
 
         // inject explicit variable range (inclusive)
         const varRangeMap = PyteaService.getVariableRange();
+        const varRng = PyteaService.getVariableSeedRng(prefix);
+
         if (prefix in varRangeMap) {
             const range = varRangeMap[prefix];
-            let num: ExpNumSymbol | undefined;
+            let num: ExpNumSymbol | number | undefined;
+
+            if (varRng) {
+                if (range === null) {
+                    num = varRng.nextFloat();
+                } else if (typeof range === 'number') {
+                    num = range;
+                } else {
+                    num = varRng.nextFloat(range[0], range[1]);
+                }
+
+                return ctx.toSetWith(SVFloat.create(num, source));
+            }
 
             if (range === null) {
                 num = ExpNum.fromSymbol(ctx.genSymFloat(prefix, source));
@@ -686,6 +719,11 @@ export namespace BuiltinsLCImpl {
         }
         if (!(bVal?.type === SVType.Int || bVal?.type === SVType.Float)) {
             return ctx.warnWithMsg(`from 'LibCall.builtins.randFloat: value b is non-numeric`, source).toSet();
+        }
+
+        if (varRng && typeof aVal.value === 'number' && typeof bVal.value === 'number') {
+            const num = varRng.nextFloat(aVal.value, bVal.value);
+            return ctx.toSetWith(SVFloat.create(num, source));
         }
 
         let symCtx = ctx.genFloatGte(prefix, aVal.value, source);

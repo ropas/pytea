@@ -13,6 +13,7 @@ import { ChildProcess, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
+import { RandomGen } from 'src/backend/randomGen';
 
 import { getFileInfo } from 'pyright-internal/analyzer/analyzerNodeInfo';
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
@@ -49,6 +50,7 @@ export class PyteaService {
     private _timeLog: [string, number][];
     private _currTime: number;
     private _requestId: number;
+    private _randomGen: Map<string, RandomGen>;
 
     constructor(service?: AnalyzerService, options?: PyteaOptions, console?: ConsoleInterface, setDefault?: boolean) {
         if (setDefault) _globalService = this;
@@ -64,6 +66,7 @@ export class PyteaService {
         this._libStmt = new Map();
         this._pathStore = new FilePathStore();
         this._requestId = Math.floor(Math.random() * 10000000);
+        this._randomGen = new Map();
     }
 
     get options(): PyteaOptions | undefined {
@@ -101,6 +104,10 @@ export class PyteaService {
     static getVariableRange(): { [varName: string]: null | number | [number | null, number | null] } {
         const options = _globalService?.options;
         return options ? options.variableRange : {};
+    }
+
+    static getVariableSeedRng(varName: string): RandomGen | undefined {
+        return _globalService?._randomGen.get(varName);
     }
 
     static log(...message: any[]): void {
@@ -215,6 +222,16 @@ export class PyteaService {
             return Promise.reject('failed to validate PyTea service.');
         }
 
+        // set random variable seeds
+        this._randomGen.clear();
+        const seedList = this._options?.variableSeed;
+        if (seedList) {
+            Object.entries(seedList).forEach(([prefix, seed]) => {
+                this._randomGen.set(prefix, new RandomGen(seed));
+            });
+        }
+
+        // run builtins
         const builtinsPair = this._libStmt.get('builtins');
         if (!builtinsPair) {
             return Promise.reject('cannot find PyTea implemenation of Python builtins.');
