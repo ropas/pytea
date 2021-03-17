@@ -8,15 +8,13 @@ Author: Ho Young Jhoo
 runs simple JSON-RPC server,
 analyze constraints by Z3 and serve it to HTML.
 """
-import time
 import argparse
 import importlib.util
 import json
 import sys
-import zmq
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from http import HTTPStatus
-from json2z3 import Z3Encoder, PathResult, CtrSet, NullConsole
+from json2z3 import Z3Encoder, CtrSet
 
 
 DEFAULT_PORT = 17851

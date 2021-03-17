@@ -11,8 +11,12 @@ Main starting point of Pytea analyzer
 import os
 import subprocess
 import argparse
+import tempfile
 from pathlib import Path
 from z3wrapper.json2z3 import run_default
+
+
+DEFAULT_FRONT_PATH = Path(__file__).absolute().parent / "index.js"
 
 
 def parse_arg():
@@ -20,12 +24,12 @@ def parse_arg():
     pytorch_pgm_path : <path_to_pytorch>/<pytorch_pgm_name>.py
     json_file        : <pytorch_pgm_name>_z3.json
     """
-    parser = argparse.ArgumentParser("PyTeA: PyTorch Tensor shape Analyzer")
+    parser = argparse.ArgumentParser("PyTea: PyTorch Tensor shape Analyzer")
     parser.add_argument("path", help="PyTorch entry file path")
     parser.add_argument(
         "--out",
-        default="./constraint.json",
-        help="z3 json output path. (default: ./constraint.json)",
+        default=None,
+        help="output file path of constraint json. if not set, send constraints to temporary file",
     )
     parser.add_argument(
         "--z3_only", action="store_true", help="run z3py on z3 json file <path>"
@@ -37,7 +41,7 @@ def parse_arg():
     )
     parser.add_argument(
         "--front_path",
-        default="./index.js",
+        default=str(DEFAULT_FRONT_PATH),
         help="path to constraint generator (index.js)",
     )
     parser.add_argument(
@@ -50,6 +54,22 @@ def parse_arg():
     return parser.parse_args()
 
 
+def main_with_temp(args, entry_path):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        json_path = Path(tmp_dir) / "constraint.json"
+
+        if json_path.exists():
+            os.remove(json_path)
+
+        frontend_command = f"node {args.front_path} {entry_path} {args.node_arguments} --resultPath={json_path}"
+        print(frontend_command)
+        subprocess.call(frontend_command, shell=True)
+
+        # run backend with json formatted constraints.
+        if not args.no_z3:
+            run_default(json_path, args)
+
+
 def main():
     args = parse_arg()
 
@@ -57,9 +77,13 @@ def main():
     if not entry_path.exists():
         raise Exception(f"entry path {entry_path} does not exist")
 
+    if args.out is None:
+        return main_with_temp(args, entry_path)
+
     base_dir = entry_path.parent
 
     json_path = Path(args.out)
+
     if args.z3_only:
         json_path = entry_path
 
@@ -68,7 +92,7 @@ def main():
         if json_path.exists():
             os.remove(json_path)
 
-        frontend_command = f"node {args.front_path} {entry_path} {args.node_arguments}"
+        frontend_command = f"node {args.front_path} {entry_path} {args.node_arguments} --resultPath={json_path}"
         print(frontend_command)
         subprocess.call(frontend_command, shell=True)
 

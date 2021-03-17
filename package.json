@@ -7,6 +7,7 @@
         "clean": "lerna run --no-bail --stream clean",
         "install:all": "npm install && lerna exec --no-bail npm install",
         "update:all": "node ./build/updateDeps.js",
+        "build": "cd packages/pytea && npm run build && cd ../.. && node ./build/genDist.js",
         "build:extension:dev": "cd packages/vscode-pyright && npm run webpack",
         "build:extension:tea": "cd packages/vscode-pytea && npm run webpack",
         "build:cli:dev": "cd packages/pyright && npm run webpack",
