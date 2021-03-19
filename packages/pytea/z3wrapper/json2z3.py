@@ -209,6 +209,7 @@ class Z3Encoder:
                 f"  {bcolors.GRAY}Unreachable paths (conflicted branch conditions): {len(UnreachablePaths)}{bcolors.ENDC}"
             )
 
+
 # constraint set of a path.
 class CtrSet:
     def __init__(self, jsonCtrSet):
@@ -227,7 +228,7 @@ class CtrSet:
         self.pathCtrs = [self.ctrPool[i].formula for i in self.pathIdx]
         self.softCtrs = [self.ctrPool[i].formula for i in self.softIdx]
 
-    def toString(self):
+    def __str__(self):
         assumptions = [self.ctrPool[i] for i in self.hardIdx]
         pathCtrs = [self.ctrPool[i] for i in self.pathIdx]
         softCtrs = [self.ctrPool[i] for i in self.softIdx]
@@ -237,17 +238,17 @@ class CtrSet:
         if len(assumptions) > 0:
             log += "Assumptions:\n"
             for assump in assumptions:
-                log += assump.toString() + "\n"
+                log += f"{assump}\n"
             log += "\n"
         if len(pathCtrs) > 0:
             log += "Path Constraints:\n"
             for ctr in pathCtrs:
-                log += ctr.toString() + "\n"
+                log += f"{ctr}\n"
             log += "\n"
         if len(softCtrs) > 0:
             log += "Soft Constraints:\n"
             for ctr in softCtrs:
-                log += ctr.toString() + "\n"
+                log += f"{ctr}\n"
             log += "\n"
 
         return log
@@ -262,7 +263,7 @@ class CtrSet:
             if len(unsatIndice) > 0:
                 log += "\nconflicted constraints: \n"
                 for idx in unsatIndice:
-                    log += self.ctrPool[idx].toString() + "\n"
+                    log += f"{self.ctrPool[idx]}\n"
             extras["conflict"] = unsatIndice
             return PathResult.Unreachable.value, log, extras
 
@@ -278,18 +279,20 @@ class CtrSet:
         elif sat == PathResult.Unreachable.value:
             log = "Unreachable path. Path condition is unsatisfiable.\n"
             log += f"  first conflicted constraint (constraint #{unsatIndice + 1}): \n"
-            log += f"    {bcolors.BOLD}{self.ctrPool[unsatIndice].toString()}{bcolors.ENDC}\n"
+            log += f"{bcolors.BOLD}{self.ctrPool[unsatIndice]}{bcolors.ENDC}\n"
             extras["conflict"] = unsatIndice
         elif sat == PathResult.Unsat.value:
             log = "Invalid path: Found conflicted constraints.\n"
-            log += f"  first conflicted constraint (constraint #{unsatIndice + 1}): \n    "
-            log += f"    {bcolors.BOLD}{self.ctrPool[unsatIndice].toString()}{bcolors.ENDC}\n"
+            log += (
+                f"  first conflicted constraint (constraint #{unsatIndice + 1}): \n    "
+            )
+            log += f"{bcolors.BOLD}{self.ctrPool[unsatIndice]}{bcolors.ENDC}\n"
             extras["conflict"] = unsatIndice
         else:
             sat = PathResult.DontKnow.value
             log = "Undecidable path: Z3 failed to solve constraints.\n"
             log += f"  first undecidable constraint (constraint #{unsatIndice + 1}): \n    "
-            log += f"    {bcolors.BOLD}{self.ctrPool[unsatIndice].toString()}{bcolors.ENDC}\n"
+            log += f"{bcolors.BOLD}{self.ctrPool[unsatIndice]}{bcolors.ENDC}\n"
             extras["undecide"] = unsatIndice
 
         return sat, log, extras
@@ -406,7 +409,7 @@ class Ctr:
         else:
             self.source = None
 
-    def toString(self):
+    def __str__(self):
         ctrLog = str(self.formula)
 
         if self.source != None:

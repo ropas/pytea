@@ -1517,7 +1517,7 @@ export namespace TorchLCImpl {
 
             ctrs.push(ctx.genEq(shape0Front, shapeIFront, source));
             ctrs.push(ctx.genEq(shape0Back, shapeIBack, source));
-            thickness = ExpNum.bop(NumBopType.Add, thickness, ExpNum.index(sizeIshape, dim.value, source));
+            thickness = ExpNum.bop(NumBopType.Add, thickness, ExpNum.index(sizeIshape, dim.value, source), source);
         }
 
         const shapeThick = ExpShape.fromConst(1, [thickness], source);

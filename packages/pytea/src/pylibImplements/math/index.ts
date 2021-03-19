@@ -1,8 +1,8 @@
-import { LCImpl } from '..';
 import { fetchAddr } from '../../backend/backUtils';
 import { Context, ContextSet } from '../../backend/context';
 import { CodeSource, ShValue, SVInt, SVType } from '../../backend/sharpValues';
 import { ExpNum, NumUopType } from '../../backend/symExpressions';
+import { LCImpl } from '..';
 import { LCBase } from '../libcall';
 
 export namespace MathLCImpl {
