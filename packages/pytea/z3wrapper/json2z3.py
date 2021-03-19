@@ -12,11 +12,47 @@ and return constraint conditions.
 
 from z3 import *
 from enum import Enum
-from functools import reduce
+from functools import reduce, wraps
 from pathlib import Path
 import json
 import sys
 import time
+from threading import Thread
+
+# code from https://stackoverflow.com/questions/21827874/timeout-a-function-windows
+def timeout(timeout):
+    def deco(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            res = [
+                TimeoutError(
+                    "function [%s] timeout [%s seconds] exceeded!"
+                    % (func.__name__, timeout)
+                )
+            ]
+
+            def newFunc():
+                try:
+                    res[0] = func(*args, **kwargs)
+                except Exception as e:
+                    res[0] = e
+
+            t = Thread(target=newFunc)
+            t.daemon = True
+            try:
+                t.start()
+                t.join(timeout)
+            except Exception as je:
+                print("error starting thread")
+                raise je
+            ret = res[0]
+            if isinstance(ret, BaseException):
+                raise ret
+            return ret
+
+        return wrapper
+
+    return deco
 
 
 class bcolors:
@@ -163,29 +199,33 @@ class Z3Encoder:
         for pathIdx, ctrSet in enumerate(ctrSetList):
             # comment out printing all constraints
 
-            # log = ctrSet.toString()
-            (
-                pathResult,
-                pathLog,
-                conflicts,
-            ) = ctrSet.analysis()  # side effect: print result
-            # log += pathLog
+            # 5 seconds timeout
+            analyze_tm = timeout(5)(ctrSet.analysis)
+            try:
+                (pathResult, pathLog, _,) = analyze_tm()  # side effect: print result
+                # log += pathLog
 
-            # print only errornous pathes
-            log = f"--- {bcolors.WARNING}Errornous Path{bcolors.ENDC}: Path {pathIdx + 1} ---\n{pathLog}"
-
-            if pathResult == PathResult.Valid.value:
-                ValidPaths.append(pathIdx)
-            elif pathResult == PathResult.Sat.value:
-                SatPaths.append(pathIdx)
-            elif pathResult == PathResult.Unsat.value:
-                self.console.log(log)
-                UnsatPaths.append(pathIdx)
-            elif pathResult == PathResult.Unreachable.value:
-                # self.console.log(log)
-                UnreachablePaths.append(pathIdx)
-            else:
-                self.console.log(log)
+                if pathResult == PathResult.Valid.value:
+                    ValidPaths.append(pathIdx)
+                elif pathResult == PathResult.Sat.value:
+                    SatPaths.append(pathIdx)
+                elif pathResult == PathResult.Unsat.value:
+                    self.console.log(
+                        f"--- {bcolors.WARNING}Errornous Path{bcolors.ENDC}: Path {pathIdx + 1} ---\n{pathLog}"
+                    )
+                    UnsatPaths.append(pathIdx)
+                elif pathResult == PathResult.Unreachable.value:
+                    # self.console.log(log)
+                    UnreachablePaths.append(pathIdx)
+                else:
+                    self.console.log(
+                        f"--- {bcolors.WARNING}Undecidable Path{bcolors.ENDC}: Path {pathIdx + 1} ---\n{pathLog}"
+                    )
+                    DontknowPaths.append(pathIdx)
+            except TimeoutError:
+                self.console.log(
+                    f"--- {bcolors.WARNING}Timeout Path{bcolors.ENDC}: Path {pathIdx + 1} ---\n  5 seconds timeout"
+                )
                 DontknowPaths.append(pathIdx)
 
         self.console.log(
