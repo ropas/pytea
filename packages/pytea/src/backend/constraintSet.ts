@@ -158,7 +158,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
             .map((ctr, idx) => {
                 const str = ctrToStr(ctr);
                 const source = formatCodeSource(ctr.source, pathStore);
-                const result = `${str} - ${source}`;
+                const result = `${idx + 1}: ${str} - ${source}`;
 
                 if (this.hardCtr.contains(idx)) {
                     return chalk.gray(result);
