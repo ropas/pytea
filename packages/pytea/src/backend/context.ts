@@ -921,8 +921,8 @@ export class ContextSetImpl<T> implements ContextSet<T> {
         return this.map((ctx) => {
             const ctrSet = ctx.ctrSet.requireAll(ctrList);
             if (ctrSet.valid === false) {
-                const ctrMsg = ctrList.map((ctr) => `  ${ctrToStr(ctr)}`).join('\n');
-                const errMsg = `${failMsg ? failMsg : 'runtime constraint mismatch'}\n  CONSTRAINTS:\n ${ctrMsg}\n`;
+                const ctrMsg = ctrList.map((ctr) => `${ctrToStr(ctr)}`).join(' /\\ \n');
+                const errMsg = `${failMsg ? failMsg : 'runtime constraint mismatch'}\n  CONSTRAINTS:\n${ctrMsg}\n`;
                 return ctx.setCtrSet(ctrSet).failWithMsg(errMsg, source) as Context<T | SVError>;
             } else {
                 return ctx.setCtrSet(ctrSet);

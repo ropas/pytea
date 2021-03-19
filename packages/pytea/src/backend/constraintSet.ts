@@ -464,6 +464,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
             id,
             left,
             right,
+            source,
         };
 
         return constraint;

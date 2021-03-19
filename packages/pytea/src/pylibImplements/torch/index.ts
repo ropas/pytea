@@ -1499,7 +1499,7 @@ export namespace TorchLCImpl {
         const shape0Back = ExpShape.slice(size0shape, ExpNum.bop(NumBopType.Add, dim.value, 1), size0rank, source);
 
         // TODO: handle negative index.
-        const ctrs: Constraint[] = [ctx.genLte(0, dim.value, source), ctx.genLt(dim.value, size0rank)];
+        const ctrs: Constraint[] = [ctx.genLte(0, dim.value, source), ctx.genLt(dim.value, size0rank, source)];
         let thickness: ExpNum = ExpNum.index(size0shape, dim.value, source);
 
         for (let i = 1; i < tensorsLen; i++) {
