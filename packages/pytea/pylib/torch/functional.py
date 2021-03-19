@@ -119,11 +119,35 @@ def transpose(input, dim0, dim1):
     tensor.dtype = dtype
     return tensor
 
+def reshape(input, shape):
+    dtype = input.dtype
+    tensor = input.reshape(*shape)
+    tensor.dtype = dtype
+    return tensor
 
 def argmax(input, dim=None, keepdim=False):
     tensor = LibCall.torch.reduce(input, dim, keepdim)
     tensor.dtype = torch.intDefault
     return tensor
+
+
+def max(input, dim=None, keepdim=False, out=None):
+    dtype = input.dtype
+    if dim is None:
+        tensor = LibCall.torch.reduce(input, dim, keepdim)
+        tensor.dtype = dtype
+        LibCall.torch.copyOut(tensor, out)
+        return tensor
+    else:
+        tensor = LibCall.torch.reduce(input, dim, keepdim)
+        tensor.dtype = dtype
+        indice = LibCall.torch.reduce(input, dim, keepdim)
+        indice.dtype = torch.intDefault
+        if out is not None:
+            LibCall.torch.copyOut(tensor, out[0])
+            LibCall.torch.copyOut(indice, out[1])
+        return tensor, indice
+        
 
 
 def mean(input, dim=None, keepdim=False, out=None):
@@ -143,15 +167,6 @@ def sum(input, dim=None, keepdim=False, dtype=None):
             dtype = input.dtype
 
     tensor = LibCall.torch.reduce(input, dim, keepdim)
-    tensor.dtype = dtype
-    return tensor
-
-
-def softmax(input, dim=None, dtype=None):
-    if not (input.dtype in torch.floatTypes):
-        raise TypeError("Can only calculate the softmax of floating types")
-    dtype = input.dtype
-    tensor = LibCall.torch.identityShape(input)
     tensor.dtype = dtype
     return tensor
 
@@ -204,13 +219,11 @@ def sqrt(input, out=None):
     LibCall.torch.copyOut(input, out)
     return input
 
-
-def manual_seed(seed=0):
-    pass
-
-
 def tanh(input, out=None):
     LibCall.torch.copyOut(input, out)
+    return input
+
+def relu(input):
     return input
 
 def gelu(input):
@@ -219,6 +232,14 @@ def gelu(input):
 def sigmoid(input, out=None):
     LibCall.torch.copyOut(input, out)
     return input
+
+def softmax(input, dim=None, dtype=None):
+    if not (input.dtype in torch.floatTypes):
+        raise TypeError("Can only calculate the softmax of floating types")
+    dtype = input.dtype
+    tensor = LibCall.torch.identityShape(input)
+    tensor.dtype = dtype
+    return tensor
 
 def arange(start, end=None, step=1, out=None, **kwargs):
     if end is None:  # arange(N)
@@ -236,21 +257,5 @@ def arange(start, end=None, step=1, out=None, **kwargs):
 def save(obj, f, pickle_module=None, pickle_protocol=2, _use_new_zipfile_serialization=True):
     pass
 
-###
-def max(input, dim=None, keepdim=False, out=None):
-    dtype = input.dtype
-    if dim is None:
-        tensor = LibCall.torch.reduce(input, dim, keepdim)
-        tensor.dtype = dtype
-        LibCall.torch.copyOut(tensor, out)
-        return tensor
-    else:
-        tensor = LibCall.torch.reduce(input, dim, keepdim)
-        tensor.dtype = dtype
-        indice = LibCall.torch.reduce(input, dim, keepdim)
-        indice.dtype = torch.intDefault
-        if out is not None:
-            LibCall.torch.copyOut(tensor, out[0])
-            LibCall.torch.copyOut(indice, out[1])
-        return tensor, indice
-        
+def manual_seed(seed=0):
+    pass

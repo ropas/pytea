@@ -136,7 +136,8 @@ def instance_norm(
 def pad(input, pad, mode="constant", value=0):
     return LibCall.torch.pad(input, pad)
 
-def mse_loss(input, target, size_average=None, reduce=None, reduction='mean'):
+
+def mse_loss(input, target, size_average=None, reduce=None, reduction="mean"):
     LibCall.torch.checkSameShape(input, target)
 
     if reduction == "none":
@@ -148,17 +149,38 @@ def mse_loss(input, target, size_average=None, reduce=None, reduction='mean'):
 def gelu(input):
     return LibCall.torch.identityShape(input)
 
+
 def tanh(input, out=None):
     LibCall.torch.copyOut(input, out)
     return input
 
-def embedding(input, weight, offsets=None, max_norm=None, norm_type=2, scale_grad_by_freq=False, mode='mean', sparse=False, per_sample_weights=None):
+
+def embedding(
+    input,
+    weight,
+    offsets=None,
+    max_norm=None,
+    norm_type=2,
+    scale_grad_by_freq=False,
+    mode="mean",
+    sparse=False,
+    per_sample_weights=None,
+):
     return LibCall.torch.embedding(input, weight)
+
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     # TODO: implement weight and bias
     norm_tensor = Tensor(*normalized_shape)
     return LibCall.torch.layer_norm(input, norm_tensor, weight, bias)
-    
-def interpolate(input, size=None, scale_factor=None, mode='nearest', align_corners=None, recompute_scale_factor=None):
+
+
+def interpolate(
+    input,
+    size=None,
+    scale_factor=None,
+    mode="nearest",
+    align_corners=None,
+    recompute_scale_factor=None,
+):
     return LibCall.torch.interpolate(input, size, scale_factor)

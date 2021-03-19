@@ -92,6 +92,35 @@ interface ShValueBase {
 }
 
 export namespace ShValue {
+    export function toStringType(type: SVType | undefined): string {
+        if (type === undefined) return 'undefined';
+
+        switch (type) {
+            case SVType.Addr:
+                return 'Addr';
+            case SVType.Int:
+                return 'Int';
+            case SVType.Float:
+                return 'Float';
+            case SVType.String:
+                return 'String';
+            case SVType.Bool:
+                return 'Bool';
+            case SVType.Object:
+                return 'Object';
+            case SVType.Func:
+                return 'Func';
+            case SVType.None:
+                return 'None';
+            case SVType.NotImpl:
+                return 'NotImpl';
+            case SVType.Undef:
+                return 'Undef';
+            case SVType.Error:
+                return 'Error';
+        }
+    }
+
     export function toString(value: ShValue | ShContFlag): string {
         if (typeof value === 'object') {
             return value.toString();

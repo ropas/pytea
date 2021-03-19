@@ -109,6 +109,15 @@ class Tensor:
     def view_as(self, other):
         return self.view(other.size())
 
+    def reshape(self, *shape):
+        dtype = self.dtype
+        tensor = LibCall.torch.view(self, shape)
+        tensor.dtype = dtype
+        return tensor
+
+    def reshape_as(self, other):
+        return self.view(other.size())
+
     def unsqueeze(self, dim):
         return torch.unsqueeze(self, dim)
 
@@ -188,7 +197,6 @@ class Tensor:
         ndim = self.dim()
         if ndim != len(args):
             raise ValueError("permute shape mismatched")
-        visited = [False for _ in range(ndim)]
         ret_shape = []
         for arg in args:
             # TODO: add duplicated indices assertion

@@ -534,7 +534,7 @@ export namespace TorchLCImpl {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
-                .warnWithMsg(`LibCall.torch copyOut got insufficient number of argument: ${params.length}`, source)
+                .warnWithMsg(`LibCall.torch.copyOut got insufficient number of argument: ${params.length}`, source)
                 .toSet();
         }
 
@@ -545,7 +545,7 @@ export namespace TorchLCImpl {
 
         if (out.type !== SVType.Addr) {
             return ctx
-                .warnWithMsg(`LibCall.torch copyOut type error: out is not an address - got ${out.type}`, source)
+                .warnWithMsg(`LibCall.torch.copyOut type error: out is not an address - got ${out.type}`, source)
                 .toSet();
         }
 
@@ -1462,9 +1462,17 @@ export namespace TorchLCImpl {
         const dim = fetchAddr(dimAddr, heap);
 
         if (tensors?.type !== SVType.Object) {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.cat': tensors is not iterable`, source);
+            if (tensors?.type === SVType.Error) {
+                // propagate error
+                return ctx.warnTensorWithMsg(`from 'LibCall.torch.cat': 'tensors' is not iterable`, source);
+            }
+            return ctx.failWithMsg(`from 'LibCall.torch.cat': 'tensors' is not iterable`, source).toSet();
         } else if (dim?.type !== SVType.Int) {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.cat': dim is not an integer`, source);
+            if (dim?.type === SVType.Error) {
+                // propagate error
+                return ctx.warnTensorWithMsg(`from 'LibCall.torch.cat': 'dim' is not an integer`, source);
+            }
+            return ctx.failWithMsg(`from 'LibCall.torch.cat': 'dim' is not an integer`, source).toSet();
         }
 
         // Assumption: length of "tensors" is constant.
@@ -1477,9 +1485,13 @@ export namespace TorchLCImpl {
         }
         const tensorsLen = tensorsLen_.value;
 
-        const size0 = fetchSize(tensors.getIndice(0), heap);
+        const tensor0 = fetchAddr(tensors.getIndice(0), heap);
+        const size0 = fetchSize(tensor0, heap);
         if (typeof size0 === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.cat': ${size0}`, source);
+            if (tensor0?.type === SVType.Error) {
+                return ctx.warnTensorWithMsg(`from 'LibCall.torch.cat': ${size0}`, source);
+            }
+            return ctx.failWithMsg(`from 'LibCall.torch.cat': ${size0}`, source).toSet();
         }
         const size0shape = size0.shape;
         const size0rank = size0.rank();
@@ -1491,9 +1503,13 @@ export namespace TorchLCImpl {
         let thickness: ExpNum = ExpNum.index(size0shape, dim.value, source);
 
         for (let i = 1; i < tensorsLen; i++) {
-            const sizeI = fetchSize(tensors.getIndice(i), heap);
+            const tensorI = fetchAddr(tensors.getIndice(i), heap);
+            const sizeI = fetchSize(tensorI, heap);
             if (typeof sizeI === 'string') {
-                return ctx.warnTensorWithMsg(`from 'LibCall.torch.cat': ${sizeI}`, source);
+                if (tensorI?.type === SVType.Error) {
+                    return ctx.warnTensorWithMsg(`from 'LibCall.torch.cat': ${sizeI}`, source);
+                }
+                return ctx.failWithMsg(`from 'LibCall.torch.cat': ${sizeI}`, source).toSet();
             }
             const sizeIshape = sizeI.shape;
             const shapeIFront = ExpShape.slice(sizeIshape, 0, dim.value, source);
