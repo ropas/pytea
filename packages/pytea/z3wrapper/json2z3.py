@@ -102,6 +102,14 @@ class SEType(Enum):
     String = 3
 
 
+class SymbolType(Enum):
+    Int = 0
+    Float = 1
+    String = 2
+    Bool = 3
+    Shape = 4
+
+
 class BoolOpType(Enum):
     Const = 0
     Symbol = 1
@@ -412,33 +420,6 @@ class CtrSet:
 
         return PathResult.Sat.value, None
 
-    # def checkSat(self, minimize=False):
-    #     def findIndiceOfCtrs(ctrPool, ctrs):
-    #         indices = []
-    #         for ctr in ctrs:
-    #             for idx, ctr_ in enumerate(ctrPool):
-    #                 if ctr == ctr_.formula:
-    #                     indices.append(idx)
-    #                     break
-    #         indices.sort()
-    #         return indices
-
-    #     constraints = list(map(lambda ctr: ctr.formula, self.ctrPool))
-    #     s = Solver()
-    #     if minimize:
-    #         s.set(":core.minimize", True)
-    #     result = str(s.check(constraints))
-    #     if result == "sat":
-    #         return PathResult.Sat.value, None
-    #     elif result == "unsat":
-    #         unsatCore = s.unsat_core()
-    #         unsatIndice = findIndiceOfCtrs(self.ctrPool, unsatCore)
-    #         if unsatIndice[-1] in self.pathCtr:
-    #             return PathResult.Unavailable.value, unsatIndice
-    #         return PathResult.Unsat.value, unsatIndice
-    #     else:
-    #         return PathResult.DontKnow.value, None
-
 
 class Ctr:
     def __init__(self, jsonCtr):
@@ -686,7 +667,12 @@ class Ctr:
                     "encodeExpNum(Const) Error: type of value must be int or float"
                 )
         elif expNum["opType"] == NumOpType.Symbol.value:
-            return Int(expNum["symbol"]["name"])
+            symbol = expNum["symbol"]
+            if symbol["type"] == SymbolType.Int.value:
+                return Int(expNum["symbol"]["name"])
+            else:
+                return Real(expNum["symbol"]["name"])
+
         elif expNum["opType"] == NumOpType.Bop.value:
             return self._encodeExpNumBop(expNum)
         elif expNum["opType"] == NumOpType.Index.value:
