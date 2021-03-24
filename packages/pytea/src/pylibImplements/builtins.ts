@@ -1,6 +1,9 @@
+import { formatCodeSource } from 'src/service/pyteaUtils';
+
 import { fetchAddr, sanitizeAddr, trackMro } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
 import { fetchSize, isInstanceOf, simplifyNum, strLen } from '../backend/expUtils';
+import * as ExpUtils from '../backend/expUtils';
 import {
     CodeSource,
     PrimitiveType,
@@ -887,6 +890,31 @@ export namespace BuiltinsLCImpl {
         return ctx.setHeap(heap.setVal(obj.addr, obj.setAttr(attr.value, value))).toSetWith(SVNone.create(source));
     }
 
+    // Debug probe for breakpoint in TS
+    export function debug(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { env, heap, retVal, ctrSet, callStack, logs, relPath } = ctx;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const position = formatCodeSource(source);
+
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const params = ctx.retVal.params;
+        const fetch = fetchAddr;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const nameof = (name: string) => fetch(env.getId(name), heap);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const addrof = (addr?: SVAddr) => fetch(addr, heap);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const vs = ShValue.toString;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const es = SymExp.toString;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const util = ExpUtils;
+
+        // set breakpoint here.
+        return ctx.toSetWith(SVNone.create(source));
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         superGetAttr,
         isinstance,
@@ -906,6 +934,7 @@ export namespace BuiltinsLCImpl {
         setAttr,
         setIndice,
         getItemByIndex,
+        debug,
     };
 }
 

@@ -13,6 +13,7 @@ import { FilePathStore } from '../service/executionPaths';
 import { ConstraintSet } from './constraintSet';
 import { Constraint, ConstraintType } from './constraintType';
 import { Context, ContextSet } from './context';
+import { simplifyBool } from './expUtils';
 import { ShEnv, ShHeap } from './sharpEnvironments';
 import {
     CodeSource,
@@ -30,7 +31,7 @@ import {
     SVString,
     SVType,
 } from './sharpValues';
-import { ExpBool, ExpNum, ExpString, NumBopType, NumUopType } from './symExpressions';
+import { BoolOpType, ExpBool, ExpNum, ExpString, NumBopType, NumUopType } from './symExpressions';
 
 /**
  * Normalize index based on PyShon semantics Shat supports negative index.
@@ -205,7 +206,12 @@ export function isTruthy<T>(ctx: Context<T>, value: ShValue, source?: CodeSource
             if (value.value === true || value.value === false) {
                 return value.value;
             } else {
-                const checked = ctrSet.checkImmediate(value.value);
+                const simpl = simplifyBool(ctx.ctrSet, value.value);
+                if (simpl.opType === BoolOpType.Const) {
+                    return simpl.value;
+                }
+
+                const checked = ctrSet.checkImmediate(simpl);
                 if (checked !== undefined) {
                     return checked;
                 }
