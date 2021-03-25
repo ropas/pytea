@@ -6,7 +6,6 @@
  *
  * Values for PyTea internal languages with Immutable.js
  */
-
 import { List, Map, Record } from 'immutable';
 
 import { Range } from 'pyright-internal/common/textRange';

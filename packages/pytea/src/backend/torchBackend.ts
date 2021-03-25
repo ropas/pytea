@@ -383,11 +383,19 @@ export namespace TorchBackend {
             newHeap = newHeap.setVal(paramAddrs.get(f.kwargsParam!)!, kwargDict);
         }
 
-        const newCtx = ctx.setEnv(fEnv).setHeap(newHeap);
-
         // run the function body
-        return run(newCtx.pushCallStack([f, source]).toSet(), f.funcBody).map((ctx) => {
-            const value = ctx.retVal;
+        const symIdMax = ctx.ctrSet.idManager.symIdMax;
+        let newCtx = run(ctx.setEnv(fEnv).setHeap(newHeap).pushCallStack([f, source]).toSet(), f.funcBody);
+
+        // check called function is (behaviourly) pure function with some path divergences.
+        newCtx = newCtx.prunePureFunctionCall(ctx, symIdMax);
+
+        return newCtx.map((ctx) => {
+            let value = ctx.retVal;
+            if (value === ShContFlag.Brk || value === ShContFlag.Cnt || value === ShContFlag.Run) {
+                // this is right. a function without any return method actually returns None.
+                value = SVNone.create(source);
+            }
 
             // free temp addresses for argument if body has no closure
             let newCtx = ctx.popCallStack().setEnv(env);
@@ -399,12 +407,7 @@ export namespace TorchBackend {
                 newCtx = newCtx.setHeap(heap);
             }
 
-            if (value === ShContFlag.Brk || value === ShContFlag.Cnt || value === ShContFlag.Run) {
-                // this is right. a function without any return method actually returns None.
-                return newCtx.setRetVal(SVNone.create());
-            } else {
-                return newCtx.setRetVal(value);
-            }
+            return newCtx.setRetVal(value);
         });
     }
 

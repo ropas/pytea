@@ -30,10 +30,9 @@ import {
     EqualityConstraint,
     NumConstraint,
 } from './constraintType';
-import { Context } from './context';
 import { isStructuallyEq, simplifyConstraint, simplifyExp } from './expUtils';
 import { NumRange } from './range';
-import { CodeSource, ShValue, SVType } from './sharpValues';
+import { CodeSource } from './sharpValues';
 import {
     BoolOpType,
     ExpBool,
@@ -97,20 +96,20 @@ export interface ConstraintGen {
 
 // ID Manager is shared for all paths.
 class IdManager {
-    private _ctrId: ConstraintIndex;
-    private _symId: SymbolIndex;
+    ctrIdMax: ConstraintIndex;
+    symIdMax: SymbolIndex;
 
-    constructor(_ctrId?: ConstraintIndex, _symId?: SymbolIndex) {
-        this._ctrId = _ctrId ? _ctrId : 0;
-        this._symId = _symId ? _symId : 0;
+    constructor() {
+        this.ctrIdMax = 0;
+        this.symIdMax = 0;
     }
 
     getCtrId(): ConstraintIndex {
-        return ++this._ctrId;
+        return ++this.ctrIdMax;
     }
 
     getSymId(): SymbolIndex {
-        return ++this._symId;
+        return ++this.symIdMax;
     }
 }
 
@@ -123,6 +122,7 @@ interface ConstraintSetProps {
     readonly softCtr: List<number>; // constraints that can be violated. added by require
     readonly pathCtr: List<number>; // constraints that indicates paths conditions, added by if/then/else clause.
 
+    readonly notPrunedCtrMax: number; // max index of constraint that is checked pruning condition.
     readonly ctrIdCache: Set<ConstraintIndex>;
     readonly rangeCache: Map<SymbolIndex, NumRange>;
     readonly stringCache: Map<SymbolIndex, string>;
@@ -136,6 +136,7 @@ const constraintSetDefaults: ConstraintSetProps = {
     hardCtr: List(),
     softCtr: List(),
     pathCtr: List(),
+    notPrunedCtrMax: -1,
     ctrIdCache: Set(),
     rangeCache: Map(),
     stringCache: Map(),
@@ -203,7 +204,6 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
             return this.set('valid', false)._pushSoft(constraint);
         }
 
-        // TODO: should cache on required position?
         return this._pushSoft(constraint);
     }
 
@@ -341,7 +341,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
 
         let cs: ConstraintSet = this;
 
-        // TODO: check our theory. What if the rank is not equal with the lenght of shape?
+        // TODO: check our theory. What if the rank is not equal with the length of dims?
         const newDims: ExpNum[] = [];
         if (!dims) {
             for (let i = 0; i < rank; i++) {
@@ -362,23 +362,6 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         }
 
         return [ExpShape.fromConst(rank, newDims, source), cs];
-    }
-
-    // make constraint that value is falsy
-    genFalsy<T>(ctx: Context<T>, value: ShValue): Constraint | undefined {
-        // TODO: make value constraint.
-        switch (value.type) {
-            case SVType.Int:
-            case SVType.Bool:
-            case SVType.Float:
-            case SVType.String:
-            case SVType.Addr:
-            case SVType.Object:
-            case SVType.None:
-            case SVType.NotImpl:
-            default:
-                return;
-        }
     }
 
     // boolean to integer cast
@@ -492,7 +475,6 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
     }
 
     genAnd(left: Constraint, right: Constraint, source?: CodeSource): CtrAnd {
-        // TODO: check cache.
         const id = this._getNextCtrId();
         const constraint: CtrAnd = {
             type: ConstraintType.And,
@@ -519,7 +501,6 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
     }
 
     genNot(constraint: Constraint, source?: CodeSource): CtrNot {
-        // TODO: unfold constraint.
         const id = this._getNextCtrId();
         const notCtr: CtrNot = {
             type: ConstraintType.Not,
@@ -532,7 +513,6 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
     }
 
     genBroad(left: ExpShape, right: ExpShape, source?: CodeSource): CtrBroad {
-        // TODO: unfold constraint.
         const id = this._getNextCtrId();
         const constraint: CtrBroad = {
             type: ConstraintType.Broadcastable,

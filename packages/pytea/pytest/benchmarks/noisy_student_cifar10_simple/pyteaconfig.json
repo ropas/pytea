@@ -2,6 +2,5 @@
     "logLevel": "result-only",
     "entryPath": "train.py",
     "maxPath": 512,
-    "timeout": 20000,
-    "variableSeed": { "ThBer": null }
+    "timeout": 5000
 }

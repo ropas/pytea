@@ -7,7 +7,7 @@
  * Context for backend processing.
  * Collection of Environment, Heap, and Constraint set.
  */
-import { List, Map, Record } from 'immutable';
+import { List, Map, Record, Set } from 'immutable';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
@@ -27,11 +27,26 @@ import {
     CtrNot,
     CtrOr,
     ctrToStr,
+    extractSymbols,
 } from './constraintType';
-import { genTensor } from './expUtils';
+import { genTensor, isStructuallyEq, simplifyExp } from './expUtils';
 import { NumRange } from './range';
 import { ShEnv, ShHeap } from './sharpEnvironments';
-import { CodeSource, ShContFlag, ShValue, SVError, SVErrorLevel, SVFunc, SVType } from './sharpValues';
+import {
+    CodeSource,
+    ShContFlag,
+    ShValue,
+    SVBool,
+    SVError,
+    SVErrorLevel,
+    SVFloat,
+    SVFunc,
+    SVInt,
+    SVNone,
+    SVObject,
+    SVString,
+    SVType,
+} from './sharpValues';
 import {
     ExpBool,
     ExpNum,
@@ -235,6 +250,7 @@ export interface ContextSet<T> {
     isEmpty(): boolean;
     addLog(message: string, source?: CodeSource): ContextSet<T>;
     addLogValue(value: ShValue): ContextSet<T>;
+    prunePureFunctionCall(oldCtx: Context<unknown>, symIdMax: number): ContextSet<T>;
 }
 
 const contextDefaults: ContextProps<unknown> = {
@@ -972,5 +988,225 @@ export class ContextSetImpl<T> implements ContextSet<T> {
     }
     addLogValue(value: ShValue): ContextSet<T> {
         return this.map((ctx) => ctx.addLogValue(value));
+    }
+
+    // check called function is (behaviourly) pure function with some path divergences.
+    // this means
+    // 1. path is diverged (exactly 2 paths)
+    // 2. only hard and path conditions are added from this function
+    //    and also those conditions use new symbols only (so that those can be garbage-collected)
+    // 3. divergence is not checked. (so that this checking is not propagated to higher stacks)
+    //    this check is performed by some flags in constraint set
+    // 4. return value is deeply equal for every paths (except source).
+    // 5. return value does not refer any new symbols
+    //    (i.e. we can safely remove those path conditions)
+    // 6. it does not change any value of the original heap (i.e. uses only its own stack frame)
+    prunePureFunctionCall(oldCtx: Context<unknown>, symIdMax: number): ContextSet<T> {
+        if (this.ctxList.count() !== 2) return this;
+
+        const oldHeap = oldCtx.heap;
+        const heapLimit = oldHeap.addrMax;
+
+        const left = this.ctxList.get(0)!;
+        const right = this.ctxList.get(1)!;
+
+        const leftSet = left.ctrSet;
+        const rightSet = right.ctrSet;
+        const leftLen = leftSet.ctrPool.count();
+        const rightLen = rightSet.ctrPool.count();
+
+        // any soft constraint is appended
+        const oldSoftLen = oldCtx.ctrSet.softCtr.count();
+        if (leftSet.softCtr.count() !== oldSoftLen || rightSet.softCtr.count() !== oldSoftLen) {
+            return this;
+        }
+
+        if (leftSet.notPrunedCtrMax >= leftLen) {
+            const newList = this.ctxList.set(1, right.setCtrSet(rightSet.set('notPrunedCtrMax', rightLen)));
+            return { ...this, ctxList: newList };
+        } else if (rightSet.notPrunedCtrMax >= rightLen) {
+            const newList = this.ctxList.set(0, left.setCtrSet(leftSet.set('notPrunedCtrMax', leftLen)));
+            return { ...this, ctxList: newList };
+        }
+
+        const newThis: ContextSet<T> = new ContextSetImpl(
+            this.ctxList
+                .set(0, left.setCtrSet(leftSet.set('notPrunedCtrMax', leftLen)))
+                .set(1, right.setCtrSet(rightSet.set('notPrunedCtrMax', rightLen))),
+            this.failed,
+            this.stopped
+        );
+
+        const oldLen = oldCtx.ctrSet.ctrPool.count();
+        for (let i = oldLen; i < leftLen; i++) {
+            const leftSymbols = Set(extractSymbols(leftSet.ctrPool.get(i)!));
+            if (leftSymbols.find((v) => v <= symIdMax) ?? -1 >= 0) return newThis;
+        }
+        for (let i = oldLen; i < rightLen; i++) {
+            const rightSymbols = Set(extractSymbols(rightSet.ctrPool.get(i)!));
+            if (rightSymbols.find((v) => v <= symIdMax) ?? -1 >= 0) return newThis;
+        }
+
+        // return value equality and non-conditionality
+        let leftRet = (left.retVal as any) as ShValue | ShContFlag;
+        let rightRet = (right.retVal as any) as ShValue | ShContFlag;
+        const leftHeap = left.heap;
+        const rightHeap = right.heap;
+
+        // object address equality map
+        let eqMap: Map<number, number> = Map();
+
+        if (typeof leftRet !== 'object') leftRet = SVNone.create();
+        if (typeof rightRet !== 'object') rightRet = SVNone.create();
+
+        function eqCheck(lv?: ShValue, rv?: ShValue): boolean {
+            if (lv?.type === SVType.Addr) {
+                lv = fetchAddr(lv, leftHeap);
+            }
+            if (rv?.type === SVType.Addr) {
+                rv = fetchAddr(rv, rightHeap);
+            }
+
+            if (!lv && !rv) return true;
+            if (!(lv && rv)) return false;
+            if (lv.type !== rv.type) return false;
+
+            switch (lv.type) {
+                case SVType.Int:
+                case SVType.Float: {
+                    const lval = lv.value;
+                    const rval = (rv as SVInt | SVFloat).value;
+
+                    if (typeof lval === 'number') {
+                        if (typeof rval === 'number') {
+                            return lval === rval;
+                        }
+                        return false;
+                    }
+                    if (typeof rval === 'number') {
+                        return false;
+                    }
+
+                    const lsval = simplifyExp(leftSet, lval);
+                    const rsval = simplifyExp(rightSet, rval);
+
+                    if (SymExp.extractSymbols(lsval).findIndex((v) => v > symIdMax) >= 0) return false;
+                    if (SymExp.extractSymbols(rsval).findIndex((v) => v > symIdMax) >= 0) return false;
+
+                    return isStructuallyEq(lsval, rsval);
+                }
+                case SVType.String: {
+                    const lval = lv.value;
+                    const rval = (rv as SVString).value;
+
+                    if (typeof lval === 'string') {
+                        if (typeof rval === 'string') {
+                            return lval === rval;
+                        }
+                        return false;
+                    }
+                    if (typeof rval === 'string') {
+                        return false;
+                    }
+
+                    const lsval = simplifyExp(leftSet, lval);
+                    const rsval = simplifyExp(rightSet, rval);
+
+                    if (SymExp.extractSymbols(lsval).findIndex((v) => v > symIdMax) >= 0) return false;
+                    if (SymExp.extractSymbols(rsval).findIndex((v) => v > symIdMax) >= 0) return false;
+
+                    return isStructuallyEq(lsval, rsval);
+                }
+                case SVType.Bool: {
+                    const lval = lv.value;
+                    const rval = (rv as SVBool).value;
+
+                    if (typeof lval === 'boolean') {
+                        if (typeof rval === 'boolean') {
+                            return lval === rval;
+                        }
+                        return false;
+                    }
+                    if (typeof rval === 'boolean') {
+                        return false;
+                    }
+
+                    const lsval = simplifyExp(leftSet, lval);
+                    const rsval = simplifyExp(rightSet, rval);
+
+                    if (SymExp.extractSymbols(lsval).findIndex((v) => v > symIdMax) >= 0) return false;
+                    if (SymExp.extractSymbols(rsval).findIndex((v) => v > symIdMax) >= 0) return false;
+
+                    return isStructuallyEq(lsval, rsval);
+                }
+                case SVType.Object: {
+                    const rval = rv as SVObject;
+                    const laddr = lv.addr.addr;
+                    const raddr = rval.addr.addr;
+
+                    // check address equality below heaplimit
+                    if (laddr <= heapLimit) {
+                        if (raddr <= heapLimit) {
+                            return laddr === raddr;
+                        }
+                        return false;
+                    } else if (raddr <= heapLimit) {
+                        return false;
+                    }
+
+                    if (eqMap.has(laddr)) {
+                        if (eqMap.get(laddr) !== raddr) return false;
+                        return true;
+                    }
+
+                    eqMap = eqMap.set(laddr, raddr);
+
+                    // check recursive value equality above heaplimit
+                    if (lv.shape) {
+                        if (!rval.shape) return false;
+                        if (!isStructuallyEq(simplifyExp(leftSet, lv.shape), simplifyExp(rightSet, rval.shape)))
+                            return false;
+                    }
+
+                    if (lv.keyValues.count() !== rval.keyValues.count()) return false;
+                    if (lv.indices.count() !== rval.indices.count()) return false;
+                    if (lv.attrs.count() !== rval.attrs.count()) return false;
+
+                    if (!lv.keyValues.every((lvv, lvk) => eqCheck(lvv, rval.keyValues.get(lvk)))) return false;
+                    if (!lv.indices.every((lvv, lvk) => eqCheck(lvv, rval.indices.get(lvk)))) return false;
+                    if (!lv.attrs.every((lvv, lvk) => eqCheck(lvv, rval.attrs.get(lvk)))) return false;
+
+                    return true;
+                }
+                case SVType.Func:
+                    // TODO: if closure points symbol? => check no closure exists
+                    //       but list comprehension / lambda / ternary is closure!
+                    // CHECK: function equality is too hard to check. alter it to referential equality
+                    return lv === rv;
+                case SVType.None:
+                case SVType.NotImpl:
+                case SVType.Undef:
+                    return true;
+                case SVType.Error:
+                    // this should be equally propagated values.
+                    return lv === rv;
+                default:
+                    return false;
+            }
+        }
+
+        if (!eqCheck(leftRet, rightRet)) return newThis;
+
+        // purity check (heap unchanged)
+        const pureLeftMap = leftHeap.valMap.filter((_, addr) => addr <= heapLimit);
+        const pureRightMap = rightHeap.valMap.filter((_, addr) => addr <= heapLimit);
+        const pureMap = oldHeap.valMap.filter((_, addr) => addr <= heapLimit);
+
+        if (!(pureLeftMap.equals(pureMap) && pureRightMap.equals(pureMap))) {
+            return newThis;
+        }
+
+        // all checked. prune right and remove conditions
+        return left.setCtrSet(oldCtx.ctrSet).toSet();
     }
 }

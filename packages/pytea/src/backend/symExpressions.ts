@@ -6,7 +6,6 @@
  *
  * Definitions and types of symbolic variables and expressions
  */
-
 import { ConstraintSet } from './constraintSet';
 import { CodeSource } from './sharpValues';
 
@@ -462,6 +461,112 @@ export namespace SymExp {
         }
 
         return str;
+    }
+
+    // return symbol indices used in value
+    export function extractSymbols(value: SymExp | string | number | boolean | undefined): number[] {
+        const list: number[] = [];
+        if (typeof value !== 'object') return list;
+
+        function extract(value: SymExp | string | number | boolean | undefined): void {
+            if (typeof value !== 'object') return;
+
+            switch (value.expType) {
+                case SEType.Bool: {
+                    switch (value.opType) {
+                        case BoolOpType.Symbol:
+                            list.push(value.symbol.id);
+                            return;
+                        case BoolOpType.And:
+                        case BoolOpType.Or:
+                        case BoolOpType.Equal:
+                        case BoolOpType.NotEqual:
+                        case BoolOpType.LessThan:
+                        case BoolOpType.LessThanOrEqual:
+                            extract(value.left);
+                            extract(value.right);
+                            return;
+                        case BoolOpType.Not:
+                            extract(value.baseBool);
+                            return;
+                        default:
+                            return;
+                    }
+                }
+                case SEType.Num: {
+                    switch (value.opType) {
+                        case NumOpType.Symbol:
+                            list.push(value.symbol.id);
+                            return;
+                        case NumOpType.Index:
+                            extract(value.baseShape);
+                            extract(value.index);
+                            return;
+                        case NumOpType.Max:
+                        case NumOpType.Min:
+                            value.values.forEach((v) => extract(v));
+                            return;
+                        case NumOpType.Numel:
+                            extract(value.shape);
+                            return;
+                        case NumOpType.Uop:
+                            extract(value.baseValue);
+                            return;
+                        case NumOpType.Bop: {
+                            extract(value.left);
+                            extract(value.right);
+                            return;
+                        }
+                        default:
+                            return;
+                    }
+                }
+                case SEType.String:
+                    switch (value.opType) {
+                        case StringOpType.Symbol:
+                            list.push(value.symbol.id);
+                            return;
+                        case StringOpType.Concat:
+                            extract(value.left);
+                            extract(value.right);
+                            return;
+                        case StringOpType.Slice:
+                            extract(value.baseString);
+                            extract(value.start);
+                            extract(value.end);
+                            return;
+                        default:
+                            return;
+                    }
+                case SEType.Shape:
+                    switch (value.opType) {
+                        case ShapeOpType.Symbol:
+                            list.push(value.symbol.id);
+                            return;
+                        case ShapeOpType.Broadcast:
+                        case ShapeOpType.Concat:
+                            extract(value.left);
+                            extract(value.right);
+                            return;
+                        case ShapeOpType.Slice:
+                            extract(value.baseShape);
+                            extract(value.start);
+                            extract(value.end);
+                            return;
+                        case ShapeOpType.Set:
+                            extract(value.baseShape);
+                            extract(value.axis);
+                            extract(value.dim);
+                            return;
+                        default:
+                            return;
+                    }
+            }
+        }
+
+        extract(value);
+
+        return list;
     }
 }
 

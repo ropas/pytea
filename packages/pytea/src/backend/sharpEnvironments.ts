@@ -75,11 +75,6 @@ export class ShHeap extends Record(shHeapDefaults) implements ShHeapProps {
         super();
     }
 
-    addNew(value: ShValue): ShHeap {
-        const addr = this.addrMax;
-        return this.set('addrMax', addr + 1).set('valMap', this.valMap.set(addr, value));
-    }
-
     getVal(addr: number | SVAddr): ShValue | undefined {
         if (typeof addr !== 'number') {
             addr = addr.addr;
@@ -207,18 +202,4 @@ export class ShHeap extends Record(shHeapDefaults) implements ShHeapProps {
 
         return heap;
     }
-}
-
-export function mergeEnvHeap(base: [ShEnv, ShHeap], merged: [ShEnv, ShHeap]): [ShEnv, ShHeap] {
-    const [env1, heap1] = base;
-    const [env2, heap2] = merged;
-
-    const offset = heap1.addrMax;
-
-    const newEnv = env1.set('addrMap', env1.addrMap.merge(env2.addOffset(offset).addrMap));
-    const newHeap = heap1
-        .set('addrMax', heap2.addrMax + offset)
-        .set('valMap', heap1.valMap.merge(heap2.addOffset(offset).valMap));
-
-    return [newEnv, newHeap];
 }

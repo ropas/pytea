@@ -167,3 +167,51 @@ export function ctrToStr(ctr: Constraint): string {
 
     return str;
 }
+
+// return symbol indices used in constraints
+export function extractSymbols(ctr: Constraint): number[] {
+    const list: number[] = [];
+
+    function append(exp: SymExp | number | string | boolean | undefined): void {
+        const l = SymExp.extractSymbols(exp);
+        for (const v of l) {
+            list.push(v);
+        }
+    }
+
+    function extract(ctr: Constraint | undefined): void {
+        if (!ctr) return;
+        switch (ctr.type) {
+            case ConstraintType.ExpBool:
+                append(ctr.exp);
+                return;
+            case ConstraintType.Equal:
+            case ConstraintType.NotEqual:
+            case ConstraintType.LessThan:
+            case ConstraintType.LessThanOrEqual:
+            case ConstraintType.Broadcastable:
+                append(ctr.left);
+                append(ctr.right);
+                return;
+            case ConstraintType.And:
+            case ConstraintType.Or:
+                extract(ctr.left);
+                extract(ctr.right);
+                return;
+            case ConstraintType.Not:
+                extract(ctr.constraint);
+                return;
+            case ConstraintType.Forall:
+                extract(ctr.constraint);
+                append(ctr.range[0]);
+                append(ctr.range[1]);
+                return;
+            case ConstraintType.Fail:
+                return;
+        }
+    }
+
+    extract(ctr);
+
+    return list;
+}
