@@ -6,96 +6,68 @@
 - `python >= 3.8`
   - `z3-solver >= 4.8`
 
-## Usage
-
-### Build and Analyze
+## How to build and use
 
 ```bash
 # install dependencies
 npm run install:all
 pip install z3-solver
 
-# build node frontend
+# build
 npm run build
 
-# Analyze file
+# analyze
 python bin/pytea.py path/to/source.py
 ```
 
-### Debug
+## Documentations
+
+* [Configuration](doc/config.md)
+* [Build and Debug](doc/build-and-debug.md)
+
+## Brief Explanation of Analysis Result
+
+For a full explanation, see [result-explain.md](doc/result-explain.md)
+
+PyTea is composed with two analyzer.
+
+* Online analysis: TypeScript / JavaScript
+  * Find numeric range based shape mismatch and misuse of API argument. If any error is found while analyzing the code, it will stop at that position and inform the errors and violated constraints to the user.
+* Offline analysis: Z3 / Python
+  * If online analyzer cannot assure that the shape requirement can be violated, it will pass on constraints to [Z3Py](https://github.com/Z3Prover/z3).
+
+
+The result of Online analyzer is divided into three classes:
+* **potential success path**: the analyzer does not found shape mismatch until now, but the final constraint set can be violated if Z3 analyzes it on closer inspection.
+* **potential unreachable path**: the analyzer found shape mismatch or API misuses, but there remains *path constraints*. In short, *Path constraints* are uncertain branch conditions with symbolic variables; that means the stopped path might be *unreachable* if some path constraints mutually contradicts. Those cases will be distinguished from *Offline analysis*.
+* **immediate failed path**: the analyzer founds errors, and stops its analysis immediately.
+
+*CAVEAT*: If the code contains PyTorch or other third-party APIs that we have not implemented, it will raise false alarms. But we also record each unimplemented API calls. Use `--log=2` option to see which unimplemented API call is performed.
+
+
+The final result of Offline analyzer is divided into sevral cases.
+* **Valid path**: SMT solver have not found any error. Every constraints will always be fulfilled
+* **Invalid path**: SMT solver found a condition that can violate some constraints. Notice that this does not mean your code will always be crashed, but it found an extreme case that crashs some executions.
+* **Unreachable path**: Hard and Path constraints contain contradicting constraints; this path will not be realized from the beginning.
+* **Undecidable path**: The solver have met unsolvable constraints and timeouted. Some non-linear formulae can be classified into this case.
+
+
+### Result examples
+
+* Error found by Offline analysis
 
 ```bash
-cd packages/pytea
-npm run webpack
-
-# run frontend only (run without z3)
-node index.js path/to/source.py --logLevel=reduced
+> python bin/pytea.py --log=1 packages/pytea/pytest/benchmarks/resnet_simclr/resnet_train.py
 ```
 
-We add two debug options from VSCode Debug panel.
-- `Pytea CLI`: Build and run pytea frontend using `packages/pytea/pytest/basics/pyteaconfig.json`. That config file should define `entryPath` option.
-- `Pytea CLI scratch`: Scratchpad debugging. Does not build pytea config, but analyze `packages/pytea/pytest/basics/scratch.py`. User should build pytea package before to run in.
+![result](img/result1.png)
 
-## Config (pyteaconfig.json)
-
-We use `pyteaconfig.json` to handle options for Pytea, following `pyrightconfig.json` of Pyright. See `packages/pytea/src/service/pyteaOptions.ts` for more details.
-
-Place `pyteaconfig.ts` to the directory that contains the target Python file, or run with options like below.
+* Error found by Online analysis
 
 ```bash
-python bin/pytea.py --node-arguments="--configPath=path/to/pyrightconfig.json" path/to/source.py
-
-# or use below
-node bin/index.js --configPath=path/to/pyrightconfig.json path/to/source.py
- ```
-
-```typescript
-export type PyCmdArgs = { [option: string]: boolean | number | string };
-export type PyteaLogLevel = 'none' | 'result-only' | 'reduced' | 'full';
-export interface PyteaOptions {
-    // Absolute path to pyteaconfig.json
-    configPath: string;
-
-    // Path of PyTea implementation of Python builtins.
-    // Absolute or relative to configPath
-    pyteaLibPath: string;
-
-    // Python entry point. Absolute or relative to configPath
-    entryPath: string;
-
-    // Python command line arguments.
-    pythonCmdArgs: PyCmdArgs;
-
-    // 'dest' of argparse.add_subparsers(...)
-    pythonSubcommand: string;
-
-    // Debug log level (default: reduced)
-    logLevel: PyteaLogLevel;
-
-    // Check and discard trivial constraints (default: true)
-    immediateConstraintCheck: boolean;
-
-    // Ignore assert statements of Python. (default: false)
-    ignoreAssert: boolean;
-
-    // Extract internal representation to file (TorchIR)
-    extractIR: boolean;
-
-    // Explicit range of random variables.
-    // The range of random varaible which name starts with prefix will be altered to this.
-    // null means unbounded, range is inclusive.
-    variableRange: { [prefix: string]: null | number | [number | null, number | null] };
-
-    // Pass analysis result to Python Z3 server (default: false)
-    runZ3: boolean;
-
-    // Port to Python Z3 server
-    z3Port: number;
-
-    // Analyzer timeout in millisecond. undefined means no timeout (default: undefined)
-    timeout?: number;
-
-    // Set max path count, throw runtime error if path count exceeds it (default: undefined)
-    maxPath?: number;
-}
+> python bin/pytea.py --log=1 packages/pytea/pytest/benchmarks/fast_neural_style/neural_style/neural_style.py
 ```
+
+![result](img/result3.png)
+
+Offline analyzer have found a conflicted constraint (#7). Then, run `pytea.py` with `--log=2` to find code position of violated constraint.

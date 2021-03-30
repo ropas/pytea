@@ -34,10 +34,10 @@
     "id": 0, // number
     "params": [
         {
-            ctrPool: [{ ... }, ... ], // list of constraints
-            hardCtr: [1, 3, 4, ...],  // indices of hard constriants
-            softCtr: [0, 5, 7, ...],  // indices of soft constriants
-            pathCtr: [2, 6, 8, ...]   // indices of path constriants
+            "ctrPool": [{ ... }, ... ], // list of constraints
+            "hardCtr": [1, 3, 4, ...],  // indices of hard constriants
+            "softCtr": [0, 5, 7, ...],  // indices of soft constriants
+            "pathCtr": [2, 6, 8, ...]   // indices of path constriants
         },
         ...
     ] // constraint set of each paths
@@ -50,7 +50,7 @@
     "jsonrpc": "2.0",
     "id": 0, // number
     "result": [
-        { type: 1 }, // type: PathResult
+        { "type": 1 }, // type: PathResult
     ], // results for each paths
     "log": "<some extra messages>"
 }

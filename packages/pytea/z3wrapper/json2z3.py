@@ -219,7 +219,7 @@ class Z3Encoder:
                     SatPaths.append(pathIdx)
                 elif pathResult == PathResult.Unsat.value:
                     self.console.log(
-                        f"--- {bcolors.WARNING}Errornous Path{bcolors.ENDC}: Path {pathIdx + 1} ---\n{pathLog}"
+                        f"--- {bcolors.FAIL}Errornous Path{bcolors.ENDC}: Path {pathIdx + 1} ---\n{pathLog}"
                     )
                     UnsatPaths.append(pathIdx)
                 elif pathResult == PathResult.Unreachable.value:
@@ -326,20 +326,18 @@ class CtrSet:
             return PathResult.Valid.value, log, extras
         elif sat == PathResult.Unreachable.value:
             log = "Unreachable path. Path condition is unsatisfiable.\n"
-            log += f"  first conflicted constraint (constraint #{unsatIndice + 1}): \n"
+            log += f"  first conflicted constraint {bcolors.BOLD}(constraint #{unsatIndice + 1}){bcolors.ENDC}: \n"
             log += f"{bcolors.BOLD}{self.ctrPool[unsatIndice]}{bcolors.ENDC}\n"
             extras["conflict"] = unsatIndice
         elif sat == PathResult.Unsat.value:
             log = "Invalid path: Found conflicted constraints.\n"
-            log += (
-                f"  first conflicted constraint (constraint #{unsatIndice + 1}): \n    "
-            )
+            log += f"  first conflicted constraint {bcolors.BOLD}(constraint #{unsatIndice + 1}){bcolors.ENDC}: \n    "
             log += f"{bcolors.BOLD}{self.ctrPool[unsatIndice]}{bcolors.ENDC}\n"
             extras["conflict"] = unsatIndice
         else:
             sat = PathResult.DontKnow.value
             log = "Undecidable path: Z3 failed to solve constraints.\n"
-            log += f"  first undecidable constraint (constraint #{unsatIndice + 1}): \n    "
+            log += f"  first undecidable constraint {bcolors.BOLD}(constraint #{unsatIndice + 1}){bcolors.ENDC}: \n    "
             log += f"{bcolors.BOLD}{self.ctrPool[unsatIndice]}{bcolors.ENDC}\n"
             extras["undecide"] = unsatIndice
 

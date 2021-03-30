@@ -435,10 +435,10 @@ export class PyteaService {
             const source = ctx.retVal.source;
 
             this._console.info(
-                `stopped path #${succCnt + i + 1}: ${ctx.retVal.reason} - ${formatCodeSource(
-                    source,
-                    this._pathStore
-                )}\n`
+                chalk.yellow(`stopped path #${succCnt + i + 1}`) +
+                    chalk.bold(`: ${ctx.retVal.reason}`) +
+                    ` - ${formatCodeSource(source, this._pathStore)}\n` +
+                    `\n${chalk.bold('CALL STACK')}:\n${this._callStackToString(ctx)}\n`
             );
         });
 
@@ -451,10 +451,10 @@ export class PyteaService {
             }
 
             this._console.info(
-                `failed path #${succCnt + stopCnt + i + 1}: ${ctx.retVal.reason} - ${formatCodeSource(
-                    source,
-                    this._pathStore
-                )}\n`
+                chalk.red(`failed path #${succCnt + stopCnt + i + 1}`) +
+                    chalk.bold(`: ${ctx.retVal.reason}`) +
+                    `- ${formatCodeSource(source, this._pathStore)}\n` +
+                    `\n${chalk.bold('CALL STACK')}:\n${this._callStackToString(ctx)}\n`
             );
         });
 
@@ -525,7 +525,8 @@ export class PyteaService {
 
             this._console.info(
                 chalk.yellow(`stopped path #${succCnt + i + 1}`) +
-                    `: ${ctx.retVal.reason} - ${formatCodeSource(source, this._pathStore)}` +
+                    chalk.bold(`: ${ctx.retVal.reason}`) +
+                    `- ${formatCodeSource(source, this._pathStore)}\n` +
                     `\n\n${chalk.bold('REDUCED HEAP')} (size: ${ctx.heap.valMap.count()} values):\n${heapLog}` +
                     `\n\n${chalk.bold('CALL STACK')}:\n` +
                     this._callStackToString(ctx) +
@@ -548,7 +549,8 @@ export class PyteaService {
 
             this._console.info(
                 chalk.red(`failed path #${succCnt + stopCnt + i + 1}`) +
-                    `: ${ctx.retVal.reason} - ${formatCodeSource(source, this._pathStore)}` +
+                    chalk.bold(`: ${ctx.retVal.reason}`) +
+                    `- ${formatCodeSource(source, this._pathStore)}\n` +
                     `\n\n${chalk.bold('REDUCED HEAP')} (size: ${ctx.heap.valMap.count()} values):\n${heapLog}` +
                     `\n\n${chalk.bold('CALL STACK')}:\n` +
                     this._callStackToString(ctx) +
@@ -604,7 +606,8 @@ export class PyteaService {
 
             this._console.info(
                 chalk.yellow(`stopped path #${succCnt + i + 1}`) +
-                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${formatCodeSource(source, this._pathStore)}\n` +
+                    chalk.bold(`: ${ctx.retVal.reason}`) +
+                    `- ${formatCodeSource(source, this._pathStore)}\n` +
                     `LOGS:\n${this._logsToString(ctx)}\n` +
                     'CONSTRAINTS:\n' +
                     ctx.ctrSet.toString(this._pathStore) +
@@ -622,7 +625,8 @@ export class PyteaService {
 
             this._console.info(
                 chalk.red(`failed path #${succCnt + stopCnt + i + 1}`) +
-                    `: ${ctx.retVal.reason} / at ${ctx.relPath} ${formatCodeSource(source, this._pathStore)}\n` +
+                    chalk.bold(`: ${ctx.retVal.reason}`) +
+                    `- ${formatCodeSource(source, this._pathStore)}\n` +
                     `LOGS:\n${this._logsToString(ctx)}\n` +
                     'CONSTRAINTS:\n' +
                     ctx.ctrSet.toString(this._pathStore) +
@@ -726,7 +730,13 @@ export class PyteaService {
 
                 return !(f === 'callKV' || (f.endsWith('self$call') && !source));
             })
-            .map(([func, node]) => `${typeof func === 'string' ? func : func.name} - ${formatCodeSource(node)}`)
+            .map(([func, node]) => {
+                let funName = typeof func === 'string' ? func : func.name;
+                if (funName.endsWith('$TMP$')) {
+                    funName = funName.slice(0, -5);
+                }
+                return `${funName} - ${formatCodeSource(node)}`;
+            })
             .reverse()
             .join('\n');
     }

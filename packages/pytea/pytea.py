@@ -45,13 +45,36 @@ def parse_arg():
         help="path to constraint generator (index.js)",
     )
     parser.add_argument(
-        "--node-arguments", default="", help="arguments for constraint generator"
+        "--node_args", default="", help="arguments for constraint generator"
     )
     parser.add_argument(
         "--silent", action="store_true", help="do not print result (for server)"
     )
+    parser.add_argument(
+        "-l",
+        "--log",
+        default=-1,
+        type=int,
+        help="severity of analysis result (0 to 3)",
+    )
 
     return parser.parse_args()
+
+
+def parse_log_level(args):
+    if 0 <= args.log <= 3:
+        if args.log == 0:
+            log_level = "--logLevel=none"
+        elif args.log == 1:
+            log_level = "--logLevel=result-only"
+        elif args.log == 2:
+            log_level = "--logLevel=reduced"
+        else:
+            log_level = "--logLevel=full"
+    else:
+        log_level = ""
+
+    return log_level
 
 
 def main_with_temp(args, entry_path):
@@ -61,7 +84,9 @@ def main_with_temp(args, entry_path):
         if json_path.exists():
             os.remove(json_path)
 
-        frontend_command = f"node {args.front_path} {entry_path} {args.node_arguments} --resultPath={json_path}"
+        log_level = parse_log_level(args)
+
+        frontend_command = f"node {args.front_path} {entry_path} {log_level}{args.node_args} --resultPath={json_path}"
         print(frontend_command)
         subprocess.call(frontend_command, shell=True)
 
@@ -80,8 +105,6 @@ def main():
     if args.out is None:
         return main_with_temp(args, entry_path)
 
-    base_dir = entry_path.parent
-
     json_path = Path(args.out)
 
     if args.z3_only:
@@ -92,7 +115,9 @@ def main():
         if json_path.exists():
             os.remove(json_path)
 
-        frontend_command = f"node {args.front_path} {entry_path} {args.node_arguments} --resultPath={json_path}"
+        log_level = parse_log_level(args)
+
+        frontend_command = f"node {args.front_path} {entry_path} {log_level}{args.node_args} --resultPath={json_path}"
         print(frontend_command)
         subprocess.call(frontend_command, shell=True)
 

@@ -26,7 +26,7 @@ export interface PyteaOptions {
     // 'dest' of argparse.add_subparsers(...)
     pythonSubcommand: string;
 
-    // Debug log level (default: reduced)
+    // Severity of analysis result (default: reduced)
     logLevel: PyteaLogLevel;
 
     // Check and discard trivial constraints (default: true)

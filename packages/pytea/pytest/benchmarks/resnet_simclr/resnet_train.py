@@ -215,7 +215,7 @@ class NTXentLoss(torch.nn.Module):
         r_pos = torch.diag(similarity_matrix, -self.batch_size)
         positives = torch.cat([l_pos, r_pos]).view(2 * self.batch_size, 1)
 
-        # # challenge part: tensor shape's requirement condition depends on the tensor data
+        # challenging part: tensor shape's requirement condition depends on the tensor data
         # negatives = similarity_matrix[self.mask_samples_from_same_repr].view(
         #     2 * self.batch_size, -1
         # )
@@ -231,6 +231,7 @@ class NTXentLoss(torch.nn.Module):
 
 
 def train(net, loader):
+    losses = []
     loss_fn = NTXentLoss(batch_size=BATCH_SIZE, temperature=TEMPERATURE)
 
     optimizer = optim.Adam(net.parameters(), lr=0.001 * BATCH_SIZE / 256)
@@ -254,6 +255,7 @@ def train(net, loader):
             optimizer.step()
 
         train_loss /= idx + 1
+        losses.append(train_loss)
         print("Epoch\t", epoch, "\tLoss\t", train_loss)
 
     print("Finished training.")
@@ -261,45 +263,48 @@ def train(net, loader):
 
 
 ### Main function of this script
+def main():
+    # data loader
+    img_size = (32, 32)
 
-# data loader
-img_size = (32, 32)
-
-train_transform = DuplicatedCompose(
-    [transforms.RandomResizedCrop(img_size), transforms.ToTensor(),]
-)
-
-train_dataset = datasets.CIFAR10(
-    root=".", train=True, download=True, transform=train_transform
-)
-
-
-# hparams settings: list of (BATCH_SIZE, TOTAL_EPOCHS, TEMPERATURE) tuples.
-hparams_settings = ((256, 1, 0.07), (64, 1, 0.07))
-
-for B, E, T in hparams_settings:
-    # change global variables.
-    # error was caused since I didn't change BATCH_SIZE for the train_loader,
-    # so the tensor size for NTXentLoss mismatched.
-    BATCH_SIZE = B
-    TOTAL_EPOCHS = E
-    TEMPERATURE = T
-
-    # train_loader should be updated after changing the BATCH_SIZE
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=BATCH_SIZE,
-        num_workers=4,
-        shuffle=True,
-        drop_last=True,  # *ERROR*: drop_last=True is essential
+    train_transform = DuplicatedCompose(
+        [transforms.RandomResizedCrop(img_size), transforms.ToTensor(),]
     )
 
-    net = SimCLRNet(26, 1, 10, 32)
-    net.cuda()
+    train_dataset = datasets.CIFAR10(
+        root=".", train=True, download=True, transform=train_transform
+    )
 
-    print("========================================")
-    print("Pre-training with {},{},{} begins".format(B, E, T))
-    print("========================================")
-    losses = train(net, train_loader)
+    # hparams settings: list of (BATCH_SIZE, TOTAL_EPOCHS, TEMPERATURE) tuples.
+    hparams_settings = ((256, 1, 0.07), (64, 1, 0.07))
 
-    del net
+    for B, E, T in hparams_settings:
+        # change global variables.
+        # error was caused since I didn't change BATCH_SIZE for the train_loader,
+        # so the tensor size for NTXentLoss mismatched.
+        BATCH_SIZE = B
+        TOTAL_EPOCHS = E
+        TEMPERATURE = T
+
+        # train_loader should be updated after changing the BATCH_SIZE
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=BATCH_SIZE,
+            num_workers=4,
+            shuffle=True,
+            # drop_last=True,  # *ERROR*: drop_last=True is essential
+        )
+
+        net = SimCLRNet(26, 1, 10, 32)
+        net.cuda()
+
+        print("========================================")
+        print("Pre-training with {},{},{} begins".format(B, E, T))
+        print("========================================")
+        losses = train(net, train_loader)
+
+        del net
+
+
+if __name__ == "__main__":
+    main()

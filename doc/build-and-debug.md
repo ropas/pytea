@@ -1,6 +1,6 @@
 # How to build and debug
 
-## build and run
+## Build and run
 
 ```bash
 npm run install:all
@@ -10,25 +10,22 @@ npm run webpack # compile development build
 # npm run build # compile production build
 
 # run constraint generator only
-node ./index.js path/to/entry_python_script.py
+node ./index.js path/to/script.py
 
 # run with z3
-# CAUTION! should run `npm run webpack` before it to make typescript files!
-# it first run node ./index.js path/to/entry_python_script.py and make
+# run `npm run webpack` before it. it requires compiled sources (./dist).
 python pytea.py path/to/entry_python_script.py
 
 ```
 
-## debug
+```bash
+cd packages/pytea
+npm run webpack
 
-VSCode의 debug 창에서 에서 Pytea CLI 또는 Pytea CLI scratch 구성을 선택해서 디버깅을 진행할 수 있다.
+# run frontend only (run without z3)
+node index.js path/to/source.py --logLevel=reduced
+```
 
-Pytea CLI를 선택시 pyteaconfig.json에서 `entryPath` 값을 python entry file path로 설정해주어야 디버깅을 진행할 수 있다.
-
-Pytea CLI scratch는 자동으로 `pytest/basics/scratch.py`를 실행한다. Pytea CLI를 돌리면 기본적으로 webpack을 돌리기 때문에 typescript 컴파일 시간이 걸리지만 Pytea CLI scratch는 컴파일을 하지 않으므로 즉시 진행할 수 있다. (대신 컴파일이 미리 되어있어야한다.)
-
-## when to compile
-
-`npm run webpack`을 돌려서 컴파일시 `pytea/dist`에 컴파일한 js 파일과 pylib, z3wrapper 디렉토리가 통째로 들어가게 된다.
-
-z3wrapper나 pylib에서 .py 파일을 변경하였다면 반드시 컴파일을 해야 `node ./index.js ...`를 실행할 시 반영이 되므로 반드시 미리 `npm run webpack`을 돌려서 컴파일을 해주자.
+We add two debug options from VSCode Debug panel.
+- `Pytea CLI`: Build and run pytea frontend using `packages/pytea/pytest/basics/pyteaconfig.json`. It should define `entryPath` option.
+- `Pytea CLI scratch`: Scratchpad debugging. Does not build pytea config, but analyze `packages/pytea/pytest/basics/scratch.py`. User should build pytea package before to run in.
