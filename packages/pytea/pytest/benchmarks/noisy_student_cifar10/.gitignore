@@ -1,8 +1,0 @@
-document/*.aux
-document/*.blg
-document/*.bbl
-document/*.fdb_latexmk
-document/*.fls
-document/*.log
-document/*.synctex.gz
-document/*.out
