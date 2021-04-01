@@ -1424,7 +1424,7 @@ export namespace TorchLCImpl {
             return ctx.warnTensorWithMsg(`from 'LibCall.torch.batchnorm2d': ${inputSize}`, source);
         }
         if (num_features?.type !== SVType.Int) {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.batchnorm2d': ${num_features}`, source);
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.batchnorm2d': num_features is not an integer`, source);
         }
 
         const inputShape = inputSize.shape;
@@ -1436,7 +1436,7 @@ export namespace TorchLCImpl {
                     ctx.genEq(4, inputRank, source),
                     ctx.genEq(num_features.value, ExpNum.index(inputShape, 1, source), source),
                 ],
-                `from 'LibCall.torch.batchnorm2d': rank must be 4, num_features must match`,
+                `from 'LibCall.torch.batchnorm2d': rank must be 4 && num_features must match`,
                 source
             )
             .flatMap((ctx) => genTensor(ctx, inputShape, source));
