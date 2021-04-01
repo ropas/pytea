@@ -54,3 +54,6 @@ class Module:
     def state_dict(self, destination=None, prefix=None, keep_vars=None):
         # TODO: make key-value pair
         return {}
+
+    def share_memory(self):
+        return self

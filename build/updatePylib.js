@@ -12,8 +12,10 @@ function copyToBin() {
     const pylibDest = path.join(bin, 'dist', 'pylib');
     if (fse.existsSync(pylibDest)) {
         fse.removeSync(pylibDest);
+        console.log(`removed ${pylibDest}`);
     }
-    fse.copySync(path.join(pytea, 'dist', 'pylib'), pylibDest);
+    fse.copySync(path.join(pytea, 'pylib'), pylibDest);
+    console.log(`${path.join(pytea, 'pylib')} copied to ${pylibDest}`);
 }
 
 copyToBin();
