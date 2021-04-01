@@ -739,6 +739,50 @@ export namespace TorchLCImpl {
             });
     }
 
+    export function topk(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 3) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.topk': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [inputAddr, kAddr, dimAddr] = params;
+
+        const inputSize = fetchSize(inputAddr, heap);
+        if (typeof inputSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.topk': ${inputSize}`, source);
+        }
+
+        const k = fetchAddr(kAddr, heap);
+        const dim = fetchAddr(dimAddr, heap);
+        if (k === undefined || k.type !== SVType.Int) {
+            return ctx.failWithMsg(`from 'LibCall.torch.topk': cannot infer k as integer`, source).toSet();
+        }
+        if (dim === undefined || dim.type !== SVType.Int) {
+            return ctx.failWithMsg(`from 'LibCall.torch.topk': cannot infer dim as integer`, source).toSet();
+        }
+
+        const inputShape = inputSize.shape;
+        const inputRank = inputSize.rank();
+        const inputDim = ExpNum.index(inputShape, dim.value, source);
+
+        return ctx
+            .require(
+                [ctx.genLte(0, dim.value, source), ctx.genLt(dim.value, inputRank, source)],
+                `from 'LibCall.torch.topk': dim must be within rank`,
+                source
+            )
+            .require(
+                [ctx.genLte(0, k.value, source), ctx.genLt(k.value, inputDim, source)],
+                `from 'LibCall.torch.topk': k must be within 'dim'-th dimension of input`,
+                source
+            )
+            .flatMap((ctx) => genTensor(ctx, ExpShape.setDim(inputShape, dim.value, k.value), source));
+    }
+
     // TODO: currently, assumed -1 is given only via constant rank tuple.
     export function view(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
@@ -2119,6 +2163,7 @@ export namespace TorchLCImpl {
         transpose,
         reduce,
         view,
+        topk,
         conv2d,
         broadcast,
         pool2d,

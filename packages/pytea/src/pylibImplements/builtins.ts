@@ -116,6 +116,8 @@ export namespace BuiltinsLCImpl {
                     return ctx.toSetWith(SVInt.create(0, source));
                 case PrimitiveType.Float:
                     return ctx.toSetWith(SVFloat.create(0.0, source));
+                case PrimitiveType.Str:
+                    return ctx.toSetWith(SVString.create('None', source));
                 case PrimitiveType.Tuple:
                     typename = 'tuple';
                     break;
@@ -129,7 +131,7 @@ export namespace BuiltinsLCImpl {
                     typename = 'set';
                     break;
                 default:
-                    return ctx.setRetVal(SVNotImpl.create('not implemented', source)).toSet();
+                    return ctx.setRetVal(SVNotImpl.create('not implemented casting', source)).toSet();
             }
 
             const [obj, addr, newHeap] = SVObject.create(heap, source);
@@ -267,13 +269,24 @@ export namespace BuiltinsLCImpl {
                     .toSetWith(SVFloat.create(ExpNum.fromSymbol(ctx.genSymFloat('parseFloat', source)), source));
             }
             case PrimitiveType.Str:
+                // TODO: symoblic value into symbolic string
+                switch (value.type) {
+                    case SVType.Int:
+                    case SVType.Float:
+                        return ctx.toSetWith(SVString.create(value.value.toString(), source));
+                    case SVType.String:
+                        return ctx.toSetWith(value);
+                    default:
+                        // TODO: call __str__
+                        return ctx.toSetWith(SVString.create(value.toString(), source));
+                }
             case PrimitiveType.Bool:
             case PrimitiveType.Dict:
             case PrimitiveType.Set:
                 break;
         }
 
-        return ctx.setRetVal(SVNotImpl.create('not implemented', source)).toSet();
+        return ctx.setRetVal(SVNotImpl.create('not implemented casting', source)).toSet();
     }
 
     export function list_append(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
@@ -1109,6 +1122,10 @@ export namespace BuiltinsLCImpl {
         return ctx.setRetVal(SVBool.create(call?.type === SVType.Func, source)).toSet();
     }
 
+    export function time(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        return ctx.toSetWith(SVFloat.create(Date.now() / 1000.0, source));
+    }
+
     // Debug probe for breakpoint in TS
     export function debug(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -1160,6 +1177,7 @@ export namespace BuiltinsLCImpl {
         getItemByIndex,
         callable,
         debug,
+        time,
     };
 }
 

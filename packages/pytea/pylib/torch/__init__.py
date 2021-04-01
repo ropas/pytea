@@ -9,6 +9,7 @@ from . import utils as utils
 from . import distributions as distributions
 from . import cuda as cuda
 from . import onnx as onnx
+from . import backends as backends
 from .autograd import no_grad, enable_grad
 from .dtype import *
 

@@ -1,4 +1,6 @@
 from .. import LibCall
+from collections import namedtuple
+
 import torch
 import numpy
 
@@ -129,6 +131,9 @@ class Tensor:
 
     def bmm(self, batch2):
         return torch.bmm(self, batch2)
+
+    def topk(self, k, dim=None, largest=True, sorted=True, out=None):
+        return torch.topk(self, k, len(self.shape) - 1)
 
     def to(self, *args, **kwargs):
         firstArg = args[0]
@@ -282,7 +287,6 @@ class Tensor:
     def __eq__(self, other):
         return torch._bop(self, other)
 
-    ###
     def max(self, dim=None, keepdim=False):
         return torch.max(self, dim, keepdim)
 
