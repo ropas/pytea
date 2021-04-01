@@ -391,6 +391,11 @@ def callable(value):
     return LibCall.builtins.callable(value)
 
 
+def sorted(values):
+    # TODO: do sort
+    return values
+
+
 class BaseException:
     def __init__(self, *args):
         self.args = args

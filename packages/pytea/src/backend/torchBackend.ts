@@ -865,58 +865,63 @@ export namespace TorchBackend {
 
         // TODO: precise __next__ based on __iter__.
         const iterCtx = getAttrDeep(ctx, obj, '__iter__', stmt.loopVal.source);
-        if (iterCtx.getRunningCount() > 0) {
-            return iterCtx.flatMap((ctx) => {
-                const iterator = ctx.retVal;
-                if (iterator?.type !== SVType.Func) {
-                    return ctx.warnWithMsg(`__iter__ is not a function.`, stmt.loopVal.source).toSet();
-                }
-
-                return functionCall(ctx, iterator, [], stmt.loopVal.source).flatMap((ctx) => {
-                    const iterator = BackUtils.fetchAddr(ctx.retVal, ctx.heap);
-                    if (iterator?.type !== SVType.Object) {
-                        return ctx.warnWithMsg(`__iter__ did not return iterable value.`, stmt.loopVal.source).toSet();
+        if (iterCtx.getRunningCount() === 1) {
+            const ctx2 = iterCtx.getList().get(0);
+            if (ctx2 && BackUtils.fetchAddr(ctx2.retVal, ctx2.heap)?.type === SVType.Func) {
+                return iterCtx.flatMap((ctx) => {
+                    const iterator = ctx.retVal;
+                    if (iterator?.type !== SVType.Func) {
+                        return ctx.warnWithMsg(`__iter__ is not a function.`, stmt.loopVal.source).toSet();
                     }
 
-                    return getAttrDeep(ctx, iterator, '__next__', stmt.loopVal.source).flatMap((ctx) => {
-                        const next = BackUtils.fetchAddr(ctx.retVal, ctx.heap);
-                        if (next?.type !== SVType.Func) {
-                            return ctx.warnWithMsg(`__next__ is not a function.`, stmt.loopVal.source).toSet();
+                    return functionCall(ctx, iterator, [], stmt.loopVal.source).flatMap((ctx) => {
+                        const iterator = BackUtils.fetchAddr(ctx.retVal, ctx.heap);
+                        if (iterator?.type !== SVType.Object) {
+                            return ctx
+                                .warnWithMsg(`__iter__ did not return iterable value.`, stmt.loopVal.source)
+                                .toSet();
                         }
 
-                        let brkRtnSet: ContextSet<ShValue | ShContFlag> = Context.getEmptySet();
-                        let nextSetIter: ContextSet<ShValue | ShContFlag> = ctx.toSet();
+                        return getAttrDeep(ctx, iterator, '__next__', stmt.loopVal.source).flatMap((ctx) => {
+                            const next = BackUtils.fetchAddr(ctx.retVal, ctx.heap);
+                            if (next?.type !== SVType.Func) {
+                                return ctx.warnWithMsg(`__next__ is not a function.`, stmt.loopVal.source).toSet();
+                            }
 
-                        for (let i = 0; i < loopCnt; i++) {
-                            nextSetIter = nextSetIter.flatMap((ctx) =>
-                                functionCall(ctx, next, [], next.source).map((ctx) =>
-                                    ctx.setHeap(ctx.heap.setVal(identAddr, ctx.retVal))
-                                )
+                            let brkRtnSet: ContextSet<ShValue | ShContFlag> = Context.getEmptySet();
+                            let nextSetIter: ContextSet<ShValue | ShContFlag> = ctx.toSet();
+
+                            for (let i = 0; i < loopCnt; i++) {
+                                nextSetIter = nextSetIter.flatMap((ctx) =>
+                                    functionCall(ctx, next, [], next.source).map((ctx) =>
+                                        ctx.setHeap(ctx.heap.setVal(identAddr, ctx.retVal))
+                                    )
+                                );
+
+                                nextSetIter = run(nextSetIter, stmt.loopBody);
+                                const runCnt = nextSetIter.filter(
+                                    (ctx) => ctx.retVal === ShContFlag.Run || ctx.retVal === ShContFlag.Cnt
+                                );
+                                const brkRtn = nextSetIter.filter(
+                                    (ctx) => ctx.retVal !== ShContFlag.Run && ctx.retVal !== ShContFlag.Cnt
+                                );
+
+                                brkRtnSet = brkRtnSet.join(brkRtn);
+                                nextSetIter = runCnt;
+                            }
+
+                            const resultSet = nextSetIter.join(brkRtnSet);
+                            return resultSet.map((ctx) =>
+                                ctx.retVal === ShContFlag.Brk ||
+                                ctx.retVal === ShContFlag.Cnt ||
+                                ctx.retVal === ShContFlag.Run
+                                    ? ctx.setRetVal(ShContFlag.Run)
+                                    : ctx
                             );
-
-                            nextSetIter = run(nextSetIter, stmt.loopBody);
-                            const runCnt = nextSetIter.filter(
-                                (ctx) => ctx.retVal === ShContFlag.Run || ctx.retVal === ShContFlag.Cnt
-                            );
-                            const brkRtn = nextSetIter.filter(
-                                (ctx) => ctx.retVal !== ShContFlag.Run && ctx.retVal !== ShContFlag.Cnt
-                            );
-
-                            brkRtnSet = brkRtnSet.join(brkRtn);
-                            nextSetIter = runCnt;
-                        }
-
-                        const resultSet = nextSetIter.join(brkRtnSet);
-                        return resultSet.map((ctx) =>
-                            ctx.retVal === ShContFlag.Brk ||
-                            ctx.retVal === ShContFlag.Cnt ||
-                            ctx.retVal === ShContFlag.Run
-                                ? ctx.setRetVal(ShContFlag.Run)
-                                : ctx
-                        );
+                        });
                     });
                 });
-            });
+            }
         }
 
         let brkRtnSet: ContextSet<ShValue | ShContFlag> = Context.getEmptySet();
