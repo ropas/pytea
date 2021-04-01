@@ -1114,7 +1114,7 @@ export class TorchIRFrontend {
     }
 
     visitName(node: NameNode): ThExpr {
-        return TEName.create(node.value);
+        return TEName.create(node.value, node);
     }
 
     visitNumber(node: NumberNode): ThExpr {

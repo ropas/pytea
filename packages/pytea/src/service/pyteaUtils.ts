@@ -43,7 +43,7 @@ import {
 } from '../backend/constraintType';
 import { ContextSet } from '../backend/context';
 import { ShHeap } from '../backend/sharpEnvironments';
-import { CodeRange, CodeSource, ShValue, SVSize, SVType } from '../backend/sharpValues';
+import { CodeRange, CodeSource, ShValue, SVObject, SVSize, SVType } from '../backend/sharpValues';
 import { ExpBool, ExpNum, ExpShape, ExpString, SymExp, SymInt, SymVal } from '../backend/symExpressions';
 import { TorchIRFrontend } from '../frontend/torchFrontend';
 import { ThStmt } from '../frontend/torchStatements';
@@ -374,9 +374,16 @@ export function exportConstraintSet<T>(result: ContextSet<T>, path: string): voi
     fs.writeFileSync(path, jsonStr);
 }
 
+export type CustomObjectPrinter = [ShValue, (value: SVObject) => string];
 // if value is address, return fetchAddr(value, heap)
 // if that object has attr 'shape' and that is SVSize, return `Tensor ${value.size}`
-export function reducedToString(value: ShValue, heap: ShHeap, attrMax?: number): string {
+// also reduce some classes with 'customObjectPrinter', list of pairs of class mro and printer.
+export function reducedToString(
+    value: ShValue,
+    heap: ShHeap,
+    customObjectPrinter?: CustomObjectPrinter[],
+    attrMax?: number
+): string {
     attrMax = attrMax ?? 8;
 
     const obj = fetchAddr(value, heap);
@@ -385,6 +392,15 @@ export function reducedToString(value: ShValue, heap: ShHeap, attrMax?: number):
             const shape = obj.getAttr('shape');
             if (shape instanceof SVSize) {
                 return `Tensor ${SymExp.toString(shape.shape)}`;
+            }
+
+            const mro = fetchAddr(obj.getAttr('__mro__'), heap);
+            if (customObjectPrinter && mro) {
+                for (const [pmro, printer] of customObjectPrinter) {
+                    if (pmro.equals(mro)) {
+                        return printer(obj);
+                    }
+                }
             }
 
             const attrStr =

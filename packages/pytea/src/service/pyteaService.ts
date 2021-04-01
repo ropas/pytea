@@ -13,6 +13,7 @@ import { ChildProcess, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
+import { fetchAddr } from 'src/backend/backUtils';
 import { RandomGen } from 'src/backend/randomGen';
 
 import { getFileInfo } from 'pyright-internal/analyzer/analyzerNodeInfo';
@@ -23,13 +24,20 @@ import { Range } from 'pyright-internal/common/textRange';
 import { ParseNodeType } from 'pyright-internal/parser/parseNodes';
 
 import { Context, ContextSet } from '../backend/context';
-import { CodeSource, ShContFlag, ShValue, SVAddr, SVString, SVType } from '../backend/sharpValues';
+import { CodeSource, ShContFlag, ShValue, SVAddr, SVObject, SVString, SVType } from '../backend/sharpValues';
 import { TorchBackend } from '../backend/torchBackend';
 import { IRWriter } from '../frontend/IRReaderWriter';
 import { ThStmt } from '../frontend/torchStatements';
 import { FilePathStore } from './executionPaths';
 import { defaultOptions, PyCmdArgs, PyteaOptions } from './pyteaOptions';
-import { formatCodeSource, getStmtsFromDir, PyZ3RPCRespond, PyZ3RPCResult, reducedToString } from './pyteaUtils';
+import {
+    CustomObjectPrinter,
+    formatCodeSource,
+    getStmtsFromDir,
+    PyZ3RPCRespond,
+    PyZ3RPCResult,
+    reducedToString,
+} from './pyteaUtils';
 
 let _globalService: PyteaService | undefined;
 
@@ -419,6 +427,25 @@ export class PyteaService {
         }
     }
 
+    private _genCustomPrinter(result: Context<unknown>): CustomObjectPrinter[] {
+        const { env, heap } = result;
+
+        const printer: CustomObjectPrinter[] = [];
+        const tuple = fetchAddr(env.getId('tuple'), heap);
+        if (tuple?.type === SVType.Object) {
+            const mro = fetchAddr(tuple.getAttr('__mro__'), heap);
+            if (mro) {
+                function tuplePrinter(value: SVObject): string {
+                    const valueStr = value.indices.map((v) => v.toString()).join(', ');
+                    return `[${value.addr.addr}](${valueStr})`;
+                }
+                printer.push([mro, tuplePrinter]);
+            }
+        }
+
+        return printer;
+    }
+
     private _noneLog(result: ContextSet<ShValue | ShContFlag>): void {
         // do nothing.
     }
@@ -509,6 +536,8 @@ export class PyteaService {
         success.forEach((ctx, i) => {
             jsonList.push(ctx.ctrSet.getConstraintJSON(this._pathStore));
 
+            const objPrinter = this._genCustomPrinter(ctx);
+
             let heapLog = '';
             // TODO: currently assume that address 1 is main module object
             //       do not hardcode.
@@ -518,7 +547,7 @@ export class PyteaService {
                     `REDUCED HEAP: (size: ${ctx.heap.valMap.count()} values)\n` +
                     module.attrs
                         .map((v, k) => {
-                            return `  ${k} => ${reducedToString(v, ctx.heap)}`;
+                            return `  ${k} => ${reducedToString(v, ctx.heap, objPrinter)}`;
                         })
                         .join('\n');
             }
@@ -535,11 +564,12 @@ export class PyteaService {
             jsonList.push(ctx.ctrSet.getConstraintJSON(this._pathStore));
 
             const source = ctx.retVal.source;
+            const objPrinter = this._genCustomPrinter(ctx);
 
             const heapLog = ctx.env.addrMap
                 .filter((v) => v.addr >= 0)
                 .map((addr, key) => {
-                    return `  ${key} => ${reducedToString(addr, ctx.heap)}`;
+                    return `  ${key} => ${reducedToString(addr, ctx.heap, objPrinter)}`;
                 })
                 .join('\n');
 
@@ -559,11 +589,12 @@ export class PyteaService {
 
         failed.forEach((ctx, i) => {
             const source = ctx.retVal.source;
+            const objPrinter = this._genCustomPrinter(ctx);
 
             const heapLog = ctx.env.addrMap
                 .filter((v) => v.addr >= 0)
                 .map((addr, key) => {
-                    return `  ${key} => ${reducedToString(addr, ctx.heap)}`;
+                    return `  ${key} => ${reducedToString(addr, ctx.heap, objPrinter)}`;
                 })
                 .join('\n');
 
