@@ -44,21 +44,33 @@ export namespace BuiltinsLCImpl {
             args?.type !== SVType.Object ||
             kwargs?.type !== SVType.Object
         ) {
-            return ctx.warnWithMsg(`from 'LibCall.argparse.inject_argument': got non-object values.`).toSet();
+            return ctx.warnWithMsg(`from 'LibCall.argparse.inject_argument': got non-object values.`, source).toSet();
         }
 
-        const argStr = fetchAddr(args.getIndice(0), heap);
-        if (argStr?.type !== SVType.String) {
+        let argStr = fetchAddr(args.getIndice(0), heap);
+        if (argStr?.type !== SVType.String || typeof argStr.value !== 'string') {
             return ctx
-                .failWithMsg(`from 'LibCall.argparse.inject_argument': invalid arg type ${argStr?.type}.`)
+                .failWithMsg(`from 'LibCall.argparse.inject_argument': invalid arg type ${argStr?.toString()}.`, source)
                 .toSet();
+        }
+        // ignore short argument
+        if (argStr.value.startsWith('-') && !argStr.value.startsWith('--')) {
+            argStr = fetchAddr(args.getIndice(1), heap);
+            if (argStr?.type !== SVType.String || typeof argStr.value !== 'string') {
+                return ctx
+                    .failWithMsg(
+                        `from 'LibCall.argparse.inject_argument': invalid arg type ${argStr?.toString()}.`,
+                        source
+                    )
+                    .toSet();
+            }
         }
 
         // TODO: regex for argument validation
         const argNameR = /^-*([-\w]*$)/.exec(argStr.value as string);
         if (!argNameR) {
             return ctx
-                .failWithMsg(`from 'LibCall.argparse.inject_argument': invalid arg name ${argStr.value}.`)
+                .failWithMsg(`from 'LibCall.argparse.inject_argument': invalid arg name ${argStr.value}.`, source)
                 .toSet();
         }
 
