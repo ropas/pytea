@@ -431,14 +431,28 @@ export class PyteaService {
         const succCnt = success.count();
         const stopCnt = stopped.count();
 
+        success.forEach((ctx, i) => {
+            if (ctx.logs.count() > 0) {
+                this._console.info(
+                    chalk.green(`success path #${i + 1}`) + `\n\n${chalk.bold('LOGS')}:\n${this._logsToString(ctx)}`
+                );
+            }
+        });
+
         stopped.forEach((ctx, i) => {
             const source = ctx.retVal.source;
+
+            let logs = '';
+            if (ctx.logs.count() > 0) {
+                logs = `\n${chalk.bold('LOGS')}:\n${this._logsToString(ctx)}\n`;
+            }
 
             this._console.info(
                 chalk.yellow(`stopped path #${succCnt + i + 1}`) +
                     chalk.bold(`: ${ctx.retVal.reason}`) +
                     ` - ${formatCodeSource(source, this._pathStore)}\n` +
-                    `\n${chalk.bold('CALL STACK')}:\n${this._callStackToString(ctx)}\n`
+                    `\n${chalk.bold('CALL STACK')}:\n${this._callStackToString(ctx)}\n` +
+                    logs
             );
         });
 
@@ -450,11 +464,17 @@ export class PyteaService {
                 return;
             }
 
+            let logs = '';
+            if (ctx.logs.count() > 0) {
+                logs = `\n${chalk.bold('LOGS')}:\n${this._logsToString(ctx)}\n`;
+            }
+
             this._console.info(
                 chalk.red(`failed path #${succCnt + stopCnt + i + 1}`) +
                     chalk.bold(`: ${ctx.retVal.reason}`) +
                     `- ${formatCodeSource(source, this._pathStore)}\n` +
-                    `\n${chalk.bold('CALL STACK')}:\n${this._callStackToString(ctx)}\n`
+                    `\n${chalk.bold('CALL STACK')}:\n${this._callStackToString(ctx)}\n` +
+                    logs
             );
         });
 

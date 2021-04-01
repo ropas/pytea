@@ -42,7 +42,7 @@ The result of Online analyzer is divided into three classes:
 * **potential unreachable path**: the analyzer found shape mismatch or API misuses, but there remains *path constraints*. In short, *Path constraints* are uncertain branch conditions with symbolic variables; that means the stopped path might be *unreachable* if some path constraints mutually contradicts. Those cases will be distinguished from *Offline analysis*.
 * **immediate failed path**: the analyzer founds errors, and stops its analysis immediately.
 
-*CAVEAT*: If the code contains PyTorch or other third-party APIs that we have not implemented, it will raise false alarms. But we also record each unimplemented API calls. Use `--log=2` option to see which unimplemented API call is performed.
+*CAVEAT*: If the code contains PyTorch or other third-party APIs that we have not implemented, it will raise false alarms. But we also record each unimplemented API calls. See `LOGS` section from result and search which unimplemented API call is performed.
 
 
 The final result of Offline analyzer is divided into sevral cases.
