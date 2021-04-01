@@ -33,6 +33,32 @@ def exit(code=0):
     return LibCall.builtins.exit(code)
 
 
+def max(*args):
+    if len(args) == 0:
+        raise ValueError("max() arg is an empty sequence")
+    elif len(args) == 1:
+        return max(*args[0])
+
+    value = args[0]
+    for v in args[1:]:
+        if value < v:
+            value = v
+    return value
+
+
+def min(*args):
+    if len(args) == 0:
+        raise ValueError("min() arg is an empty sequence")
+    elif len(args) == 1:
+        return max(*args[0])
+
+    value = args[0]
+    for v in args[1:]:
+        if value > v:
+            value = v
+    return value
+
+
 # temp
 def round(number, digits):
     return number
@@ -311,6 +337,19 @@ def _str_endswith(self, suffix):
 
 
 str.endswith = _str_endswith
+
+
+def _str_join(self, iterable):
+    s_first = ""
+    s_next = s_first
+    for i in iterable:
+        s_first = s_next
+        s_first = s_first + str(i)
+        s_next = s_first + self
+    return s_first
+
+
+str.join = _str_join
 
 
 def _str_replace(self, old, new, count=None):

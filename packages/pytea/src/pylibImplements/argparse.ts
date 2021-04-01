@@ -47,30 +47,43 @@ export namespace BuiltinsLCImpl {
             return ctx.warnWithMsg(`from 'LibCall.argparse.inject_argument': got non-object values.`, source).toSet();
         }
 
-        let argStr = fetchAddr(args.getIndice(0), heap);
-        if (argStr?.type !== SVType.String || typeof argStr.value !== 'string') {
-            return ctx
-                .failWithMsg(`from 'LibCall.argparse.inject_argument': invalid arg type ${argStr?.toString()}.`, source)
-                .toSet();
-        }
-        // ignore short argument
-        if (argStr.value.startsWith('-') && !argStr.value.startsWith('--')) {
-            argStr = fetchAddr(args.getIndice(1), heap);
-            if (argStr?.type !== SVType.String || typeof argStr.value !== 'string') {
+        let argStr: string;
+        const dest = fetchAddr(kwargs.getKeyVal('dest'), heap);
+        if (dest?.type === SVType.String && typeof dest.value === 'string') {
+            argStr = dest.value;
+        } else {
+            const arg0 = fetchAddr(args.getIndice(0), heap);
+            if (arg0?.type !== SVType.String || typeof arg0.value !== 'string') {
                 return ctx
                     .failWithMsg(
-                        `from 'LibCall.argparse.inject_argument': invalid arg type ${argStr?.toString()}.`,
+                        `from 'LibCall.argparse.inject_argument': invalid arg type ${arg0?.toString()}.`,
                         source
                     )
                     .toSet();
             }
+            argStr = arg0.value;
+        }
+
+        // ignore short argument
+
+        if (argStr.startsWith('-') && !argStr.startsWith('--')) {
+            const arg1 = fetchAddr(args.getIndice(1), heap);
+            if (arg1?.type !== SVType.String || typeof arg1.value !== 'string') {
+                return ctx
+                    .failWithMsg(
+                        `from 'LibCall.argparse.inject_argument': invalid arg type ${arg1?.toString()}.`,
+                        source
+                    )
+                    .toSet();
+            }
+            argStr = arg1.value;
         }
 
         // TODO: regex for argument validation
-        const argNameR = /^-*([-\w]*$)/.exec(argStr.value as string);
+        const argNameR = /^-*([-\w]*$)/.exec(argStr);
         if (!argNameR) {
             return ctx
-                .failWithMsg(`from 'LibCall.argparse.inject_argument': invalid arg name ${argStr.value}.`, source)
+                .failWithMsg(`from 'LibCall.argparse.inject_argument': invalid arg name ${argStr}.`, source)
                 .toSet();
         }
 

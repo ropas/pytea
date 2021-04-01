@@ -1,7 +1,7 @@
 import { fetchAddr } from '../../backend/backUtils';
 import { Constraint } from '../../backend/constraintType';
 import { Context, ContextSet } from '../../backend/context';
-import { ceilDiv, fetchSize, genTensor, simplifyNum } from '../../backend/expUtils';
+import { ceilDiv, fetchSize, genTensor, simplifyNum, simplifyShape } from '../../backend/expUtils';
 import {
     CodeSource,
     ShValue,
@@ -530,6 +530,157 @@ export namespace TorchLCImpl {
         });
     }
 
+    // TODO: currently, assumed -1 is given only via constant rank tuple.
+    export function expand(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.expand': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [selfAddr, sizeAddr] = params;
+
+        const selfSize = fetchSize(selfAddr, heap);
+        const expandSizes = fetchAddr(sizeAddr, heap);
+
+        if (typeof selfSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.expand': ${selfSize}`, source);
+        } else if (expandSizes?.type !== SVType.Object) {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.expand': sizes is not iterable`, source);
+        }
+
+        const selfShape = selfSize.shape;
+        const selfRank = selfSize.rank();
+        const sizeMap = expandSizes.extractIndexedNumber(ctx.heap);
+        const sizeArr: ExpNum[] = [];
+        for (let i = 0; i < sizeMap.count(); i++) {
+            const dim = sizeMap.get(i);
+            if (dim) sizeArr.push(dim);
+        }
+
+        const sizeRank = sizeArr.length;
+
+        // TODO: check negativity of sizes
+        return ctx
+            .require(
+                ctx.genEq(selfRank, sizeRank, source),
+                `from 'LibCall.torch.expand': ranks must be matched each other`,
+                source
+            )
+            .flatMap((ctx) => {
+                let modSize: ExpShape = ExpShape.fromConst(sizeRank, sizeArr, source);
+                for (let i = 0; i < sizeRank; i++) {
+                    const ith = sizeArr[i];
+                    if (ith.opType === NumOpType.Const && ith.value === -1) {
+                        modSize = simplifyShape(
+                            ctx.ctrSet,
+                            ExpShape.setDim(modSize, i, ExpNum.index(selfShape, i, source), source)
+                        );
+                    }
+                }
+
+                let ctxSet = ctx.toSet();
+                for (let i = 0; i < sizeRank; i++) {
+                    ctxSet = ctxSet.require(
+                        ctx.genOr(
+                            ctx.genEq(ExpNum.index(selfShape, i, source), ExpNum.index(modSize, i, source), source),
+                            ctx.genEq(ExpNum.index(selfShape, i, source), 1, source),
+                            source
+                        ),
+                        `expanded size must match the existing size at non-singleton dimension ${i}`,
+                        source
+                    );
+                }
+
+                return ctxSet.flatMap((ctx) => genTensor(ctx, modSize, source));
+            });
+    }
+
+    export function expand_as(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.expand_as': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [selfAddr, sizeAddr] = params;
+
+        const selfSize = fetchSize(selfAddr, heap);
+        const expandSize = fetchSize(sizeAddr, heap);
+
+        if (typeof selfSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.expand_as': ${selfSize}`, source);
+        } else if (typeof expandSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.expand_as': ${expandSize}`, source);
+        }
+
+        const selfShape = selfSize.shape;
+        const selfRank = selfSize.rank();
+        const expandShape = expandSize.shape;
+        const expandRank = expandSize.rank();
+
+        // TODO: check negativity of sizes
+        return ctx
+            .require(
+                ctx.genEq(selfRank, expandRank, source),
+                `from 'LibCall.torch.expand_as': ranks must be matched each other`,
+                source
+            )
+            .flatMap((ctx) => {
+                const rankRange = ctx.getCachedRange(expandRank);
+                if (rankRange?.isConst()) {
+                    const rank = rankRange.start;
+                    let ctxSet = ctx.toSet();
+                    for (let i = 0; i < rank; i++) {
+                        ctxSet = ctxSet.require(
+                            ctx.genOr(
+                                ctx.genEq(
+                                    ExpNum.index(selfShape, i, source),
+                                    ExpNum.index(expandShape, i, source),
+                                    source
+                                ),
+                                ctx.genEq(ExpNum.index(selfShape, i, source), 1, source),
+                                source
+                            ),
+                            `from 'LibCall.torch.expand_as': expanded size must match the existing size at non-singleton dimension ${i}`,
+                            source
+                        );
+                    }
+
+                    return ctxSet.flatMap((ctx) => genTensor(ctx, expandShape, source));
+                } else {
+                    const idx = ctx.genSymInt('expandIdx', source);
+                    const i = ExpNum.fromSymbol(idx);
+                    return ctx
+                        .require(
+                            ctx.genForall(
+                                idx,
+                                [0, ExpNum.bop(NumBopType.Sub, expandRank, 1, source)],
+                                ctx.genOr(
+                                    ctx.genEq(
+                                        ExpNum.index(selfShape, i, source),
+                                        ExpNum.index(expandShape, i, source),
+                                        source
+                                    ),
+                                    ctx.genEq(ExpNum.index(selfShape, i, source), 1, source),
+                                    source
+                                ),
+                                source
+                            ),
+                            `from 'LibCall.torch.expand_as': expanded size must match the existing size at non-singleton dimension ${i.toString()}`,
+                            source
+                        )
+                        .flatMap((ctx) => genTensor(ctx, expandShape, source));
+                }
+            });
+    }
+
     export function copyOut(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
@@ -737,6 +888,50 @@ export namespace TorchLCImpl {
 
                 return leftPath.join(rightPath);
             });
+    }
+
+    export function topk(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 3) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.topk': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [inputAddr, kAddr, dimAddr] = params;
+
+        const inputSize = fetchSize(inputAddr, heap);
+        if (typeof inputSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.topk': ${inputSize}`, source);
+        }
+
+        const k = fetchAddr(kAddr, heap);
+        const dim = fetchAddr(dimAddr, heap);
+        if (k === undefined || k.type !== SVType.Int) {
+            return ctx.failWithMsg(`from 'LibCall.torch.topk': cannot infer k as integer`, source).toSet();
+        }
+        if (dim === undefined || dim.type !== SVType.Int) {
+            return ctx.failWithMsg(`from 'LibCall.torch.topk': cannot infer dim as integer`, source).toSet();
+        }
+
+        const inputShape = inputSize.shape;
+        const inputRank = inputSize.rank();
+        const inputDim = ExpNum.index(inputShape, dim.value, source);
+
+        return ctx
+            .require(
+                [ctx.genLte(0, dim.value, source), ctx.genLt(dim.value, inputRank, source)],
+                `from 'LibCall.torch.topk': dim must be within rank`,
+                source
+            )
+            .require(
+                [ctx.genLte(0, k.value, source), ctx.genLt(k.value, inputDim, source)],
+                `from 'LibCall.torch.topk': k must be within 'dim'-th dimension of input`,
+                source
+            )
+            .flatMap((ctx) => genTensor(ctx, ExpShape.setDim(inputShape, dim.value, k.value), source));
     }
 
     // TODO: currently, assumed -1 is given only via constant rank tuple.
@@ -2115,10 +2310,13 @@ export namespace TorchLCImpl {
         item,
         copyOut,
         repeat,
+        expand,
+        expand_as,
         callTensor,
         transpose,
         reduce,
         view,
+        topk,
         conv2d,
         broadcast,
         pool2d,

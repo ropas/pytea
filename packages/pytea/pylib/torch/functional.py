@@ -1,7 +1,11 @@
 import LibCall
 import torch
-from .. import numpy as np
+from collections import namedtuple
+import numpy as np
 from torch.tensor import Tensor
+
+
+TVI = namedtuple("TorchValId", ["values", "indices"])
 
 
 def rand(*size, out=None, dtype=None, **kwargs):
@@ -9,6 +13,14 @@ def rand(*size, out=None, dtype=None, **kwargs):
         dtype = torch.floatDefault
     tensor = Tensor(*size, dtype=dtype)
     LibCall.torch.copyOut(tensor, out)
+    return tensor
+
+
+def rand_like(input, dtype=None, **kwargs):
+    if dtype is None:
+        dtype = input.dtype
+    tensor = LibCall.torch.identityShape(input)
+    tensor.dtype = dtype
     return tensor
 
 
@@ -28,11 +40,32 @@ def randn(*size, out=None, dtype=None, **kwargs):
     return tensor
 
 
-def randint(low=0, high, size, generator=None, out=None, **kwargs):
+def randn_like(input, dtype=None, **kwargs):
     if dtype is None:
-        dtype = torch.intDefault
+        dtype = input.dtype
+    tensor = LibCall.torch.identityShape(input)
+    tensor.dtype = dtype
+    return tensor
+
+
+# TODO: optional low
+def randint(*args, **kwargs):
+    dtype = torch.intDefault
+    if "dtype" in kwargs:
+        dtype = kwargs["dtype"]
+
+    size = args[1]
+    if len(args) > 2:
+        size = args[2]
     tensor = Tensor(*size, dtype=dtype)
-    LibCall.torch.copyOut(tensor, out)
+    return tensor
+
+
+def randint_like(input, low=0, high=1, dtype=None, **kwargs):
+    if dtype is None:
+        dtype = input.dtype
+    tensor = LibCall.torch.identityShape(input)
+    tensor.dtype = dtype
     return tensor
 
 
@@ -44,11 +77,27 @@ def ones(*size, out=None, dtype=None, **kwargs):
     return tensor
 
 
+def ones_like(input, dtype=None, **kwargs):
+    if dtype is None:
+        dtype = input.dtype
+    tensor = LibCall.torch.identityShape(input)
+    tensor.dtype = dtype
+    return tensor
+
+
 def zeros(*size, out=None, dtype=None, **kwargs):
     if dtype is None:
         dtype = torch.floatDefault
     tensor = Tensor(*size, dtype=dtype)
     LibCall.torch.copyOut(tensor, out)
+    return tensor
+
+
+def zeros_like(input, dtype=None, **kwargs):
+    if dtype is None:
+        dtype = input.dtype
+    tensor = LibCall.torch.identityShape(input)
+    tensor.dtype = dtype
     return tensor
 
 
@@ -95,6 +144,7 @@ def matmul(input, other, out=None):
     LibCall.torch.copyOut(tensor, out)
     return tensor
 
+
 def mm(input, mat2, out=None):
     if not (input.dtype == mat2.dtype):
         raise TypeError("Tensor dtype mismatch")
@@ -103,6 +153,7 @@ def mm(input, mat2, out=None):
     tensor.dtype = dtype
     LibCall.torch.copyOut(tensor, out)
     return tensor
+
 
 def bmm(input, mat2, deterministic=False, out=None):
     if not (input.dtype == mat2.dtype):
@@ -113,17 +164,37 @@ def bmm(input, mat2, deterministic=False, out=None):
     LibCall.torch.copyOut(tensor, out)
     return tensor
 
+
+def topk(input, k, dim=None, largest=True, sorted=True, out=None):
+    tensor = LibCall.torch.topk(input, k, dim)
+    tensor.dtype = input.dtype
+    index = zeros_like(tensor)
+    index.dtype = torch.intDefault
+    return TVI(tensor, index)
+
+
 def transpose(input, dim0, dim1):
     dtype = input.dtype
     tensor = LibCall.torch.transpose(input, dim0, dim1)
     tensor.dtype = dtype
     return tensor
 
+
+def t(input):
+    rank = len(input.shape)
+    if rank > 2:
+        raise ValueError("t() expects a tensor with <= 2 dimensions")
+    elif rank == 2:
+        return input.transpose(1, 0)
+    return input
+
+
 def reshape(input, shape):
     dtype = input.dtype
     tensor = input.reshape(*shape)
     tensor.dtype = dtype
     return tensor
+
 
 def argmax(input, dim=None, keepdim=False):
     tensor = LibCall.torch.reduce(input, dim, keepdim)
@@ -147,7 +218,6 @@ def max(input, dim=None, keepdim=False, out=None):
             LibCall.torch.copyOut(tensor, out[0])
             LibCall.torch.copyOut(indice, out[1])
         return tensor, indice
-        
 
 
 def mean(input, dim=None, keepdim=False, out=None):
@@ -197,7 +267,11 @@ def _bop(tensor, other):
         tensor.dtype = dtype
         return tensor
     elif isinstance(other, float):
-        if tensor.dtype is torch.float64 or tensor.dtype is torch.float32 or tensor.dtype is torch.float16:
+        if (
+            tensor.dtype is torch.float64
+            or tensor.dtype is torch.float32
+            or tensor.dtype is torch.float16
+        ):
             dtype = tensor.dtype
         else:
             dtype = torch.floatDefault
@@ -219,19 +293,24 @@ def sqrt(input, out=None):
     LibCall.torch.copyOut(input, out)
     return input
 
+
 def tanh(input, out=None):
     LibCall.torch.copyOut(input, out)
     return input
 
+
 def relu(input):
     return input
+
 
 def gelu(input):
     return input
 
+
 def sigmoid(input, out=None):
     LibCall.torch.copyOut(input, out)
     return input
+
 
 def softmax(input, dim=None, dtype=None):
     if not (input.dtype in torch.floatTypes):
@@ -240,6 +319,7 @@ def softmax(input, dim=None, dtype=None):
     tensor = LibCall.torch.identityShape(input)
     tensor.dtype = dtype
     return tensor
+
 
 def arange(start, end=None, step=1, out=None, **kwargs):
     if end is None:  # arange(N)
@@ -254,8 +334,12 @@ def arange(start, end=None, step=1, out=None, **kwargs):
     LibCall.torch.copyOut(tensor, out)
     return tensor
 
-def save(obj, f, pickle_module=None, pickle_protocol=2, _use_new_zipfile_serialization=True):
+
+def save(
+    obj, f, pickle_module=None, pickle_protocol=2, _use_new_zipfile_serialization=True
+):
     pass
+
 
 def manual_seed(seed=0):
     pass

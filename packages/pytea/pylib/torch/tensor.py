@@ -1,4 +1,6 @@
 from .. import LibCall
+from collections import namedtuple
+
 import torch
 import numpy
 
@@ -84,6 +86,9 @@ class Tensor:
     def transpose(self, dim0, dim1):
         return torch.transpose(self, dim0, dim1)
 
+    def t(self):
+        return torch.t(self)
+
     def argmax(self, dim=None, keepdim=False):
         return torch.argmax(self, dim, keepdim)
 
@@ -130,6 +135,11 @@ class Tensor:
     def bmm(self, batch2):
         return torch.bmm(self, batch2)
 
+    def topk(self, k, dim=None, largest=True, sorted=True, out=None):
+        if dim is None:
+            dim = len(self.shape) - 1
+        return torch.topk(self, k, dim)
+
     def to(self, *args, **kwargs):
         firstArg = args[0]
 
@@ -165,6 +175,9 @@ class Tensor:
     def bool(self):
         return self.to(torch.bool)
 
+    def float(self):
+        return self.to(torch.float)
+
     def long(self, **kwargs):
         return self.to(torch.int64)
 
@@ -186,9 +199,17 @@ class Tensor:
         tensor.dtype = dtype
         return tensor
 
-    def expand(self, shape):
-        # TODO: implement this
-        pass
+    def expand(self, *sizes):
+        dtype = self.dtype
+        tensor = LibCall.torch.expand(self, sizes)
+        tensor.dtype = dtype
+        return tensor
+
+    def expand_as(self, other):
+        dtype = self.dtype
+        tensor = LibCall.torch.expand_as(self, other)
+        tensor.dtype = dtype
+        return tensor
 
     def device(self):
         return "cuda"
@@ -282,7 +303,6 @@ class Tensor:
     def __eq__(self, other):
         return torch._bop(self, other)
 
-    ###
     def max(self, dim=None, keepdim=False):
         return torch.max(self, dim, keepdim)
 

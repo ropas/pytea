@@ -1,3 +1,7 @@
 def is_available():
     # TODO: may return symbolic value?
-    return False
+    return True
+
+
+def device_count():
+    return 1
