@@ -11,12 +11,12 @@ import { CodeSource, ShValue } from '../backend/sharpValues';
 import { libCallMap as argparseMap } from './argparse';
 import { libCallMap as builtinsMap } from './builtins';
 import { LCBase, libCallMap as baseMap } from './libcall';
+import { libCallMap as mathMap } from './math';
 import { libCallMap as numpyMap } from './numpy';
 import { libCallMap as PILMap } from './PIL';
 import { libCallMap as shapeMap } from './shape';
 import { libCallMap as torchMap } from './torch';
 import { libCallMap as torchvisionMap } from './torchvision';
-import { libCallMap as mathMap } from './math';
 
 export type LCParamType = LCBase.BaseParamType;
 

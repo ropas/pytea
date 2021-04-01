@@ -271,13 +271,13 @@ export namespace LCBase {
 
     export interface CallKVParams {
         $func: SVFunc;
-        args: ShValue[];
+        $args: ShValue[];
         $kwargs: { [paramName: string]: ShValue };
     }
     export function callKV(ctx: Context<CallKVParams>, source?: CodeSource): ContextSet<ShValue> {
-        const { $func, args, $kwargs } = ctx.retVal;
+        const { $func, $args, $kwargs } = ctx.retVal;
 
-        return TorchBackend.functionCall(ctx, $func, args, source, $kwargs);
+        return TorchBackend.functionCall(ctx, $func, $args, source, $kwargs);
     }
 
     export function DEBUG(ctx: Context<ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {

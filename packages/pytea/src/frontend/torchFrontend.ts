@@ -455,7 +455,7 @@ export class TorchIRFrontend {
     private _genClassInit(node: ClassNode, func?: FunctionNode): ThStmt {
         const className = TEName.create(node.name.value, node.name);
         const funcName = TEName.create(`${node.name.value}$__init__`, func?.name);
-        const params = func ? func.parameters.map((p) => p.name!.value) : ['self', 'args', 'kwargs'];
+        const params = func ? func.parameters.map((p) => p.name!.value) : ['self', '$args', '$kwargs'];
         const selfName = TEName.create(params[0]);
         const hasSuperClass = !(
             node.arguments.length === 0 ||
@@ -490,8 +490,8 @@ export class TorchIRFrontend {
                                             '__init__'
                                         ),
                                     ],
-                                    ['$varargs', TEName.create('args')],
-                                    ['$kwargs', TEName.create('kwargs')],
+                                    ['$varargs', TEName.create('$args')],
+                                    ['$kwargs', TEName.create('$kwargs')],
                                 ])
                             ),
                             TSReturn.create(TEConst.genNone())
@@ -524,8 +524,8 @@ export class TorchIRFrontend {
                 TEAttr.create(className, '__init__'),
                 TELibCall.create(LibCallType.setDefault, [
                     ['$func', funcName],
-                    ['$varargsName', TEConst.genStr('args')],
-                    ['$kwargsName', TEConst.genStr('kwargs')],
+                    ['$varargsName', TEConst.genStr('$args')],
+                    ['$kwargsName', TEConst.genStr('$kwargs')],
                 ]),
                 func
             );
@@ -586,21 +586,21 @@ export class TorchIRFrontend {
             mainBody.push(
                 TSFunDef.create(
                     `${node.name.value}$self$__call__`,
-                    ['args', 'kwargs'],
+                    ['$args', '$kwargs'],
                     TSReturn.create(
                         TELibCall.create(LibCallType.callKV, [
                             ['$func', TEAttr.create(className, 'self$call')],
                             ['', selfName],
-                            ['$varargs', TEName.create('args')],
-                            ['$kwargs', TEName.create('kwargs')],
+                            ['$varargs', TEName.create('$args')],
+                            ['$kwargs', TEName.create('$kwargs')],
                         ])
                     ),
                     TSAssign.create(
                         TEAttr.create(selfName, '__call__'),
                         TELibCall.create(LibCallType.setDefault, [
                             ['$func', TEName.create(`${node.name.value}$self$__call__`)],
-                            ['$varargsName', TEConst.genStr('args')],
-                            ['$kwargsName', TEConst.genStr('kwargs')],
+                            ['$varargsName', TEConst.genStr('$args')],
+                            ['$kwargsName', TEConst.genStr('$kwargs')],
                         ])
                     )
                 )
@@ -645,8 +645,8 @@ export class TorchIRFrontend {
             initCall = TELibCall.create(LibCallType.callKV, [
                 ['$func', TEAttr.create(className, '__init__')],
                 ['', selfName],
-                ['$varargs', TEName.create('args')],
-                ['$kwargs', TEName.create('kwargs')],
+                ['$varargs', TEName.create('$args')],
+                ['$kwargs', TEName.create('$kwargs')],
             ]);
         } else {
             initCall = TECall.create(TEAttr.create(className, '__init__'), [
@@ -668,10 +668,10 @@ export class TorchIRFrontend {
         if (!inheritParams) {
             callFunc = TELibCall.create(LibCallType.setDefault, [
                 ['$func', funcName],
-                ['$varargsName', TEConst.genStr('args')],
-                ['$kwargsName', TEConst.genStr('kwargs')],
+                ['$varargsName', TEConst.genStr('$args')],
+                ['$kwargsName', TEConst.genStr('$kwargs')],
             ]);
-            params = ['args', 'kwargs'];
+            params = ['$args', '$kwargs'];
         }
 
         return TSFunDef.create(

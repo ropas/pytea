@@ -118,9 +118,10 @@ export function evalLibCall<T>(ctxSet: ContextSet<T>, expr: TELibCall): ContextS
                                     if (func?.type === SVType.Func) {
                                         return ctx.setRetVal(func);
                                     } else {
-                                        return ctx.warnWithMsg(`object is not callable`, expr.source) as Context<
-                                            ShValue
-                                        >;
+                                        return ctx.warnWithMsg(
+                                            `object is not callable`,
+                                            expr.source
+                                        ) as Context<ShValue>;
                                     }
                                 });
                             }
@@ -159,7 +160,7 @@ export function evalLibCall<T>(ctxSet: ContextSet<T>, expr: TELibCall): ContextS
                     }
                 }
 
-                mp.args = args;
+                mp.$args = args;
                 mp.$kwargs = kwargs;
 
                 if (ctxSet) {
