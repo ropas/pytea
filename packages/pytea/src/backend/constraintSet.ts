@@ -610,18 +610,22 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
                 if (exp.values.length === 0) {
                     return undefined;
                 } else {
-                    const calced = exp.values.map(this.getCachedRange).reduce((prevRng, currRng) => {
-                        return currRng ? prevRng?.max(currRng) : undefined;
-                    });
+                    const calced = exp.values
+                        .map((num) => this.getCachedRange(num))
+                        .reduce((prevRng, currRng) => {
+                            return currRng ? prevRng?.max(currRng) : undefined;
+                        });
                     return calced?.valid() ? calced : undefined;
                 }
             case NumOpType.Min:
                 if (exp.values.length === 0) {
                     return undefined;
                 } else {
-                    const calced = exp.values.map(this.getCachedRange).reduce((prevRng, currRng) => {
-                        return currRng ? prevRng?.min(currRng) : undefined;
-                    });
+                    const calced = exp.values
+                        .map((num) => this.getCachedRange(num))
+                        .reduce((prevRng, currRng) => {
+                            return currRng ? prevRng?.min(currRng) : undefined;
+                        });
                     return calced?.valid() ? calced : undefined;
                 }
             // TODO: write this.

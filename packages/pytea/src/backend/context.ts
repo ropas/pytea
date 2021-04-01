@@ -1055,10 +1055,10 @@ export class ContextSetImpl<T> implements ContextSet<T> {
 
         if (leftSet.notPrunedCtrMax >= leftLen) {
             const newList = this.ctxList.set(1, right.setCtrSet(rightSet.set('notPrunedCtrMax', rightLen)));
-            return { ...this, ctxList: newList };
+            return new ContextSetImpl(newList, this.getFailed(), this.getStopped());
         } else if (rightSet.notPrunedCtrMax >= rightLen) {
             const newList = this.ctxList.set(0, left.setCtrSet(leftSet.set('notPrunedCtrMax', leftLen)));
-            return { ...this, ctxList: newList };
+            return new ContextSetImpl(newList, this.getFailed(), this.getStopped());
         }
 
         const newThis: ContextSet<T> = new ContextSetImpl(
