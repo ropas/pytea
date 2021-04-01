@@ -20,7 +20,7 @@ import {
     SVString,
     SVType,
 } from '../backend/sharpValues';
-import { ExpNum, ExpNumSymbol, NumBopType, NumUopType, SymExp } from '../backend/symExpressions';
+import { ExpNum, ExpNumSymbol, NumBopType, NumUopType, StringOpType, SymExp } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
 import { PyteaService } from '../service/pyteaService';
 import { LCImpl } from '.';
@@ -553,6 +553,131 @@ export namespace BuiltinsLCImpl {
         return ctx.toSetWith(retVal);
     }
 
+    export function str_islower(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 1) {
+            return ctx
+                .failWithMsg(
+                    `from 'LibCall.builtins.str_islower': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const { heap } = ctx;
+        const str = fetchAddr(params[0], heap);
+
+        if (str?.type !== SVType.String) {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.str_islower': value is not a string`, source).toSet();
+        }
+
+        let value = str.value;
+        if (typeof value !== 'string') {
+            // TODO: calculate symbolic string
+            const exp = ExpUtils.simplifyString(ctx.ctrSet, value);
+            if (exp.opType !== StringOpType.Const) {
+                return ctx
+                    .warnWithMsg(`from 'LibCall.builtins.str_islower': value is not a constant string`, source)
+                    .toSet();
+            }
+            value = exp.value;
+        }
+
+        return ctx.toSetWith(SVBool.create(value === value.toLowerCase(), source));
+    }
+
+    export function str_startswith(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx
+                .failWithMsg(
+                    `from 'LibCall.builtins.str_startswith': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const { heap } = ctx;
+        const str = fetchAddr(params[0], heap);
+        const tester = fetchAddr(params[1], heap);
+
+        if (str?.type !== SVType.String || tester?.type !== SVType.String) {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.str_startswith': value is not a string`, source).toSet();
+        }
+
+        let value = str.value;
+        if (typeof value !== 'string') {
+            // TODO: calculate symbolic string
+            const exp = ExpUtils.simplifyString(ctx.ctrSet, value);
+            if (exp.opType !== StringOpType.Const) {
+                return ctx
+                    .warnWithMsg(`from 'LibCall.builtins.str_startswith': value is not a constant string`, source)
+                    .toSet();
+            }
+            value = exp.value;
+        }
+
+        let testerVal = tester.value;
+        if (typeof testerVal !== 'string') {
+            // TODO: calculate symbolic string
+            const exp = ExpUtils.simplifyString(ctx.ctrSet, testerVal);
+            if (exp.opType !== StringOpType.Const) {
+                return ctx
+                    .warnWithMsg(`from 'LibCall.builtins.str_startswith': prefix is not a constant string`, source)
+                    .toSet();
+            }
+            testerVal = exp.value;
+        }
+
+        return ctx.toSetWith(SVBool.create(value.startsWith(testerVal), source));
+    }
+
+    export function str_endswith(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx
+                .failWithMsg(
+                    `from 'LibCall.builtins.str_startswith': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const { heap } = ctx;
+        const str = fetchAddr(params[0], heap);
+        const tester = fetchAddr(params[1], heap);
+
+        if (str?.type !== SVType.String || tester?.type !== SVType.String) {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.str_endswith': value is not a string`, source).toSet();
+        }
+
+        let value = str.value;
+        if (typeof value !== 'string') {
+            // TODO: calculate symbolic string
+            const exp = ExpUtils.simplifyString(ctx.ctrSet, value);
+            if (exp.opType !== StringOpType.Const) {
+                return ctx
+                    .warnWithMsg(`from 'LibCall.builtins.str_endswith': value is not a constant string`, source)
+                    .toSet();
+            }
+            value = exp.value;
+        }
+
+        let testerVal = tester.value;
+        if (typeof testerVal !== 'string') {
+            // TODO: calculate symbolic string
+            const exp = ExpUtils.simplifyString(ctx.ctrSet, testerVal);
+            if (exp.opType !== StringOpType.Const) {
+                return ctx
+                    .warnWithMsg(`from 'LibCall.builtins.str_endswith': prefix is not a constant string`, source)
+                    .toSet();
+            }
+            testerVal = exp.value;
+        }
+
+        return ctx.toSetWith(SVBool.create(value.endsWith(testerVal), source));
+    }
+
     export function has_key(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
@@ -942,6 +1067,48 @@ export namespace BuiltinsLCImpl {
         return ctx.setHeap(heap.setVal(obj.addr, obj.setAttr(attr.value, value))).toSetWith(SVNone.create(source));
     }
 
+    export function callable(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 1) {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.builtins.callable': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+        const heap = ctx.heap;
+        const value = fetchAddr(params[0], heap);
+        if (!value || value.type === SVType.Error) {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.builtins.callable': checking callable of unknown value. propagates it.`,
+                    source
+                )
+                .toSet();
+        }
+
+        if (value.type === SVType.Func) {
+            return ctx.setRetVal(SVBool.create(true, source)).toSet();
+        }
+
+        if (value.type !== SVType.Object) {
+            return ctx.setRetVal(SVBool.create(false, source)).toSet();
+        }
+
+        const call = fetchAddr(value.getAttr('__call__'), ctx.heap);
+        if (call?.type === SVType.Error) {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.builtins.callable': checking callable of unknown __call__ value. propagates it.`,
+                    source
+                )
+                .toSet();
+        }
+
+        return ctx.setRetVal(SVBool.create(call?.type === SVType.Func, source)).toSet();
+    }
+
     // Debug probe for breakpoint in TS
     export function debug(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -978,6 +1145,9 @@ export namespace BuiltinsLCImpl {
         dict_getitem,
         dict_setitem,
         dict_pop,
+        str_islower,
+        str_startswith,
+        str_endswith,
         has_key,
         len,
         randInt,
@@ -988,6 +1158,7 @@ export namespace BuiltinsLCImpl {
         setAttr,
         setIndice,
         getItemByIndex,
+        callable,
         debug,
     };
 }

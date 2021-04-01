@@ -258,21 +258,20 @@ dict.pop = _dict_pop
 class _dict_keyiterator:
     def __init__(self, d):
         self.d = d
-        self.keys = d.keys()
-        self.values = d.values()
+        self.keys = list(d.keys())
         self.idx = 0
         self.len = len(self.keys)
 
     def __next__(self):
         if self.idx < self.len:
-            item = (self.keys[self.idx], self.values[self.idx])
+            key = self.keys[self.idx]
             self.idx += 1
-            return item
+            return key
         else:
             raise StopIteration
 
     def __getitem__(self, i):
-        return (self.keys[i], self.values[i])
+        return self.keys[i]
 
     def __len__(self):
         return self.len
@@ -291,6 +290,27 @@ def _str_format(self, *args, **kwargs):
 
 
 str.format = _str_format
+
+
+def _str_islower(self):
+    return LibCall.builtins.str_islower(self)
+
+
+str.islower = _str_islower
+
+
+def _str_startswith(self, prefix):
+    return LibCall.builtins.str_startswith(self, prefix)
+
+
+str.startswith = _str_startswith
+
+
+def _str_endswith(self, suffix):
+    return LibCall.builtins.str_endswith(self, suffix)
+
+
+str.endswith = _str_endswith
 
 
 def _str_replace(self, old, new, count=None):
@@ -365,6 +385,10 @@ class zip:
 
 def iter(value):
     return value.__iter__()
+
+
+def callable(value):
+    return LibCall.builtins.callable(value)
 
 
 class BaseException:

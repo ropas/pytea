@@ -521,8 +521,13 @@ export namespace TorchBackend {
                             let bounded: SVFunc | undefined;
                             if (objVal.type === SVType.Object) {
                                 bounded = mayMethod.bound(objVal.addr);
+                                return ctx.setRetVal(bounded).toSet();
+                            } else {
+                                // object is primitive value
+                                const [addr, newHeap] = ctx.heap.allocNew(objVal, source);
+                                bounded = mayMethod.bound(addr);
+                                return ctx.setHeap(newHeap).setRetVal(bounded).toSet();
                             }
-                            if (bounded) return ctx.setRetVal(bounded).toSet();
                         }
                         return ctx.setRetVal(attr).toSet();
                     }
