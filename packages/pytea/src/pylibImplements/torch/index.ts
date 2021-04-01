@@ -1076,6 +1076,10 @@ export namespace TorchLCImpl {
 
         const inputSize = fetchSize(inputAddr, heap);
 
+        if (typeof inputSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.pool2d': ${inputSize}`, source);
+        }
+
         const kernel_size = fetchAddr(kernel_sizeAddr, heap);
         let kernel_size_0: SVInt;
         let kernel_size_1: SVInt;
@@ -1137,10 +1141,6 @@ export namespace TorchLCImpl {
         }
 
         const ceil_mode = fetchAddr(ceil_modeAddr, heap) as SVBool;
-
-        if (typeof inputSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.pool2d': ${inputSize}`, source);
-        }
 
         const inputShape = inputSize.shape;
         const inputRank = inputSize.rank();
