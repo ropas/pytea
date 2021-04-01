@@ -36,6 +36,7 @@ import {
     CodeSource,
     ShContFlag,
     ShValue,
+    SVAddr,
     SVBool,
     SVError,
     SVErrorLevel,
@@ -117,6 +118,10 @@ interface ContextMethods<T> {
     // these two methods cut off paths
     fail(error: SVError): Context<SVError>;
     failWithMsg(message: string, source?: CodeSource): Context<SVError>;
+
+    // primitive collections
+    genList(values: ShValue[], source?: CodeSource): [SVObject, SVAddr, Context<T>];
+    genTuple(values: ShValue[], source?: CodeSource): [SVObject, SVAddr, Context<T>];
 
     // symbolic variable generator
     genSymInt(name: string, source?: CodeSource): SymInt;
@@ -376,6 +381,33 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     asDefault(): Context<T> {
         const offset = -this.heap.addrMax - 1;
         return this.setEnv(this.env.addOffset(offset)).setHeap(this.heap.addOffset(offset));
+    }
+
+    // primitive collections generator
+    genList(values: ShValue[], source?: CodeSource): [SVObject, SVAddr, Context<T>] {
+        const { heap, env } = this;
+        const [list, listAddr, heap2] = SVObject.create(heap, source);
+        const listMro = (fetchAddr(heap.getVal(env.getId('list')!)!, heap) as SVObject).getAttr('__mro__')!;
+        let listVal = list;
+        values.forEach((v, i) => {
+            listVal = listVal.setIndice(i, v);
+        });
+        listVal = listVal.setAttr('$length', SVInt.create(values.length, source)).setAttr('__mro__', listMro);
+
+        return [list, listAddr, this.setHeap(heap2.setVal(listAddr, listVal))];
+    }
+
+    genTuple(values: ShValue[], source?: CodeSource): [SVObject, SVAddr, Context<T>] {
+        const { heap, env } = this;
+        const [tuple, tupleAddr, heap2] = SVObject.create(heap, source);
+        const tupleMro = (fetchAddr(heap.getVal(env.getId('tuple')!)!, heap) as SVObject).getAttr('__mro__')!;
+        let listVal = tuple;
+        values.forEach((v, i) => {
+            listVal = listVal.setIndice(i, v);
+        });
+        listVal = listVal.setAttr('$length', SVInt.create(values.length, source)).setAttr('__mro__', tupleMro);
+
+        return [tuple, tupleAddr, this.setHeap(heap2.setVal(tupleAddr, listVal))];
     }
 
     // symbolic variable generator

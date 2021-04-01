@@ -127,3 +127,4 @@ packages/pytea/build
 **/*/constraint.json
 
 bin/
+constraint.json

@@ -359,20 +359,72 @@ export namespace BuiltinsLCImpl {
             return ctx.warnWithMsg(`from 'LibCall.builtins.dict_items': invalid value type`, source).toSet();
         }
 
-        let [pairList, pairListAddr, newHeap] = SVObject.create(heap, source);
-        let pairListLen = 0;
-        let pair, pairAddr;
-        for (const [key, value] of dict.keyValues) {
-            [pair, pairAddr, newHeap] = SVObject.create(newHeap, source);
-            pair = pair.setAttr('$length', SVInt.create(2, source));
-            pair = pair.setIndice(0, SVString.create(key, source));
-            pair = pair.setIndice(1, value);
-            pairList = pairList.setIndice(pairListLen, pair);
-            pairListLen++;
-        }
-        pairList = pairList.setAttr('$length', SVInt.create(pairListLen, source));
+        let newCtx = ctx;
+        const items: ShValue[] = [];
 
-        return ctx.setHeap(newHeap.setVal(pairListAddr, pairList)).toSetWith(pairListAddr);
+        dict.keyValues.forEach((value, key) => {
+            const setTuple = newCtx.genTuple([SVString.create(key, source), value], source);
+            items.push(setTuple[1]);
+            newCtx = setTuple[2];
+        });
+
+        const [, itemList, finalCtx] = newCtx.genList(items, source);
+        return finalCtx.toSetWith(itemList);
+    }
+
+    export function dict_keys(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 1) {
+            return ctx
+                .failWithMsg(
+                    `from 'LibCall.builtins.dict_keys': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const { heap } = ctx;
+        const dict = fetchAddr(params[0], heap);
+
+        if (dict?.type !== SVType.Object) {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.dict_keys': invalid value type`, source).toSet();
+        }
+
+        const items: ShValue[] = [];
+
+        dict.keyValues.forEach((value, key) => {
+            items.push(SVString.create(key, source));
+        });
+
+        const [, itemList, finalCtx] = ctx.genList(items, source);
+        return finalCtx.toSetWith(itemList);
+    }
+
+    export function dict_values(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 1) {
+            return ctx
+                .failWithMsg(
+                    `from 'LibCall.builtins.dict_values': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const { heap } = ctx;
+        const dict = fetchAddr(params[0], heap);
+
+        if (dict?.type !== SVType.Object) {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.dict_values': invalid value type`, source).toSet();
+        }
+
+        const items: ShValue[] = [];
+        dict.keyValues.forEach((value) => {
+            items.push(value);
+        });
+
+        const [, itemList, finalCtx] = ctx.genList(items, source);
+        return finalCtx.toSetWith(itemList);
     }
 
     // TODO: fix this to support non-string typed key
@@ -921,6 +973,8 @@ export namespace BuiltinsLCImpl {
         cast,
         list_append,
         dict_items,
+        dict_keys,
+        dict_values,
         dict_getitem,
         dict_setitem,
         dict_pop,

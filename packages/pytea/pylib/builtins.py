@@ -149,7 +149,7 @@ list.append = _list_append
 
 def _list__getitem__(self, index):
     if isinstance(index, int):
-        return self[index]
+        return LibCall.builtins.getItemByIndex(self, index)
     elif isinstance(index, slice):
         start, stop = None, None
         if index.start is not None:
@@ -174,6 +174,9 @@ def _list__getitem__(self, index):
             else:
                 # index by [start:stop]
                 return [self[i] for i in range(start, stop)]
+    else:
+        # TODO: filter SVWarning
+        raise IndexError("index is not an integer or slice")
 
 
 list.__getitem__ = _list__getitem__
@@ -201,6 +204,20 @@ def _tuple__add__(self, items):
 
 
 tuple.__add__ = _tuple__add__
+
+
+def _dict_keys(self):
+    return LibCall.builtins.dict_keys(self)
+
+
+dict.keys = _dict_keys
+
+
+def _dict_values(self):
+    return LibCall.builtins.dict_values(self)
+
+
+dict.values = _dict_values
 
 
 def _dict_items(self):
@@ -236,6 +253,36 @@ def _dict_pop(self, key, defaultVal):
 
 
 dict.pop = _dict_pop
+
+
+class _dict_keyiterator:
+    def __init__(self, d):
+        self.d = d
+        self.keys = d.keys()
+        self.values = d.values()
+        self.idx = 0
+        self.len = len(self.keys)
+
+    def __next__(self):
+        if self.idx < self.len:
+            item = (self.keys[self.idx], self.values[self.idx])
+            self.idx += 1
+            return item
+        else:
+            raise StopIteration
+
+    def __getitem__(self, i):
+        return (self.keys[i], self.values[i])
+
+    def __len__(self):
+        return self.len
+
+
+def _dict__iter__(self):
+    return _dict_keyiterator(self)
+
+
+dict.__iter__ = _dict__iter__
 
 
 def _str_format(self, *args, **kwargs):
@@ -314,6 +361,10 @@ class zip:
 
     def __len__(self):
         return self.len
+
+
+def iter(value):
+    return value.__iter__()
 
 
 class BaseException:

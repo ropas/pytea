@@ -1,7 +1,13 @@
-import LibCall
+# import torchvision.models as models
 
-a = LibCall.builtins.randFloat(0, 10, "AXX")
-b = 1
+# z = [name for name in models.__dict__]
 
-if a > 5:
-    b = 2
+# model_names = [
+#     name
+#     for name in models.__dict__
+#     if name.islower()
+#     and not name.startswith("__")  # and callable(models.__dict__[name])
+# ]
+
+x = [1, 2]
+a = x[3]
