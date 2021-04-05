@@ -78,9 +78,8 @@ class Tensor:
         return self
 
     def repeat(self, *sizes):
-        dtype = self.dtype
         tensor = LibCall.torch.repeat(self, sizes)
-        tensor.dtype = dtype
+        tensor.dtype = self.dtype
         return tensor
 
     def transpose(self, dim0, dim1):
@@ -106,18 +105,16 @@ class Tensor:
         return torch._bop(self, other)
 
     def view(self, *shape):
-        dtype = self.dtype
         tensor = LibCall.torch.view(self, shape)
-        tensor.dtype = dtype
+        tensor.dtype = self.dtype
         return tensor
 
     def view_as(self, other):
         return self.view(other.size())
 
     def reshape(self, *shape):
-        dtype = self.dtype
         tensor = LibCall.torch.view(self, shape)
-        tensor.dtype = dtype
+        tensor.dtype = self.dtype
         return tensor
 
     def reshape_as(self, other):
@@ -146,15 +143,13 @@ class Tensor:
         if isinstance(firstArg, Tensor):
             return self.type(firstArg.dtype)
         elif isinstance(firstArg, str):  # device
-            dtype = self.dtype
             tensor = LibCall.torch.identityShape(self)
-            tensor.dtype = dtype
+            tensor.dtype = self.dtype
             tensor.device = firstArg
             return tensor
         elif isinstance(firstArg, torch.device):
-            dtype = self.dtype
             tensor = LibCall.torch.identityShape(self)
-            tensor.dtype = dtype
+            tensor.dtype = self.dtype
             tensor.device = firstArg
             return tensor
         else:
@@ -182,33 +177,28 @@ class Tensor:
         return self.to(torch.int64)
 
     def detach(self):
-        dtype = self.dtype
         tensor = LibCall.torch.identityShape(self)
-        tensor.dtype = dtype
+        tensor.dtype = self.dtype
         return tensor
 
     def cpu(self):
-        dtype = self.dtype
         tensor = LibCall.torch.identityShape(self)
-        tensor.dtype = dtype
+        tensor.dtype = self.dtype
         return tensor
 
     def flatten(self, start_dim=0, end_dim=-1):
-        dtype = self.dtype
         tensor = LibCall.torch.flatten(self, start_dim, end_dim)
-        tensor.dtype = dtype
+        tensor.dtype = self.dtype
         return tensor
 
     def expand(self, *sizes):
-        dtype = self.dtype
         tensor = LibCall.torch.expand(self, sizes)
-        tensor.dtype = dtype
+        tensor.dtype = self.dtype
         return tensor
 
     def expand_as(self, other):
-        dtype = self.dtype
         tensor = LibCall.torch.expand_as(self, other)
-        tensor.dtype = dtype
+        tensor.dtype = self.dtype
         return tensor
 
     def device(self):
@@ -226,9 +216,8 @@ class Tensor:
                 raise ValueError("permute invalid index!")
             ret_shape.append(self.shape[arg])
 
-        dtype = self.dtype
         tensor = self.view(*ret_shape)
-        tensor.dtype = dtype
+        tensor.dtype = self.dtype
         return tensor
 
     def contiguous(self):
@@ -289,15 +278,18 @@ class Tensor:
         return torch._bop(self, other)
 
     def __matmul__(self, other):
-        dtype = self.dtype
         tensor = LibCall.torch.matmul(self, other)
-        tensor.dtype = dtype
+        tensor.dtype = self.dtype
         return tensor
 
     def __rmatmul__(self, other):
-        dtype = self.dtype
         tensor = LibCall.torch.matmul(other, self)
-        tensor.dtype = dtype
+        tensor.dtype = self.dtype
+        return tensor
+
+    def __abs__(self):
+        tensor = LibCall.torch.identityShape(self)
+        tensor.dtype = self.dtype
         return tensor
 
     def __eq__(self, other):

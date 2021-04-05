@@ -369,18 +369,25 @@ export function simplifyNum(ctrSet: ConstraintSet, exp: ExpNum): ExpNum {
                     }
                     break;
                 case NumOpType.Uop:
-                    // double negation
                     switch (exp.uopType) {
                         case NumUopType.Ceil:
                         case NumUopType.Floor:
                             // if inner value is structually integer, remove ceil and floor
-                            if (isStructuallyInt(exp.baseValue)) {
-                                return exp;
+                            if (isStructuallyInt(baseValue)) {
+                                return baseValue;
                             }
                             break;
                         case NumUopType.Neg:
-                            return baseValue.baseValue;
-                        default:
+                            // double negation
+                            if (baseValue.uopType === NumUopType.Neg) {
+                                return baseValue.baseValue;
+                            }
+                            break;
+                        case NumUopType.Abs:
+                            // cancel double abs
+                            if (baseValue.uopType === NumUopType.Abs) {
+                                return baseValue;
+                            }
                             break;
                     }
                     break;

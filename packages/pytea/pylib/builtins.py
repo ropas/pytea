@@ -281,6 +281,16 @@ def _dict_pop(self, key, defaultVal):
 dict.pop = _dict_pop
 
 
+def _dict_update(self, other, **kwargs):
+    for (key, value) in other.items():
+        self[key] = value
+    for (key, value) in kwargs.items():
+        self[key] = value
+
+
+dict.update = _dict_update
+
+
 class _dict_keyiterator:
     def __init__(self, d):
         self.d = d
@@ -433,6 +443,10 @@ def callable(value):
 def sorted(values):
     # TODO: do sort
     return values
+
+
+def abs(x):
+    return LibCall.math.abs(x)
 
 
 class BaseException:
