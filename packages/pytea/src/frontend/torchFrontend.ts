@@ -968,11 +968,16 @@ export class TorchIRFrontend {
             }
         }
 
-        if (left.etype === TEType.Name && left.ident === 'super') {
-            if (args.length === 1) {
-                return TECall.create(left, [args[0], TEName.create('__self__')], node);
-            } else {
-                return TECall.create(left, [TEName.create('__class__'), TEName.create('__self__')], node);
+        if (left.etype === TEType.Name) {
+            if (left.ident === 'super') {
+                if (args.length === 1) {
+                    return TECall.create(left, [args[0], TEName.create('__self__')], node);
+                } else {
+                    return TECall.create(left, [TEName.create('__class__'), TEName.create('__self__')], node);
+                }
+            } else if (left.ident === 'print') {
+                // ignore print function
+                return TEConst.create(TEConstType.None, undefined, left.source);
             }
         }
 

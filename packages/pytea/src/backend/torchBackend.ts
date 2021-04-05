@@ -756,10 +756,40 @@ export namespace TorchBackend {
         }
     }
 
+    // check the statement can be ignored
+    function _checkEmpty(stmt: ThStmt): boolean {
+        switch (stmt.stype) {
+            case TSType.Expr:
+                switch (stmt.expr.etype) {
+                    case TEType.Const:
+                    case TEType.Name:
+                    case TEType.Object:
+                        return true;
+                    default:
+                        break;
+                }
+                break;
+            case TSType.If:
+                return _checkEmpty(stmt.thenStmt) && _checkEmpty(stmt.elseStmt);
+            case TSType.Pass:
+                return true;
+            case TSType.Seq:
+                return _checkEmpty(stmt.left) && _checkEmpty(stmt.right);
+            default:
+                return false;
+        }
+        return false;
+    }
+
     function _runIf<T>(ctxSet: ContextSet<T>, stmt: TSIf): ContextSet<ShValue | ShContFlag> {
         const exp = stmt.cond;
         const stmt_t = stmt.thenStmt;
         const stmt_f = stmt.elseStmt;
+
+        // Ignore empty if
+        if (_checkEmpty(stmt)) {
+            return run(ctxSet, TSExpr.create(exp));
+        }
 
         return evaluate(ctxSet, exp).flatMap((ctx) => {
             const value = ctx.retVal;

@@ -1,4 +1,5 @@
 import LibCall
+import math
 from ...tensor import Tensor
 from PIL import Image
 
@@ -31,11 +32,12 @@ class DataLoader:
         if self._len is not None:
             return self._len
 
-        if self.drop_last == False and self.datalen % self.batch_size > 0:
-            self._last_batch = self.datalen % self.batch_size
-            self._len = self.datalen // self.batch_size + 1
-        else:
+        if self.drop_last == True:
             self._len = self.datalen // self.batch_size
+        else:
+            self._last_batch = self.datalen % self.batch_size
+            remainder = math.floor(self._last_batch / self.batch_size)
+            self._len = self.datalen // self.batch_size + remainder
 
         return self._len
 
