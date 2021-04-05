@@ -23,7 +23,7 @@ class DataLoader:
         self.dataset = dataset
         self.batch_size = batch_size
         self.drop_last = drop_last
-        self._last_batch = 0
+        self._last_batch = batch_size
 
         self.datalen = len(self.dataset)
         self._len = None
@@ -36,7 +36,7 @@ class DataLoader:
             self._len = self.datalen // self.batch_size
         else:
             self._last_batch = self.datalen % self.batch_size
-            remainder = math.floor(self._last_batch / self.batch_size)
+            remainder = math.ceil(self._last_batch / self.batch_size)
             self._len = self.datalen // self.batch_size + remainder
 
         return self._len
@@ -45,12 +45,12 @@ class DataLoader:
         item_tuple = self.dataset[index * self.batch_size]
         _len = len(self)
 
-        if self.drop_last == False and self._last_batch > 0 and index == _len - 1:
-            batch_size = self._last_batch
-        # TODO:
-        # elif _len == 0:
-        else:
+        if self.drop_last == True:
             batch_size = self.batch_size
+        elif index < _len - 1:
+            batch_size = self.batch_size
+        else:
+            batch_size = self._last_batch
 
         ret_list = []
         for item in item_tuple:

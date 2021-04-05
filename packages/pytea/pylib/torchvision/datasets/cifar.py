@@ -13,11 +13,11 @@ class CIFAR10(data.Dataset):
         self.transform = transform
         self.target_transform = target_transform
 
-        # TODO: symbolic?
-        if train:
-            self.len = 500
+        x = LibCall.builtins.randInt(0, 1, "CIFAR10_Len")
+        if train
+            self.len = 50000 + (x // (x + 1))
         else:
-            self.len = 100
+            self.len = 10000 + (x // (x + 1))
 
     def __getitem__(self, index):
         if index < 0 or len(self) <= index:
@@ -48,11 +48,11 @@ class CIFAR100(data.Dataset):
         self.transform = transform
         self.target_transform = target_transform
 
-        # TODO: symbolic?
-        if train:
-            self.len = 500
+        x = LibCall.builtins.randInt(0, 1, "CIFAR10_Len")
+        if train
+            self.len = 50000 + (x // (x + 1))
         else:
-            self.len = 100
+            self.len = 10000 + (x // (x + 1))
 
     def __getitem__(self, index):
         if index < 0 or len(self) <= index:

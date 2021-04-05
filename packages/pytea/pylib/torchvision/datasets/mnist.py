@@ -20,16 +20,16 @@ class MNIST(data.Dataset):
         self.transforms = transforms
         self.target_transform = target_transform
 
-        # TODO: symbolic?
+        x = LibCall.builtins.randInt(0, 1, "MNIST_Len")
         if train:
-            self.len = 600
+            self.len = 60000 + (x // (x + 1))
         else:
-            self.len = 100
+            self.len = 10000 + (x // (x + 1))
 
     def __getitem__(self, index):
         img = Image.Image()
         img._setSize(1, 28, 28)
-        target = LibCall.builtins.randInt(0, 9, 'MNIST_Class')
+        target = LibCall.builtins.randInt(0, 9, "MNIST_Class")
 
         if self.transform is not None:
             img = self.transform(img)
