@@ -15,9 +15,9 @@ class CIFAR10(data.Dataset):
 
         x = LibCall.builtins.randInt(0, 1, "CIFAR10_Len")
         if train
-            self.len = 50000 + (x // (x + 1))
+            self._len = 50000 + (x // (x + 1))
         else:
-            self.len = 10000 + (x // (x + 1))
+            self._len = 10000 + (x // (x + 1))
 
     def __getitem__(self, index):
         if index < 0 or len(self) <= index:
@@ -36,7 +36,7 @@ class CIFAR10(data.Dataset):
         return img, target
 
     def __len__(self):
-        return self.len
+        return self._len
 
 
 class CIFAR100(data.Dataset):
@@ -48,11 +48,11 @@ class CIFAR100(data.Dataset):
         self.transform = transform
         self.target_transform = target_transform
 
-        x = LibCall.builtins.randInt(0, 1, "CIFAR10_Len")
+        x = LibCall.builtins.randInt(0, 1, "CIFAR100_Len")
         if train
-            self.len = 50000 + (x // (x + 1))
+            self._len = 50000 + (x // (x + 1))
         else:
-            self.len = 10000 + (x // (x + 1))
+            self._len = 10000 + (x // (x + 1))
 
     def __getitem__(self, index):
         if index < 0 or len(self) <= index:
@@ -71,4 +71,4 @@ class CIFAR100(data.Dataset):
         return img, target
 
     def __len__(self):
-        return self.len
+        return self._len

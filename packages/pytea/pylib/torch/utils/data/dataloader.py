@@ -23,34 +23,35 @@ class DataLoader:
         self.dataset = dataset
         self.batch_size = batch_size
         self.drop_last = drop_last
-        self._last_batch = batch_size
 
-        self.datalen = len(self.dataset)
-        self._len = None
+        self._datalen = len(dataset)
+        if self.drop_last == True:
+            self._len = self._datalen // self.batch_size
+            self._last_batch = batch_size
+        else:
+            self._last_batch = self._datalen % self.batch_size
+            remainder = math.ceil(self._last_batch / self.batch_size)
+            self._len = self._datalen // self.batch_size + remainder
 
     def __len__(self):
-        if self._len is not None:
-            return self._len
-
-        if self.drop_last == True:
-            self._len = self.datalen // self.batch_size
-        else:
-            self._last_batch = self.datalen % self.batch_size
-            remainder = math.ceil(self._last_batch / self.batch_size)
-            self._len = self.datalen // self.batch_size + remainder
-
         return self._len
 
     def __getitem__(self, index):
         item_tuple = self.dataset[index * self.batch_size]
-        _len = len(self)
 
         if self.drop_last == True:
             batch_size = self.batch_size
-        elif index < _len - 1:
-            batch_size = self.batch_size
         else:
-            batch_size = self._last_batch
+            # if index < self._len - 1:
+            #     batch_size = self.batch_size
+            # else:
+            #     batch_size = self._last_batch
+            # below is single expression version of above
+            lb = self.batch_size - self._last_batch
+            li = self._len - 1
+            step = ((index - li) // (abs(index - li) + 1))
+            batch_size = self._last_batch - step * lb
+
 
         ret_list = []
         for item in item_tuple:

@@ -22,9 +22,9 @@ class MNIST(data.Dataset):
 
         x = LibCall.builtins.randInt(0, 1, "MNIST_Len")
         if train:
-            self.len = 60000 + (x // (x + 1))
+            self._len = 60000 + (x // (x + 1))
         else:
-            self.len = 10000 + (x // (x + 1))
+            self._len = 10000 + (x // (x + 1))
 
     def __getitem__(self, index):
         img = Image.Image()
@@ -39,4 +39,4 @@ class MNIST(data.Dataset):
         return img, target
 
     def __len__(self):
-        return self.len
+        return self._len
