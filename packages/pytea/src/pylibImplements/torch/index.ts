@@ -31,7 +31,10 @@ import { LCImpl } from '..';
 import { LCBase } from '../libcall';
 
 export namespace TorchLCImpl {
-    export function tensorInit(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function tensorInit(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -89,7 +92,11 @@ export namespace TorchLCImpl {
 
                 // traversed list and ends with integer or float
                 if (shaped && (obj?.type === SVType.Int || obj?.type === SVType.Float)) {
-                    const size = SVSize.createSize(ctx, ExpShape.fromConst(structure.length, structure, source));
+                    const size = SVSize.createSize(
+                        ctx,
+                        ExpShape.fromConst(structure.length, structure, source),
+                        source
+                    );
                     const newHeap = heap.setVal(addr, self.setAttr('shape', size));
                     return ctx.setHeap(newHeap).setRetVal(SVNone.create()).toSet();
                 }
@@ -114,7 +121,10 @@ export namespace TorchLCImpl {
         });
     }
 
-    export function identityShape(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function identityShape(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx.warnTensorWithMsg(
@@ -138,7 +148,10 @@ export namespace TorchLCImpl {
     }
 
     // return broadcasted tensor
-    export function broadcast(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function broadcast(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -166,7 +179,7 @@ export namespace TorchLCImpl {
     }
 
     // implementation of torch.matmul
-    export function matmul(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function matmul(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -208,7 +221,11 @@ export namespace TorchLCImpl {
 
                     const lr11 = rightOnePath
                         .flatMap((ctx) => {
-                            const sameDim = ctx.genEq(ExpNum.index(leftShape, 0), ExpNum.index(rightShape, 0), source);
+                            const sameDim = ctx.genEq(
+                                ExpNum.index(leftShape, 0, source),
+                                ExpNum.index(rightShape, 0, source),
+                                source
+                            );
                             return ctx.require(
                                 [sameDim],
                                 `from 'LibCall.torch.matmul': dimension mismatch between rank-1 tensors`,
@@ -217,17 +234,18 @@ export namespace TorchLCImpl {
                         })
                         .flatMap((ctx) => genTensor(ctx, ExpShape.fromConst(0, [], source), source));
 
-                    const rightAxis = ExpNum.bop(NumBopType.Sub, rightRank, 2);
+                    const rightAxis = ExpNum.bop(NumBopType.Sub, rightRank, 2, source);
                     const lr12 = rightTwoPath
                         .flatMap((ctx) => {
                             const sameDim = ctx.genEq(
-                                ExpNum.index(leftShape, 0),
-                                ExpNum.index(rightShape, rightAxis),
+                                ExpNum.index(leftShape, 0, source),
+                                ExpNum.index(rightShape, rightAxis, source),
                                 source
                             );
                             return ctx.require(
                                 [sameDim],
-                                `from 'LibCall.torch.matmul: dimension mismatch between rank-1 @ rank-n`
+                                `from 'LibCall.torch.matmul: dimension mismatch between rank-1 @ rank-n`,
+                                source
                             );
                         })
                         .flatMap((ctx) => ctx.shReduce(rightShape, rightAxis, source))
@@ -244,8 +262,8 @@ export namespace TorchLCImpl {
                     const lr21 = rightOnePath
                         .flatMap((ctx) => {
                             const sameDim = ctx.genEq(
-                                ExpNum.index(leftShape, leftAxis),
-                                ExpNum.index(rightShape, 0),
+                                ExpNum.index(leftShape, leftAxis, source),
+                                ExpNum.index(rightShape, 0, source),
                                 source
                             );
                             return ctx.require(
@@ -269,7 +287,7 @@ export namespace TorchLCImpl {
     }
 
     // implementation of torch.mm
-    export function mm(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function mm(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -302,8 +320,9 @@ export namespace TorchLCImpl {
                 source
             )
             .require(
-                ctx.genEq(ExpNum.index(leftShape, 1, source), ExpNum.index(rightShape, 0, source)),
-                `from 'LibCall.torch.mm': dimension mismatch`
+                ctx.genEq(ExpNum.index(leftShape, 1, source), ExpNum.index(rightShape, 0, source), source),
+                `from 'LibCall.torch.mm': dimension mismatch`,
+                source
             )
             .flatMap((ctx) => {
                 const newShape = ExpShape.fromConst(
@@ -316,7 +335,7 @@ export namespace TorchLCImpl {
     }
 
     // implementation of torch.mm
-    export function bmm(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function bmm(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -356,8 +375,9 @@ export namespace TorchLCImpl {
                 source
             )
             .require(
-                ctx.genEq(ExpNum.index(leftShape, 2, source), ExpNum.index(rightShape, 1, source)),
-                `from 'LibCall.torch.mm': dimension mismatch`
+                ctx.genEq(ExpNum.index(leftShape, 2, source), ExpNum.index(rightShape, 1, source), source),
+                `from 'LibCall.torch.mm': dimension mismatch`,
+                source
             )
             .flatMap((ctx) => {
                 const simplerBatch = leftShape.opType === ShapeOpType.Const ? leftBatch : rightBatch;
@@ -370,7 +390,7 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function item(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function item(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx.warnTensorWithMsg(
@@ -406,7 +426,7 @@ export namespace TorchLCImpl {
         const isBool = dtype === 'bool';
 
         const ctxSet = ctx.require(
-            [ctx.genOr(ctx.genEq(0, selfRank, source), ctx.genEq(1, ExpNum.numel(selfShape, source)), source)],
+            [ctx.genOr(ctx.genEq(0, selfRank, source), ctx.genEq(1, ExpNum.numel(selfShape, source), source), source)],
             `from 'LibCall.torch.item': tensor must have exacly one element`,
             source
         );
@@ -423,7 +443,7 @@ export namespace TorchLCImpl {
     }
 
     // implementation of torch.Tensor.repeat
-    export function repeat(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function repeat(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -499,7 +519,7 @@ export namespace TorchLCImpl {
                                 ExpNum.index(selfShape, selfRank - 1 - i, source),
                                 source
                             );
-                            shape = ExpShape.setDim(shape, targetAxis, newDim);
+                            shape = ExpShape.setDim(shape, targetAxis, newDim, source);
                         }
 
                         return genTensor(ctx, shape, source);
@@ -511,7 +531,9 @@ export namespace TorchLCImpl {
                             const rankRng = ctx.getCachedRange(sizeRank);
 
                             if (!rankRng) {
-                                return ctx.failWithMsg(`from 'LibCall.torch.repeat': invalid length of sizes`).toSet();
+                                return ctx
+                                    .failWithMsg(`from 'LibCall.torch.repeat': invalid length of sizes`, source)
+                                    .toSet();
                             }
 
                             let newCtx: Context<any> = ctx;
@@ -531,7 +553,7 @@ export namespace TorchLCImpl {
     }
 
     // TODO: currently, assumed -1 is given only via constant rank tuple.
-    export function expand(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function expand(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -599,7 +621,10 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function expand_as(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function expand_as(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -681,7 +706,7 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function copyOut(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function copyOut(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -706,11 +731,17 @@ export namespace TorchLCImpl {
         return (tensor ? ctx.setHeap(heap.setVal(out, tensor)) : ctx).setRetVal(out).toSet();
     }
 
-    export function callTensor(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function callTensor(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         return TorchBackend.libClassInit(ctx, 'torch.Tensor', ctx.retVal.params, source);
     }
 
-    export function transpose(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function transpose(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -740,7 +771,7 @@ export namespace TorchLCImpl {
         }
 
         const selfRank = ExpShape.getRank(selfShape);
-        const negRank = ExpNum.bop(NumBopType.Sub, 0, selfRank);
+        const negRank = ExpNum.bop(NumBopType.Sub, 0, selfRank, source);
 
         const [dim0Pos, dim0Neg] = ctx
             .require(
@@ -814,7 +845,7 @@ export namespace TorchLCImpl {
         return dimPPNext.join(dimPNNext).join(dimNPNext).join(dimNNNext);
     }
 
-    export function reduce(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function reduce(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -857,7 +888,7 @@ export namespace TorchLCImpl {
         const inputRank = inputSize.rank();
 
         const shape1 = ExpShape.slice(inputShape, 0, dim.value, source);
-        const shape2 = ExpShape.slice(inputShape, ExpNum.bop(NumBopType.Add, dim.value, 1), inputRank, source);
+        const shape2 = ExpShape.slice(inputShape, ExpNum.bop(NumBopType.Add, dim.value, 1, source), inputRank, source);
 
         return ctx
             .require(
@@ -890,7 +921,7 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function topk(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function topk(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -931,11 +962,11 @@ export namespace TorchLCImpl {
                 `from 'LibCall.torch.topk': k must be within 'dim'-th dimension of input`,
                 source
             )
-            .flatMap((ctx) => genTensor(ctx, ExpShape.setDim(inputShape, dim.value, k.value), source));
+            .flatMap((ctx) => genTensor(ctx, ExpShape.setDim(inputShape, dim.value, k.value, source), source));
     }
 
     // TODO: currently, assumed -1 is given only via constant rank tuple.
-    export function view(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function view(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -954,7 +985,7 @@ export namespace TorchLCImpl {
         const selfShape = selfSize.shape;
         const selfNumel = ExpNum.numel(selfShape, source);
 
-        let shape: ExpShape = ExpShape.fromConst(0, []);
+        let shape: ExpShape = ExpShape.fromConst(0, [], source);
         const shapeObj = fetchAddr(shapeAddr, heap);
         if (shapeObj === undefined) {
             return ctx.warnTensorWithMsg(`from 'LibCall.torch.view': ${shapeObj}`, source);
@@ -1012,8 +1043,12 @@ export namespace TorchLCImpl {
 
                     // Special case: input size includes a -1.
                     if (wildCardIdx !== -1) {
-                        const shapeL = ExpShape.fromConst(wildCardIdx, dims.slice(0, wildCardIdx));
-                        const shapeR = ExpShape.fromConst(shapeRank - wildCardIdx - 1, dims.slice(wildCardIdx + 1));
+                        const shapeL = ExpShape.fromConst(wildCardIdx, dims.slice(0, wildCardIdx), source);
+                        const shapeR = ExpShape.fromConst(
+                            shapeRank - wildCardIdx - 1,
+                            dims.slice(wildCardIdx + 1),
+                            source
+                        );
                         const numelL = ExpNum.numel(shapeL, source);
                         const numelR = ExpNum.numel(shapeR, source);
 
@@ -1065,7 +1100,7 @@ export namespace TorchLCImpl {
                                 const wildCardDim = ExpNum.bop(NumBopType.FloorDiv, selfNumel, numelLR, source);
                                 const wildCardDimShape = ExpShape.fromConst(1, [wildCardDim], source);
                                 const newShape_ = ExpShape.concat(shapeL, wildCardDimShape, source);
-                                const newShape = ExpShape.concat(newShape_, shapeR);
+                                const newShape = ExpShape.concat(newShape_, shapeR, source);
                                 const mod = ExpNum.bop(NumBopType.Mod, selfNumel, numelLR, source);
                                 return ctx
                                     .require(
@@ -1104,7 +1139,7 @@ export namespace TorchLCImpl {
             .flatMap((ctx) => genTensor(ctx, shape, source));
     }
 
-    export function conv2d(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function conv2d(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 7) {
             return ctx.warnTensorWithMsg(
@@ -1131,10 +1166,10 @@ export namespace TorchLCImpl {
         const weightShape = weightSize.shape;
         const weightRank = weightSize.rank();
 
-        const out_channels = SVInt.create(ExpNum.index(weightShape, 0), source);
-        const in_channels = SVInt.create(ExpNum.index(weightShape, 1), source);
-        const kernel_size_0 = SVInt.create(ExpNum.index(weightShape, 2), source);
-        const kernel_size_1 = SVInt.create(ExpNum.index(weightShape, 3), source);
+        const out_channels = SVInt.create(ExpNum.index(weightShape, 0, source), source);
+        const in_channels = SVInt.create(ExpNum.index(weightShape, 1, source), source);
+        const kernel_size_0 = SVInt.create(ExpNum.index(weightShape, 2, source), source);
+        const kernel_size_1 = SVInt.create(ExpNum.index(weightShape, 3, source), source);
 
         // bias can be either None or (out_channels) shaped tensor
         let bias_channels: ExpNum | number;
@@ -1235,7 +1270,13 @@ export namespace TorchLCImpl {
                 source
             )
             .require(
-                [ctx.genOr(ctx.genEq(-1, bias_channels), ctx.genEq(out_channels.value, bias_channels))],
+                [
+                    ctx.genOr(
+                        ctx.genEq(-1, bias_channels, source),
+                        ctx.genEq(out_channels.value, bias_channels, source),
+                        source
+                    ),
+                ],
                 `from 'LibCall.torch.conv2d': bias channel mismatch`,
                 source
             )
@@ -1257,7 +1298,7 @@ export namespace TorchLCImpl {
             .flatMap((ctx) => genTensor(ctx, ExpShape.fromConst(4, [dim0, dim1, dim2, dim3], source), source));
     }
 
-    export function pool2d(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function pool2d(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 6) {
             return ctx.warnTensorWithMsg(
@@ -1362,15 +1403,19 @@ export namespace TorchLCImpl {
         const frontShape = ExpShape.slice(inputShape, 0, ExpNum.bop(NumBopType.Sub, inputRank, 2, source), source);
 
         // ceil_mode option; common constraint
-        const commonBranch = ctx.require([
-            ctx.genOr(ctx.genEq(3, inputRank, source), ctx.genEq(4, inputRank, source), source),
-            ctx.genLte(ExpNum.bop(NumBopType.Mul, 2, padding_0.value), kernel_size_0.value),
-            ctx.genLte(ExpNum.bop(NumBopType.Mul, 2, padding_1.value), kernel_size_1.value),
-            ctx.genLte(0, size1, source),
-            ctx.genLte(0, size2, source),
-        ]);
+        const commonBranch = ctx.require(
+            [
+                ctx.genOr(ctx.genEq(3, inputRank, source), ctx.genEq(4, inputRank, source), source),
+                ctx.genLte(ExpNum.bop(NumBopType.Mul, 2, padding_0.value, source), kernel_size_0.value, source),
+                ctx.genLte(ExpNum.bop(NumBopType.Mul, 2, padding_1.value, source), kernel_size_1.value, source),
+                ctx.genLte(0, size1, source),
+                ctx.genLte(0, size2, source),
+            ],
+            `from 'Libcall.torch.pool2d: common constraint error`,
+            source
+        );
 
-        const [ceilPath, floorPath] = commonBranch.ifThenElse(ctx.genBool(ceil_mode.value));
+        const [ceilPath, floorPath] = commonBranch.ifThenElse(ctx.genBool(ceil_mode.value, source), source);
 
         // when ceil_mode=true
         const ceilOnePath = ceilPath.flatMap((ctx) => {
@@ -1405,7 +1450,10 @@ export namespace TorchLCImpl {
     }
 
     // TODO: Implement batch_norm and let BatchNormNd call it.
-    export function batchnorm2d(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function batchnorm2d(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 2) {
             return ctx.warnTensorWithMsg(
@@ -1447,7 +1495,10 @@ export namespace TorchLCImpl {
     //     ctr += [broadcastable(x1, x2)]
     // else
     //     ctr += [x1.rank == x2.rank && broadcastable(x1, x2)]
-    export function cosine_similarity(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function cosine_similarity(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 3) {
             return ctx.warnTensorWithMsg(
@@ -1503,7 +1554,12 @@ export namespace TorchLCImpl {
             dim_ = dim;
         }
         const shape1 = ExpShape.slice(x1x2Bc, 0, dim_, source);
-        const shape2 = ExpShape.slice(x1x2Bc, ExpNum.bop(NumBopType.Add, dim_, 1), ExpShape.getRank(x1x2Bc), source);
+        const shape2 = ExpShape.slice(
+            x1x2Bc,
+            ExpNum.bop(NumBopType.Add, dim_, 1, source),
+            ExpShape.getRank(x1x2Bc),
+            source
+        );
         const returnShape = ExpShape.concat(shape1, shape2, source);
 
         if (dim.value < 0) {
@@ -1539,7 +1595,10 @@ export namespace TorchLCImpl {
     }
 
     // conditions of elements in "target" is not considered.
-    export function cross_entropy(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function cross_entropy(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -1606,7 +1665,10 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function checkSameShape(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function checkSameShape(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -1641,7 +1703,7 @@ export namespace TorchLCImpl {
 
     // Assumption: "tensors" is a constantRanked sequence, and each element is available.
     // TODO: handle empty tensor.
-    export function cat(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function cat(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -1691,7 +1753,12 @@ export namespace TorchLCImpl {
         const size0shape = size0.shape;
         const size0rank = size0.rank();
         const shape0Front = ExpShape.slice(size0shape, 0, dim.value, source);
-        const shape0Back = ExpShape.slice(size0shape, ExpNum.bop(NumBopType.Add, dim.value, 1), size0rank, source);
+        const shape0Back = ExpShape.slice(
+            size0shape,
+            ExpNum.bop(NumBopType.Add, dim.value, 1, source),
+            size0rank,
+            source
+        );
 
         // TODO: handle negative index.
         const ctrs: Constraint[] = [ctx.genLte(0, dim.value, source), ctx.genLt(dim.value, size0rank, source)];
@@ -1708,7 +1775,12 @@ export namespace TorchLCImpl {
             }
             const sizeIshape = sizeI.shape;
             const shapeIFront = ExpShape.slice(sizeIshape, 0, dim.value, source);
-            const shapeIBack = ExpShape.slice(sizeIshape, ExpNum.bop(NumBopType.Add, dim.value, 1), size0rank, source);
+            const shapeIBack = ExpShape.slice(
+                sizeIshape,
+                ExpNum.bop(NumBopType.Add, dim.value, 1, source),
+                size0rank,
+                source
+            );
 
             ctrs.push(ctx.genEq(shape0Front, shapeIFront, source));
             ctrs.push(ctx.genEq(shape0Back, shapeIBack, source));
@@ -1726,7 +1798,10 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function unsqueeze(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function unsqueeze(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 2) {
             return ctx.warnTensorWithMsg(
@@ -1767,7 +1842,7 @@ export namespace TorchLCImpl {
             .flatMap((ctx) => genTensor(ctx, returnShape, source));
     }
 
-    export function diag(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function diag(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 2) {
             return ctx.warnTensorWithMsg(
@@ -1836,7 +1911,7 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function flatten(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function flatten(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 1) {
             return ctx.warnTensorWithMsg(
@@ -1860,7 +1935,7 @@ export namespace TorchLCImpl {
 
         let startDim = fetchAddr(startDimAddr, heap);
         if (startDim === undefined) {
-            startDim = SVInt.create(ExpNum.fromConst(0), source);
+            startDim = SVInt.create(ExpNum.fromConst(0, source), source);
         } else if (startDim.type !== SVType.Int) {
             return ctx.warnTensorWithMsg(`from 'LibCall.torch.flatten': ${startDim}`, source);
         }
@@ -1870,7 +1945,7 @@ export namespace TorchLCImpl {
             endDim = SVInt.create(ExpNum.bop(NumBopType.Sub, inputRank, 1, source), source);
         } else if (endDim.type !== SVType.Int) {
             return ctx.warnTensorWithMsg(`from 'LibCall.torch.flatten': ${endDim}`, source);
-        } else if (endDim.value === -1 || endDim.value === ExpNum.fromConst(-1)) {
+        } else if (endDim.value === -1 || endDim.value === ExpNum.fromConst(-1, source)) {
             endDim = SVInt.create(ExpNum.bop(NumBopType.Sub, inputRank, 1, source), source);
         }
 
@@ -1904,7 +1979,10 @@ export namespace TorchLCImpl {
             .flatMap((ctx) => genTensor(ctx, returnShape, source));
     }
 
-    export function embedding(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function embedding(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 2) {
             return ctx.warnTensorWithMsg(
@@ -1932,11 +2010,16 @@ export namespace TorchLCImpl {
         const weightLastShape = ExpShape.slice(weightShape, 1, undefined, source);
         const returnShape = ExpShape.concat(inputShape, weightLastShape, source);
 
-        return ctx.require([ctx.genEq(2, weightRank, source)]).flatMap((ctx) => genTensor(ctx, returnShape, source));
+        return ctx
+            .require([ctx.genEq(2, weightRank, source)], `from 'LibCall.torch.embedding': weight rank is not 2`, source)
+            .flatMap((ctx) => genTensor(ctx, returnShape, source));
     }
 
     // TODO: `broadcastable` is not the sufficient condition for this code
-    export function layer_norm(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function layer_norm(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 4) {
             return ctx.warnTensorWithMsg(
@@ -1963,7 +2046,7 @@ export namespace TorchLCImpl {
         return ctx.shBroadcast(inputShape, normShape, source).flatMap((ctx) => genTensor(ctx, ctx.retVal, source));
     }
 
-    export function pad(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function pad(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -2044,7 +2127,7 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function adaptive(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function adaptive(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -2109,7 +2192,10 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function genDatasetLen(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function genDatasetLen(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx.warnTensorWithMsg(
@@ -2121,7 +2207,10 @@ export namespace TorchLCImpl {
         return ctx.setRetVal(SVNotImpl.create('not implemented', source)).toSet();
     }
 
-    export function datasetGetItem(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function datasetGetItem(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -2133,7 +2222,10 @@ export namespace TorchLCImpl {
         return ctx.setRetVal(SVNotImpl.create('not implemented', source)).toSet();
     }
 
-    export function warnTensorWithMsg(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function warnTensorWithMsg(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx.warnTensorWithMsg(
@@ -2153,7 +2245,10 @@ export namespace TorchLCImpl {
     }
 
     // implementation of torch.nn.functional.interpolate
-    export function interpolate(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function interpolate(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -2226,8 +2321,8 @@ export namespace TorchLCImpl {
                     source
                 )
                 .flatMap((ctx: Context<unknown>) => {
-                    const [rank3, rank45] = ctx.ifThenElse(ctx.genEq(3, inputRank, source));
-                    const [rank4, rank5] = rank45.ifThenElse(ctx.genEq(4, inputRank, source));
+                    const [rank3, rank45] = ctx.ifThenElse(ctx.genEq(3, inputRank, source), source);
+                    const [rank4, rank5] = rank45.ifThenElse(ctx.genEq(4, inputRank, source), source);
 
                     const shapes: ExpShape[] = [];
                     let newShape: ExpShape = inputShape;

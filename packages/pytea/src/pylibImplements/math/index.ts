@@ -8,7 +8,7 @@ import { LCImpl } from '..';
 import { LCBase } from '../libcall';
 
 export namespace MathLCImpl {
-    export function ceil(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function ceil(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx
@@ -55,7 +55,7 @@ export namespace MathLCImpl {
         }
     }
 
-    export function floor(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function floor(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx
@@ -102,7 +102,7 @@ export namespace MathLCImpl {
         }
     }
 
-    export function abs(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function abs(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx

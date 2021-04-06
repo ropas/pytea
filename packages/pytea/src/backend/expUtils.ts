@@ -182,32 +182,37 @@ export function denormalizeExpNum(nexp: NormalExp): ExpNum {
 
         if (coeff.down === 1) {
             if (coeff.up === 1) {
-                left = left ? ExpNum.bop(NumBopType.Add, left, cexp.exp) : cexp.exp;
+                left = left ? ExpNum.bop(NumBopType.Add, left, cexp.exp, cexp.exp.source) : cexp.exp;
             } else {
-                const right = ExpNum.bop(NumBopType.Mul, cexp.exp, coeff.up);
-                left = left ? ExpNum.bop(NumBopType.Add, left, right) : right;
+                const right = ExpNum.bop(NumBopType.Mul, cexp.exp, coeff.up, cexp.exp.source);
+                left = left ? ExpNum.bop(NumBopType.Add, left, right, left.source) : right;
             }
         } else {
             let right: ExpNum;
             if (coeff.up === 1) {
-                right = ExpNum.bop(NumBopType.TrueDiv, cexp.exp, coeff.down);
+                right = ExpNum.bop(NumBopType.TrueDiv, cexp.exp, coeff.down, cexp.exp.source);
             } else {
-                right = ExpNum.bop(NumBopType.TrueDiv, ExpNum.bop(NumBopType.Mul, cexp.exp, coeff.up), coeff.down);
+                right = ExpNum.bop(
+                    NumBopType.TrueDiv,
+                    ExpNum.bop(NumBopType.Mul, cexp.exp, coeff.up, cexp.exp.source),
+                    coeff.down,
+                    cexp.exp.source
+                );
             }
-            left = left ? ExpNum.bop(NumBopType.Add, left, right) : right;
+            left = left ? ExpNum.bop(NumBopType.Add, left, right, left.source) : right;
         }
     }
 
     const ncst = nexp.constant.norm();
     if (ncst.up === 0) {
-        return left ? left : ExpNum.fromConst(0);
+        return left ? left : ExpNum.fromConst(0, undefined);
     }
 
     const cstExp =
         ncst.down === 1
-            ? ExpNum.fromConst(ncst.up)
-            : ExpNum.bop(NumBopType.TrueDiv, ExpNum.fromConst(ncst.up), ncst.down);
-    return left ? ExpNum.bop(NumBopType.Add, left, cstExp) : cstExp;
+            ? ExpNum.fromConst(ncst.up, undefined)
+            : ExpNum.bop(NumBopType.TrueDiv, ExpNum.fromConst(ncst.up, undefined), ncst.down, undefined);
+    return left ? ExpNum.bop(NumBopType.Add, left, cstExp, left.source) : cstExp;
 }
 
 export function isSize(value: ShValue | undefined): value is SVSize {
@@ -916,16 +921,16 @@ export function simplifyConstraint(ctrSet: ConstraintSet, ctr: Constraint): Cons
     }
 }
 
-export function ceilDiv(left: ExpNum | number, right: ExpNum | number, source?: CodeSource): ExpNumBop {
+export function ceilDiv(left: ExpNum | number, right: ExpNum | number, source: CodeSource | undefined): ExpNumBop {
     if (typeof left === 'number') {
-        left = ExpNum.fromConst(left);
+        left = ExpNum.fromConst(left, source);
     }
     if (typeof right === 'number') {
-        right = ExpNum.fromConst(right);
+        right = ExpNum.fromConst(right, source);
     }
 
-    const exp1 = ExpNum.bop(NumBopType.Sub, right, 1);
-    const exp2 = ExpNum.bop(NumBopType.Add, left, exp1);
+    const exp1 = ExpNum.bop(NumBopType.Sub, right, 1, source);
+    const exp2 = ExpNum.bop(NumBopType.Add, left, exp1, source);
     return ExpNum.bop(NumBopType.FloorDiv, exp2, right, source);
 }
 
@@ -1106,7 +1111,7 @@ export function isStructuallyEq(left?: SymExp, right?: SymExp): boolean {
     }
 }
 
-export function genTensor<T>(ctx: Context<T>, shape: ExpShape, source?: CodeSource): ContextSet<ShValue> {
+export function genTensor<T>(ctx: Context<T>, shape: ExpShape, source: CodeSource | undefined): ContextSet<ShValue> {
     shape = simplifyShape(ctx.ctrSet, shape);
 
     return TorchBackend.libClassInit(ctx, 'torch.Tensor', [SVSize.createSize(ctx, shape, source)], source);
@@ -1131,7 +1136,7 @@ export function fetchSize(mayAddr: ShValue | undefined, heap: ShHeap): SVSize | 
 export function strLen(
     ctx: Context<any>,
     str: string | ExpString,
-    source?: CodeSource
+    source: CodeSource | undefined
 ): number | ExpNum | Context<ExpNum> {
     if (typeof str === 'string') {
         return str.length;
@@ -1142,13 +1147,13 @@ export function strLen(
             return str.value.length;
         case StringOpType.Concat: {
             let leftIsCtx = false;
-            let left = strLen(ctx, str.left);
+            let left = strLen(ctx, str.left, source);
             if (left instanceof Context) {
                 ctx = left;
                 left = left.retVal;
                 leftIsCtx = true;
             }
-            const right = strLen(ctx, str.right);
+            const right = strLen(ctx, str.right, source);
             if (right instanceof Context) {
                 const exp = simplifyNum(right.ctrSet, ExpNum.bop(NumBopType.Add, left, right.retVal, source));
                 return right.setRetVal(exp);
@@ -1159,7 +1164,7 @@ export function strLen(
         }
         case StringOpType.Slice:
             if (str.end === undefined) {
-                const baseLen = strLen(ctx, str.baseString);
+                const baseLen = strLen(ctx, str.baseString, source);
                 if (baseLen instanceof Context) {
                     return baseLen.setRetVal(ExpNum.bop(NumBopType.Sub, baseLen.retVal, str.start ?? 0, source));
                 }
@@ -1178,7 +1183,7 @@ export function strLen(
 export function absExpIndexByLen(
     index: number | ExpNum,
     rank: number | ExpNum,
-    source?: CodeSource,
+    source: CodeSource | undefined,
     ctrSet?: ConstraintSet
 ): number | ExpNum {
     if (typeof index === 'number') {
@@ -1203,7 +1208,7 @@ export function absExpIndexByLen(
 
     // don't know sign of i
     // return i + r * (1 - (r - |i|) // (r - i))
-    const r = typeof rank === 'number' ? ExpNum.fromConst(rank) : ctrSet ? simplifyNum(ctrSet, rank) : rank;
+    const r = typeof rank === 'number' ? ExpNum.fromConst(rank, source) : ctrSet ? simplifyNum(ctrSet, rank) : rank;
     return ExpNum.bop(
         NumBopType.Add,
         i,
@@ -1234,7 +1239,7 @@ export function absExpIndexByLen(
 export function reluLen(
     a: number | ExpNum,
     b: number | ExpNum,
-    source?: CodeSource,
+    source: CodeSource | undefined,
     ctrSet?: ConstraintSet
 ): number | ExpNum {
     if (typeof a === 'number' && typeof b === 'number') return b - a >= 0 ? b - a : 0;

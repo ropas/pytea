@@ -25,7 +25,7 @@ import { LCBase } from './libcall';
 
 export namespace ShapeLCImpl {
     // get (tensor, axis, repeat_count). returns new tensor repeated by repeat_count through axis.
-    export function repeat(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function repeat(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -55,7 +55,7 @@ export namespace ShapeLCImpl {
         const axisVal = axis.value;
         const countVal = count.value;
 
-        const [axisPos, axisNeg] = ctx.ifThenElse(ctx.genLte(0, axisVal), source);
+        const [axisPos, axisNeg] = ctx.ifThenElse(ctx.genLte(0, axisVal, source), source);
         const posPath = axisPos
             .flatMap((ctx) => ctx.shRepeat(shape, axisVal, countVal, source))
             .flatMap((ctx) => genTensor(ctx, ctx.retVal, source));
@@ -67,7 +67,10 @@ export namespace ShapeLCImpl {
         return posPath.join(negPath);
     }
 
-    export function size_getitem(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function size_getitem(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -96,7 +99,7 @@ export namespace ShapeLCImpl {
         return ctx.toSetWith(SVInt.create(idx, source));
     }
 
-    export function size_len(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function size_len(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx
@@ -124,7 +127,10 @@ export namespace ShapeLCImpl {
     // implementation slice of torch.Tensor.__getitem__
     // axis range is already checked from tensor.__getitem__
     // params: [inputShape, axis, index]
-    export function tensorGetItem(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function tensorGetItem(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -171,7 +177,12 @@ export namespace ShapeLCImpl {
                 )
                 .map((ctx) => {
                     const left = ExpShape.slice(shape, undefined, axisValue, source);
-                    const right = ExpShape.slice(shape, ExpNum.bop(NumBopType.Add, axisValue, 1));
+                    const right = ExpShape.slice(
+                        shape,
+                        ExpNum.bop(NumBopType.Add, axisValue, 1, source),
+                        undefined,
+                        source
+                    );
                     const result = simplifyShape(ctx.ctrSet, ExpShape.concat(left, right, source));
                     return ctx.setRetVal(SVSize.createSize(ctx, result, source));
                 });
@@ -246,7 +257,7 @@ export namespace ShapeLCImpl {
                         source
                     )
                     .flatMap((ctx) => {
-                        return genTensor(ctx, ExpShape.fromConst(1, [maskNum], source));
+                        return genTensor(ctx, ExpShape.fromConst(1, [maskNum], source), source);
                     });
             }
         }
@@ -261,7 +272,10 @@ export namespace ShapeLCImpl {
 
     // shapeConcat(T[1, 2, 3], T[4, 5, 6], obj):
     //     set size of 'obj' to be T[1, 2, 3, 4, 5, 6].
-    export function shapeConcat(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function shapeConcat(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -270,7 +284,7 @@ export namespace ShapeLCImpl {
             );
         }
 
-        const { env, heap } = ctx;
+        const heap = ctx.heap;
         const [leftAddr, rightAddr, objAddr] = params;
 
         const left = fetchSize(leftAddr, heap);

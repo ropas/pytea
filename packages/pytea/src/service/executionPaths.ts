@@ -58,7 +58,7 @@ export class FilePathStore {
         return this._pathList.length;
     }
 
-    toCodeRange(source?: CodeSource): CodeRange | undefined {
+    toCodeRange(source: CodeSource | undefined): CodeRange | undefined {
         if (!source) return;
 
         if (!('fileId' in source)) {

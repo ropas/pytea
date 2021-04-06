@@ -58,7 +58,7 @@ export interface SymbolBase {
     readonly type: SymbolType;
     readonly id: SymbolIndex;
     readonly name: string;
-    source?: CodeSource;
+    source: CodeSource | undefined;
 }
 
 export interface SymInt extends SymbolBase {
@@ -94,7 +94,7 @@ export const enum SEType {
 export interface SymExpBase {
     expType: SEType;
     opType: ShapeOpType | NumOpType | StringOpType | BoolOpType;
-    source?: CodeSource;
+    source: CodeSource | undefined;
 }
 
 //// BOOLEAN EXPRESSION
@@ -346,11 +346,11 @@ export namespace SymExp {
     export function fromConst(value: SymExp | string | boolean | number): SymExp {
         switch (typeof value) {
             case 'number':
-                return ExpNum.fromConst(value);
+                return ExpNum.fromConst(value, undefined);
             case 'boolean':
-                return ExpBool.fromConst(value);
+                return ExpBool.fromConst(value, undefined);
             case 'string':
-                return ExpString.fromConst(value);
+                return ExpString.fromConst(value, undefined);
             default:
                 return value;
         }
@@ -571,7 +571,7 @@ export namespace SymExp {
 }
 
 export namespace ExpBool {
-    export function fromConst(value: boolean, source?: CodeSource): ExpBoolConst {
+    export function fromConst(value: boolean, source: CodeSource | undefined): ExpBoolConst {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.Const,
@@ -589,7 +589,7 @@ export namespace ExpBool {
         };
     }
 
-    export function eq(left: SymExp, right: SymExp, source?: CodeSource): ExpBoolEq {
+    export function eq(left: SymExp, right: SymExp, source: CodeSource | undefined): ExpBoolEq {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.Equal,
@@ -599,7 +599,7 @@ export namespace ExpBool {
         };
     }
 
-    export function neq(left: SymExp, right: SymExp, source?: CodeSource): ExpBoolNeq {
+    export function neq(left: SymExp, right: SymExp, source: CodeSource | undefined): ExpBoolNeq {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.NotEqual,
@@ -608,26 +608,26 @@ export namespace ExpBool {
             source,
         };
     }
-    export function lt(left: ExpNum | number, right: ExpNum | number, source?: CodeSource): ExpBoolLt {
+    export function lt(left: ExpNum | number, right: ExpNum | number, source: CodeSource | undefined): ExpBoolLt {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.LessThan,
-            left: ExpNum.toExp(left),
-            right: ExpNum.toExp(right),
+            left: ExpNum.toExp(left, undefined),
+            right: ExpNum.toExp(right, undefined),
             source,
         };
     }
-    export function lte(left: ExpNum | number, right: ExpNum | number, source?: CodeSource): ExpBoolLte {
+    export function lte(left: ExpNum | number, right: ExpNum | number, source: CodeSource | undefined): ExpBoolLte {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.LessThanOrEqual,
-            left: ExpNum.toExp(left),
-            right: ExpNum.toExp(right),
+            left: ExpNum.toExp(left, undefined),
+            right: ExpNum.toExp(right, undefined),
             source,
         };
     }
 
-    export function not(baseBool: ExpBool, source?: CodeSource): ExpBoolNot {
+    export function not(baseBool: ExpBool, source: CodeSource | undefined): ExpBoolNot {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.Not,
@@ -636,7 +636,7 @@ export namespace ExpBool {
         };
     }
 
-    export function and(left: ExpBool, right: ExpBool, source?: CodeSource): ExpBoolAnd {
+    export function and(left: ExpBool, right: ExpBool, source: CodeSource | undefined): ExpBoolAnd {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.And,
@@ -646,7 +646,7 @@ export namespace ExpBool {
         };
     }
 
-    export function or(left: ExpBool, right: ExpBool, source?: CodeSource): ExpBoolOr {
+    export function or(left: ExpBool, right: ExpBool, source: CodeSource | undefined): ExpBoolOr {
         return {
             expType: SEType.Bool,
             opType: BoolOpType.Or,
@@ -681,7 +681,7 @@ export namespace ExpBool {
 }
 
 export namespace ExpNum {
-    export function toExp(value: number | ExpNum, source?: CodeSource): ExpNum {
+    export function toExp(value: number | ExpNum, source: CodeSource | undefined): ExpNum {
         if (typeof value === 'number') {
             return ExpNum.fromConst(value, source);
         } else {
@@ -689,7 +689,7 @@ export namespace ExpNum {
         }
     }
 
-    export function fromConst(value: number, source?: CodeSource): ExpNumConst {
+    export function fromConst(value: number, source: CodeSource | undefined): ExpNumConst {
         return {
             expType: SEType.Num,
             opType: NumOpType.Const,
@@ -711,35 +711,35 @@ export namespace ExpNum {
         bopType: NumBopType,
         left: ExpNum | number,
         right: ExpNum | number,
-        source?: CodeSource
+        source: CodeSource | undefined
     ): ExpNumBop {
         if (typeof left === 'number') {
-            left = ExpNum.fromConst(left);
+            left = ExpNum.fromConst(left, source);
         }
         if (typeof right === 'number') {
-            right = ExpNum.fromConst(right);
+            right = ExpNum.fromConst(right, source);
         }
         return {
             expType: SEType.Num,
             opType: NumOpType.Bop,
             bopType,
-            left: ExpNum.toExp(left),
-            right: ExpNum.toExp(right),
+            left: ExpNum.toExp(left, undefined),
+            right: ExpNum.toExp(right, undefined),
             source,
         };
     }
 
-    export function index(baseShape: ExpShape, index: ExpNum | number, source?: CodeSource): ExpNumIndex {
+    export function index(baseShape: ExpShape, index: ExpNum | number, source: CodeSource | undefined): ExpNumIndex {
         return {
             expType: SEType.Num,
             opType: NumOpType.Index,
             baseShape,
-            index: ExpNum.toExp(index),
+            index: ExpNum.toExp(index, undefined),
             source: source ? source : baseShape.source,
         };
     }
 
-    export function max(values: (ExpNum | number)[], source?: CodeSource): ExpNumMax {
+    export function max(values: (ExpNum | number)[], source: CodeSource | undefined): ExpNumMax {
         return {
             expType: SEType.Num,
             opType: NumOpType.Max,
@@ -748,7 +748,7 @@ export namespace ExpNum {
         };
     }
 
-    export function min(values: (ExpNum | number)[], source?: CodeSource): ExpNumMin {
+    export function min(values: (ExpNum | number)[], source: CodeSource | undefined): ExpNumMin {
         return {
             expType: SEType.Num,
             opType: NumOpType.Min,
@@ -757,7 +757,7 @@ export namespace ExpNum {
         };
     }
 
-    export function numel(shape: ExpShape, source?: CodeSource): ExpNumNumel {
+    export function numel(shape: ExpShape, source: CodeSource | undefined): ExpNumNumel {
         return {
             expType: SEType.Num,
             opType: NumOpType.Numel,
@@ -766,15 +766,15 @@ export namespace ExpNum {
         };
     }
 
-    export function uop(uopType: NumUopType, baseValue: number | ExpNum, source?: CodeSource): ExpNumUop {
+    export function uop(uopType: NumUopType, baseValue: number | ExpNum, source: CodeSource | undefined): ExpNumUop {
         if (typeof baseValue === 'number') {
-            baseValue = ExpNum.fromConst(baseValue);
+            baseValue = ExpNum.fromConst(baseValue, source);
         }
         return {
             expType: SEType.Num,
             opType: NumOpType.Uop,
             uopType,
-            baseValue: ExpNum.toExp(baseValue),
+            baseValue: ExpNum.toExp(baseValue, undefined),
             source,
         };
     }
@@ -832,12 +832,12 @@ export namespace ExpNum {
 }
 
 export namespace ExpShape {
-    export function fromConst(rank: number, dims: (number | ExpNum)[], source?: CodeSource): ExpShapeConst {
+    export function fromConst(rank: number, dims: (number | ExpNum)[], source: CodeSource | undefined): ExpShapeConst {
         return {
             expType: SEType.Shape,
             opType: ShapeOpType.Const,
             rank,
-            dims: dims.map((d) => ExpNum.toExp(d)),
+            dims: dims.map((d) => ExpNum.toExp(d, undefined)),
             source,
         };
     }
@@ -855,35 +855,35 @@ export namespace ExpShape {
         baseShape: ExpShape,
         axis: number | ExpNum,
         dim: number | ExpNum,
-        source?: CodeSource
+        source: CodeSource | undefined
     ): ExpShapeSet {
         return {
             expType: SEType.Shape,
             opType: ShapeOpType.Set,
             baseShape,
-            axis: typeof axis === 'number' ? ExpNum.fromConst(axis) : axis,
-            dim: typeof dim === 'number' ? ExpNum.fromConst(dim) : dim,
+            axis: typeof axis === 'number' ? ExpNum.fromConst(axis, undefined) : axis,
+            dim: typeof dim === 'number' ? ExpNum.fromConst(dim, undefined) : dim,
             source,
         };
     }
 
     export function slice(
         baseShape: ExpShape,
-        start?: ExpNum | number,
-        end?: ExpNum | number,
-        source?: CodeSource
+        start: ExpNum | number | undefined,
+        end: ExpNum | number | undefined,
+        source: CodeSource | undefined
     ): ExpShapeSlice {
         return {
             expType: SEType.Shape,
             opType: ShapeOpType.Slice,
             baseShape,
-            start: start !== undefined ? ExpNum.toExp(start) : undefined,
-            end: end !== undefined ? ExpNum.toExp(end) : undefined,
+            start: start !== undefined ? ExpNum.toExp(start, undefined) : undefined,
+            end: end !== undefined ? ExpNum.toExp(end, undefined) : undefined,
             source: source ? source : baseShape.source,
         };
     }
 
-    export function concat(left: ExpShape, right: ExpShape, source?: CodeSource): ExpShapeConcat {
+    export function concat(left: ExpShape, right: ExpShape, source: CodeSource | undefined): ExpShapeConcat {
         return {
             expType: SEType.Shape,
             opType: ShapeOpType.Concat,
@@ -893,7 +893,7 @@ export namespace ExpShape {
         };
     }
 
-    export function broadcast(left: ExpShape, right: ExpShape, source?: CodeSource): ExpShapeBroadcast {
+    export function broadcast(left: ExpShape, right: ExpShape, source: CodeSource | undefined): ExpShapeBroadcast {
         return {
             expType: SEType.Shape,
             opType: ShapeOpType.Broadcast,
@@ -993,7 +993,7 @@ export namespace ExpShape {
 }
 
 export namespace ExpString {
-    export function toExp(value: string | ExpString, source?: CodeSource): ExpString {
+    export function toExp(value: string | ExpString, source: CodeSource | undefined): ExpString {
         if (typeof value === 'string') {
             return ExpString.fromConst(value, source);
         } else if (source) {
@@ -1003,7 +1003,7 @@ export namespace ExpString {
         }
     }
 
-    export function fromConst(value: string, source?: CodeSource): ExpStringConst {
+    export function fromConst(value: string, source: CodeSource | undefined): ExpStringConst {
         return {
             expType: SEType.String,
             opType: StringOpType.Const,
@@ -1023,26 +1023,30 @@ export namespace ExpString {
 
     export function slice(
         baseString: ExpString,
-        start?: ExpNum | number,
-        end?: ExpNum | number,
-        source?: CodeSource
+        start: ExpNum | number | undefined,
+        end: ExpNum | number | undefined,
+        source: CodeSource | undefined
     ): ExpStringSlice {
         return {
             expType: SEType.String,
             opType: StringOpType.Slice,
             baseString,
-            start: ExpNum.toExp(start ? start : 0),
-            end: ExpNum.toExp(end ? end : 0),
+            start: ExpNum.toExp(start ? start : 0, undefined),
+            end: ExpNum.toExp(end ? end : 0, undefined),
             source,
         };
     }
 
-    export function concat(left: ExpString | string, right: ExpString | string, source?: CodeSource): ExpStringConcat {
+    export function concat(
+        left: ExpString | string,
+        right: ExpString | string,
+        source: CodeSource | undefined
+    ): ExpStringConcat {
         return {
             expType: SEType.String,
             opType: StringOpType.Concat,
-            left: ExpString.toExp(left),
-            right: ExpString.toExp(right),
+            left: ExpString.toExp(left, undefined),
+            right: ExpString.toExp(right, undefined),
             source,
         };
     }

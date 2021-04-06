@@ -109,7 +109,7 @@ export namespace TorchBackend {
 
                 const notImplAddr = moduleEnv.getId('NotImplemented');
                 if (notImplAddr) {
-                    newHeap = newHeap.setVal(notImplAddr, SVNotImpl.create('implicit NotImplemented'));
+                    newHeap = newHeap.setVal(notImplAddr, SVNotImpl.create('implicit NotImplemented', module.source));
                 }
 
                 // run GC
@@ -150,7 +150,9 @@ export namespace TorchBackend {
 
                 if (pathCnt > pathLimit) {
                     ctxSet.failed = ctxSet.stopped.merge(
-                        ctxSet.ctxList.map((ctx) => ctx.failWithMsg(`path count exceeded limit (max: ${maxPath})`))
+                        ctxSet.ctxList.map((ctx) =>
+                            ctx.failWithMsg(`path count exceeded limit (max: ${maxPath})`, stmt.source)
+                        )
                     );
                     ctxSet.ctxList = List();
                 }
@@ -173,7 +175,7 @@ export namespace TorchBackend {
 
                 if (new Date().getTime() - startTime > timeout && ctxSet.ctxList.count() > 0) {
                     ctxSet.failed = ctxSet.stopped.merge(
-                        ctxSet.ctxList.map((ctx) => ctx.failWithMsg(`timeout expired (${timeout}ms)`))
+                        ctxSet.ctxList.map((ctx) => ctx.failWithMsg(`timeout expired (${timeout}ms)`, stmt.source))
                     );
                     ctxSet.ctxList = List();
                 }
@@ -254,7 +256,7 @@ export namespace TorchBackend {
         ctx: Context<T>,
         classObj: SVObject,
         args: ShValue[],
-        source?: CodeSource,
+        source: CodeSource | undefined,
         kwargs?: { [paramName: string]: ShValue }
     ): ContextSet<ShValue> {
         const init = BackUtils.fetchAddr(classObj.getAttr('__call__'), ctx.heap);
@@ -269,7 +271,7 @@ export namespace TorchBackend {
         ctx: Context<T>,
         qualPath: string,
         args: ShValue[],
-        source?: CodeSource,
+        source: CodeSource | undefined,
         kwargs?: { [paramName: string]: ShValue }
     ): ContextSet<ShValue> {
         const addr = ctx.imported.getId(qualPath);
@@ -290,7 +292,7 @@ export namespace TorchBackend {
         ctx: Context<T>,
         f: SVFunc | undefined,
         args: ShValue[],
-        source?: CodeSource,
+        source: CodeSource | undefined,
         kwargs?: { [paramName: string]: ShValue }
     ): ContextSet<ShValue> {
         const { env, heap } = ctx;
@@ -315,7 +317,7 @@ export namespace TorchBackend {
 
         const paramAddrs: Map<string, SVAddr> = new Map();
         f.params.forEach((param) => {
-            const [addr, h] = newHeap.malloc();
+            const [addr, h] = newHeap.malloc(source);
             newHeap = h;
             fEnv = fEnv.setId(param, addr);
             paramAddrs.set(param, addr);
@@ -334,7 +336,7 @@ export namespace TorchBackend {
 
         let varargTuple: SVObject | undefined;
         if (f.varargsParam) {
-            const tuple = SVObject.createWithAddr(paramAddrs.get(f.varargsParam!)!);
+            const tuple = SVObject.createWithAddr(paramAddrs.get(f.varargsParam!)!, source);
             varargTuple = tuple;
         }
 
@@ -362,7 +364,7 @@ export namespace TorchBackend {
         let kwargLen = 0;
         if (f.kwargsParam) {
             const dictAddr = paramAddrs.get(f.kwargsParam!)!;
-            kwargDict = SVObject.createWithAddr(dictAddr);
+            kwargDict = SVObject.createWithAddr(dictAddr, source);
         }
 
         if (kwargs) {
@@ -415,7 +417,7 @@ export namespace TorchBackend {
         ctxSet: ContextSet<T>,
         f: SVFunc,
         args: ShValue[],
-        source?: CodeSource,
+        source: CodeSource | undefined,
         kwargs?: { [paramName: string]: ShValue }
     ): ContextSet<ShValue> {
         return ctxSet.flatMap((ctx) => functionCall(ctx, f, args, source, kwargs));
@@ -453,7 +455,7 @@ export namespace TorchBackend {
         ctx: Context<T>,
         object: ShValue,
         name: string,
-        source?: CodeSource
+        source: CodeSource | undefined
     ): ContextSet<ShValue> {
         const objVal = BackUtils.fetchAddr(object, ctx.heap);
 
@@ -507,7 +509,7 @@ export namespace TorchBackend {
                 // iterate superclasses and find matching attr.
                 for (const superAddr of mro) {
                     if (superAddr === undefined) continue;
-                    const superClass = BackUtils.fetchAddr(SVAddr.create(superAddr), ctx.heap);
+                    const superClass = BackUtils.fetchAddr(SVAddr.create(superAddr, source), ctx.heap);
 
                     if (!superClass) continue;
                     classes.push(superClass);
@@ -570,7 +572,7 @@ export namespace TorchBackend {
         ctx: Context<T>,
         object: ShValue,
         index: number | ExpNum,
-        source?: CodeSource
+        source: CodeSource | undefined
     ): ContextSet<ShValue> {
         const objVal = BackUtils.fetchAddr(object, ctx.heap);
 
@@ -599,7 +601,7 @@ export namespace TorchBackend {
         ctx: Context<T>,
         object: ShValue,
         key: string,
-        source?: CodeSource
+        source: CodeSource | undefined
     ): ContextSet<ShValue> {
         const objVal = BackUtils.fetchAddr(object, ctx.heap);
 
@@ -698,7 +700,7 @@ export namespace TorchBackend {
                     return ctx.failWithMsg(`${ctx.retVal} is not an address`, stmt.source).toSet() as CtxStmt;
                 }
 
-                return ctx.getAttrDeep(obj, '__setitem__').flatMap((ctx) => {
+                return ctx.getAttrDeep(obj, '__setitem__', stmt.source).flatMap((ctx) => {
                     const func = BackUtils.fetchAddr(ctx.retVal, ctx.heap);
 
                     // __setitem__ is not exist. assume lexpr is list and use default behaviour.
@@ -752,7 +754,7 @@ export namespace TorchBackend {
                 });
             });
         } else {
-            return ctxSet.fail('cannot reach here');
+            return ctxSet.fail('cannot reach here', stmt.source);
         }
     }
 
@@ -865,7 +867,7 @@ export namespace TorchBackend {
                     if (ctx.env.hasId(ident)) {
                         identAddr = ctx.env.getId(ident)!;
                     } else {
-                        const [newAddr, newHeap] = ctx.heap.malloc();
+                        const [newAddr, newHeap] = ctx.heap.malloc(stmt.loopVal.source);
                         identAddr = newAddr;
                         const newEnv = ctx.env.setId(ident, identAddr);
                         newCtx = ctx.setEnv(newEnv).setHeap(newHeap);
@@ -990,12 +992,22 @@ export namespace TorchBackend {
         // TODO: before implement SMT on a symbolic value, we require that loopCnt is bigger than 0
         // TODO: When loopCnt is evaluated to 0. currently, 0 <= for$ident <= -1 -> hard constraints conflict.
         return ctx
-            .require(ctx.genLte(0, loopCnt), 'length of iterator is less than 0', stmt.loopVal.source)
+            .require(
+                ctx.genLte(0, loopCnt, stmt.loopVal.source),
+                'length of iterator is less than 0',
+                stmt.loopVal.source
+            )
             .flatMap((ctx) => {
                 const identCtx = ctx.genIntGte('for$ident', 0, stmt.loopVal.source);
                 const ident = identCtx.retVal;
                 let nextSetIter: ContextSet<ShValue | ShContFlag> = identCtx
-                    .guarantee(identCtx.genLte(ident, ExpNum.bop(NumBopType.Sub, loopCnt, 1, stmt.loopVal.source)))
+                    .guarantee(
+                        identCtx.genLte(
+                            ident,
+                            ExpNum.bop(NumBopType.Sub, loopCnt, 1, stmt.loopVal.source),
+                            stmt.loopVal.source
+                        )
+                    )
                     .toSetWith(ShContFlag.Run);
 
                 nextSetIter = nextSetIter.flatMap((ctx) => {
@@ -1065,7 +1077,7 @@ export namespace TorchBackend {
         return ctxSet.flatMap((ctx) => {
             const env = ctx.env;
             const heap = ctx.heap;
-            const func = SVFunc.create(funName, List(params), stmt_body, env);
+            const func = SVFunc.create(funName, List(params), stmt_body, env, stmt.source);
 
             const [addr, newHeap] = heap.allocNew(func, stmt.source);
             const newCtx = ctx.setEnv(env.setId(funName, addr)).setHeap(newHeap);
@@ -1212,7 +1224,7 @@ export namespace TorchBackend {
                 } else if (truthy === false) {
                     return isAnd ? ctx.toSet() : evaluate(ctx.toSet(), expr.right);
                 } else {
-                    const [truePath, falsePath] = ctx.toSet().ifThenElse(truthy);
+                    const [truePath, falsePath] = ctx.toSet().ifThenElse(truthy, expr.source);
                     if (isAnd) {
                         return evaluate(truePath, expr.right).join(falsePath);
                     } else {
@@ -1274,13 +1286,13 @@ export namespace TorchBackend {
                 if (SymOpUtils.isNumeric(leftVal) && SymOpUtils.isNumeric(rightVal)) {
                     if (leftVal.type === SVType.Bool) {
                         const lvSet = ctrSet.castBoolToInt(leftVal.value, expr.source as ExpressionNode);
-                        leftVal = SVInt.create(lvSet[0]);
+                        leftVal = SVInt.create(lvSet[0], expr.left.source);
                         ctrSet = lvSet[1];
                     }
 
                     if (rightVal.type === SVType.Bool) {
                         const rvSet = ctrSet.castBoolToInt(rightVal.value, expr.source as ExpressionNode);
-                        rightVal = SVInt.create(rvSet[0]);
+                        rightVal = SVInt.create(rvSet[0], expr.right.source);
                         ctrSet = rvSet[1];
                     }
 
@@ -1298,7 +1310,7 @@ export namespace TorchBackend {
                     } else if (rightVal.type === SVType.None) {
                         return ctx.toSetWith(SVBool.create(false, expr.source));
                     }
-                    return ctx.toSetWith(SVBool.create(false));
+                    return ctx.toSetWith(SVBool.create(false, expr.source));
                 } else if (expr.bopType === TEBopType.IsNot) {
                     if (leftAddr.type === SVType.Addr && rightAddr.type === SVType.Addr) {
                         return ctx.toSetWith(SVBool.create(leftAddr.addr !== rightAddr.addr, expr.source));
@@ -1307,7 +1319,7 @@ export namespace TorchBackend {
                     } else if (rightVal.type === SVType.None) {
                         return ctx.toSetWith(SVBool.create(true, expr.source));
                     }
-                    return ctx.toSetWith(SVBool.create(true));
+                    return ctx.toSetWith(SVBool.create(true, expr.source));
                 }
 
                 // object dunder operator
@@ -1371,14 +1383,14 @@ export namespace TorchBackend {
                     switch (expr.uopType) {
                         case TEUopType.Neg:
                             if (value.type === SVType.Bool) {
-                                const [castVal, ctrNew] = ctx.ctrSet.castBoolToInt(value.value);
+                                const [castVal, ctrNew] = ctx.ctrSet.castBoolToInt(value.value, value.source);
                                 newValue = SVInt.create(castVal, value.source);
                                 newCtx = ctx.setCtrSet(ctrNew);
                             }
                             break;
                         case TEUopType.Not:
                             if (value.type === SVType.Int || value.type === SVType.Float) {
-                                const castVal = ctx.ctrSet.castNumToBool(value.value);
+                                const castVal = ctx.ctrSet.castNumToBool(value.value, value.source);
                                 if (typeof castVal === 'string') {
                                     return ctx.warnWithMsg(castVal, expr.source).toSet();
                                 }
@@ -1474,7 +1486,7 @@ export namespace TorchBackend {
         ctx: Context<T>,
         obj: SVObject,
         idx: number | ExpNum,
-        source?: CodeSource
+        source: CodeSource | undefined
     ): ShValue | undefined {
         // TODO: compromise idx is not a constant
         // TODO: typecheck that obj is tensor.
@@ -1508,7 +1520,7 @@ export namespace TorchBackend {
         ctx: Context<T>,
         obj: SVObject,
         key: string | ExpString,
-        source?: CodeSource
+        source: CodeSource | undefined
     ): ShValue | undefined {
         // TODO: compromise idx is not a constant
         // TODO: typecheck that obj is tensor.

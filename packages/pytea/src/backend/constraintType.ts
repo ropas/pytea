@@ -42,7 +42,7 @@ export type ConstraintIndex = number;
 export interface ConstraintBase {
     type: ConstraintType;
     id: ConstraintIndex;
-    source?: CodeSource;
+    source: CodeSource | undefined;
 }
 
 export interface CtrExpBool extends ConstraintBase {

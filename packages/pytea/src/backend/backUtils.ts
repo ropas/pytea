@@ -190,7 +190,7 @@ export function isSameAddr(val1: ShValue, val2: ShValue, heap: ShHeap): boolean 
 }
 
 // if one cannot say value is truthy or falsy, return a constraint if cannot determine it.
-export function isTruthy<T>(ctx: Context<T>, value: ShValue, source?: CodeSource): boolean | Constraint {
+export function isTruthy<T>(ctx: Context<T>, value: ShValue, source: CodeSource | undefined): boolean | Constraint {
     const { heap, ctrSet } = ctx;
 
     switch (value.type) {
@@ -241,7 +241,12 @@ export function isTruthy<T>(ctx: Context<T>, value: ShValue, source?: CodeSource
                 return value.value !== '';
             } else {
                 // TODO: cache string.
-                return ctrSet.genEquality(ConstraintType.NotEqual, value.value, ExpString.fromConst(''), source);
+                return ctrSet.genEquality(
+                    ConstraintType.NotEqual,
+                    value.value,
+                    ExpString.fromConst('', source),
+                    source
+                );
             }
         case SVType.None:
             return false;
@@ -265,7 +270,12 @@ export namespace SymOpUtils {
     }
 
     // left.value and right.value should be non-symbolic
-    export function binOpLiteral(left: SVNumeric, right: SVNumeric, bop: TEBopType, source?: CodeSource): ShValue {
+    export function binOpLiteral(
+        left: SVNumeric,
+        right: SVNumeric,
+        bop: TEBopType,
+        source: CodeSource | undefined
+    ): ShValue {
         const leftVal = left.value as number | boolean;
         const rightVal = right.value as number | boolean;
         const leftNum = +leftVal;
@@ -339,7 +349,7 @@ export namespace SymOpUtils {
     }
 
     // cast boolean to number or number to boolean before use it.
-    export function binOpNum(left: SVNumber, right: SVNumber, bop: TEBopType, source?: CodeSource): ShValue {
+    export function binOpNum(left: SVNumber, right: SVNumber, bop: TEBopType, source: CodeSource | undefined): ShValue {
         let resultType: SVType;
         let resultValue: ExpNum | ExpBool;
 
@@ -349,8 +359,8 @@ export namespace SymOpUtils {
 
         const leftVal = left.value;
         const rightVal = right.value;
-        const leftExp = typeof leftVal === 'number' ? ExpNum.fromConst(leftVal) : leftVal;
-        const rightExp = typeof rightVal === 'number' ? ExpNum.fromConst(rightVal) : rightVal;
+        const leftExp = typeof leftVal === 'number' ? ExpNum.fromConst(leftVal, source) : leftVal;
+        const rightExp = typeof rightVal === 'number' ? ExpNum.fromConst(rightVal, source) : rightVal;
 
         switch (bop) {
             case TEBopType.Add:
@@ -426,7 +436,7 @@ export namespace SymOpUtils {
         left: string,
         right: string,
         bop: TEBopType,
-        source?: CodeSource
+        source: CodeSource | undefined
     ): ShValue | undefined {
         switch (bop) {
             case TEBopType.Add:
@@ -464,8 +474,8 @@ export namespace SymOpUtils {
             return binOpStrLiteral(left.value, right.value, bop, source);
         }
 
-        const leftExp = typeof left.value === 'string' ? ExpString.fromConst(left.value) : left.value;
-        const rightExp = typeof right.value === 'string' ? ExpString.fromConst(right.value) : right.value;
+        const leftExp = typeof left.value === 'string' ? ExpString.fromConst(left.value, source) : left.value;
+        const rightExp = typeof right.value === 'string' ? ExpString.fromConst(right.value, source) : right.value;
         let symName: string | undefined;
 
         switch (bop) {
@@ -518,7 +528,7 @@ export namespace SymOpUtils {
 
                 const repeatN = numRng.start;
                 if (typeof left.value === 'string') {
-                    return SVString.create(left.value.repeat(repeatN));
+                    return SVString.create(left.value.repeat(repeatN), source);
                 } else {
                     // TODO: concat n times.
                     switch (repeatN) {
@@ -547,7 +557,7 @@ export namespace SymOpUtils {
         }
     }
 
-    export function unaryOp(base: SVNumeric, uop: TEUopType, source?: CodeSource): ShValue {
+    export function unaryOp(base: SVNumeric, uop: TEUopType, source: CodeSource | undefined): ShValue {
         let resultType: SVNumericType;
         let result: number | boolean | ExpNum | ExpBool;
 

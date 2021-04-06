@@ -10,7 +10,10 @@ import { LCImpl } from '..';
 import { LCBase } from '../libcall';
 
 export namespace NumpyLCImpl {
-    export function ndarrayInit(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function ndarrayInit(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         // A replica of torch.tensorInit() in torch/index.ts
         // internally, numpy.ndarray shares structure with torch.Tensor.
 
@@ -66,7 +69,10 @@ export namespace NumpyLCImpl {
     }
 
     // A replica of torch.identityShape() in torch/index.ts
-    export function identityShape(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function identityShape(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx.warnTensorWithMsg(
@@ -90,7 +96,10 @@ export namespace NumpyLCImpl {
     }
 
     // A replica of torch.broadcast() in torch/index.ts
-    export function broadcast(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function broadcast(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -118,7 +127,7 @@ export namespace NumpyLCImpl {
     }
 
     // A replica of torch.matmul() in torch/index.ts
-    export function matmul(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function matmul(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -160,7 +169,11 @@ export namespace NumpyLCImpl {
 
                     const lr11 = rightOnePath
                         .flatMap((ctx) => {
-                            const sameDim = ctx.genEq(ExpNum.index(leftShape, 0), ExpNum.index(rightShape, 0), source);
+                            const sameDim = ctx.genEq(
+                                ExpNum.index(leftShape, 0, source),
+                                ExpNum.index(rightShape, 0, source),
+                                source
+                            );
                             return ctx.require(
                                 [sameDim],
                                 `from 'LibCall.numpy.matmul': dimension mismatch between rank-1 tensors`,
@@ -169,17 +182,18 @@ export namespace NumpyLCImpl {
                         })
                         .flatMap((ctx) => genNdarray(ctx, ExpShape.fromConst(0, [], source), source));
 
-                    const rightAxis = ExpNum.bop(NumBopType.Sub, rightRank, 2);
+                    const rightAxis = ExpNum.bop(NumBopType.Sub, rightRank, 2, source);
                     const lr12 = rightTwoPath
                         .flatMap((ctx) => {
                             const sameDim = ctx.genEq(
-                                ExpNum.index(leftShape, 0),
-                                ExpNum.index(rightShape, rightAxis),
+                                ExpNum.index(leftShape, 0, source),
+                                ExpNum.index(rightShape, rightAxis, source),
                                 source
                             );
                             return ctx.require(
                                 [sameDim],
-                                `from 'LibCall.numpy.matmul: dimension mismatch between rank-1 @ rank-n`
+                                `from 'LibCall.numpy.matmul: dimension mismatch between rank-1 @ rank-n`,
+                                source
                             );
                         })
                         .flatMap((ctx) => ctx.shReduce(rightShape, rightAxis, source))
@@ -196,8 +210,8 @@ export namespace NumpyLCImpl {
                     const lr21 = rightOnePath
                         .flatMap((ctx) => {
                             const sameDim = ctx.genEq(
-                                ExpNum.index(leftShape, leftAxis),
-                                ExpNum.index(rightShape, 0),
+                                ExpNum.index(leftShape, leftAxis, source),
+                                ExpNum.index(rightShape, 0, source),
                                 source
                             );
                             return ctx.require(
@@ -221,7 +235,10 @@ export namespace NumpyLCImpl {
     }
 
     // get `(arrAddr: ndarray, imgAddr: PIL Image)`, set shape of `arr` to SVSize with shape of `img`
-    export function fromImage(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function fromImage(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -266,7 +283,10 @@ export namespace NumpyLCImpl {
 
     // Assumption: "tensors" is a constantRanked sequence, and each element is available.
     // TODO: handle empty tensor.
-    export function concatenate(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function concatenate(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -313,10 +333,10 @@ export namespace NumpyLCImpl {
         const size0rank = size0.rank();
         const axis = absExpIndexByLen(axisSV.value, size0rank, source);
         const shape0Front = ExpShape.slice(size0shape, 0, axis, source);
-        const shape0Back = ExpShape.slice(size0shape, ExpNum.bop(NumBopType.Add, axis, 1), size0rank, source);
+        const shape0Back = ExpShape.slice(size0shape, ExpNum.bop(NumBopType.Add, axis, 1, source), size0rank, source);
 
         // TODO: handle negative index.
-        const ctrs: Constraint[] = [ctx.genLte(0, axis, source), ctx.genLt(axis, size0rank)];
+        const ctrs: Constraint[] = [ctx.genLte(0, axis, source), ctx.genLt(axis, size0rank, source)];
         let thickness: ExpNum = ExpNum.index(size0shape, axis, source);
 
         for (let i = 1; i < seqLen; i++) {
@@ -326,11 +346,16 @@ export namespace NumpyLCImpl {
             }
             const sizeIshape = sizeI.shape;
             const shapeIFront = ExpShape.slice(sizeIshape, 0, axis, source);
-            const shapeIBack = ExpShape.slice(sizeIshape, ExpNum.bop(NumBopType.Add, axis, 1), size0rank, source);
+            const shapeIBack = ExpShape.slice(
+                sizeIshape,
+                ExpNum.bop(NumBopType.Add, axis, 1, source),
+                size0rank,
+                source
+            );
 
             ctrs.push(ctx.genEq(shape0Front, shapeIFront, source));
             ctrs.push(ctx.genEq(shape0Back, shapeIBack, source));
-            thickness = ExpNum.bop(NumBopType.Add, thickness, ExpNum.index(sizeIshape, axis, source));
+            thickness = ExpNum.bop(NumBopType.Add, thickness, ExpNum.index(sizeIshape, axis, source), source);
         }
 
         const shapeThick = ExpShape.fromConst(1, [thickness], source);
@@ -340,11 +365,11 @@ export namespace NumpyLCImpl {
         return ctx
             .require(ctrs, `from 'LibCall.numpy.concatenate': shapes must match, axis must be within rank`, source)
             .flatMap((ctx) => {
-                return genNdarray(ctx, returnShape);
+                return genNdarray(ctx, returnShape, source);
             });
     }
 
-    export function copyOut(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function copyOut(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -379,7 +404,7 @@ export namespace NumpyLCImpl {
             .return(SVNone.create(source));
     }
 
-    export function reduce(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function reduce(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 4) {
             return ctx.warnTensorWithMsg(
@@ -449,12 +474,20 @@ export namespace NumpyLCImpl {
                 } else {
                     const dim = ctx.genSymInt('dim', source);
                     const ctrEq = ctx.genEq(ExpNum.fromSymbol(dim), 1, source);
-                    return ctx.require(ctx.genForall(dim, [0, selfRank], ctrEq, source)).flatMap((ctx) => {
-                        return ctx.genRankedShape(selfRank, source).flatMap((ctx) => {
-                            const rankedShape = ctx.retVal;
-                            return genNdarray(ctx, rankedShape, source);
+
+                    // TODO: what is this requirement?
+                    return ctx
+                        .require(
+                            ctx.genForall(dim, [0, selfRank], ctrEq, source),
+                            `from 'LibCall.numpy.reduce': dimension error`,
+                            source
+                        )
+                        .flatMap((ctx) => {
+                            return ctx.genRankedShape(selfRank, source).flatMap((ctx) => {
+                                const rankedShape = ctx.retVal;
+                                return genNdarray(ctx, rankedShape, source);
+                            });
                         });
-                    });
                 }
             } else {
                 // TODO: data type
@@ -529,7 +562,7 @@ export namespace NumpyLCImpl {
         }
     }
 
-    export function flatten(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function flatten(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 1) {
             return ctx.warnTensorWithMsg(
@@ -553,10 +586,10 @@ export namespace NumpyLCImpl {
         // np.flatten only outputs 1-D array
         const returnShape = ExpShape.fromConst(1, [ExpNum.numel(inputShape, source)], source);
 
-        return ctx.require([]).flatMap((ctx) => genNdarray(ctx, returnShape, source));
+        return genNdarray(ctx, returnShape, source);
     }
 
-    function genNdarray<T>(ctx: Context<T>, shape: ExpShape, source?: CodeSource): ContextSet<ShValue> {
+    function genNdarray<T>(ctx: Context<T>, shape: ExpShape, source: CodeSource | undefined): ContextSet<ShValue> {
         const newShape = simplifyShape(ctx.ctrSet, shape);
 
         return TorchBackend.libClassInit(ctx, 'numpy.ndarray', [SVSize.createSize(ctx, newShape, source)], source);
@@ -602,7 +635,10 @@ export namespace NumpyLCImpl {
      * x[rows, columns] -> array([[ 0,  2],
      *                            [ 9, 11]])
      */
-    export function indexIntarrays(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function indexIntarrays(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -611,7 +647,7 @@ export namespace NumpyLCImpl {
             );
         }
 
-        const { env, heap } = ctx;
+        const heap = ctx.heap;
         const [sizeAddr, lenAddr, arraysAddr] = params;
 
         const size = fetchAddr(sizeAddr, heap);
@@ -648,7 +684,10 @@ export namespace NumpyLCImpl {
             });
     }
 
-    export function indexBoolarray(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function indexBoolarray(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx.warnTensorWithMsg(
@@ -657,7 +696,7 @@ export namespace NumpyLCImpl {
             );
         }
 
-        const { env, heap } = ctx;
+        const heap = ctx.heap;
         const [sizeAddr, boolarrAddr] = params;
 
         const size = fetchAddr(sizeAddr, heap);
@@ -683,7 +722,7 @@ export namespace NumpyLCImpl {
                 source
             )
             .flatMap((ctx) => {
-                return genNdarray(ctx, ExpShape.fromConst(1, [maskNum], source));
+                return genNdarray(ctx, ExpShape.fromConst(1, [maskNum], source), source);
             });
     }
 

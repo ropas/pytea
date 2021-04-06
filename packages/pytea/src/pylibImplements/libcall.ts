@@ -34,20 +34,26 @@ export namespace LCBase {
     export interface ExplicitParams {
         params: ShValue[];
     }
-    export function explicit(ctx: Context<ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function explicit(ctx: Context<ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         // placeholder. explicit call is evaluated in evalLibCall.
         return ctx.warnWithMsg('unimplemented libcall', source).toSet();
     }
 
     // return new class object of `object`
-    export function objectClass(ctx: Context<ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function objectClass(ctx: Context<ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const { heap } = ctx;
 
         const [tempClass, objectAddr, newHeap] = SVObject.create(heap, source);
         let objectClass = tempClass;
 
-        const objInit = SVFunc.create('__init__', List(['self']), TSReturn.create(TEConst.genNone()), new ShEnv());
-        const objNew = SVFunc.create('__new__', List(['cls']), TSReturn.create(TEObject.create()), new ShEnv());
+        const objInit = SVFunc.create(
+            '__init__',
+            List(['self']),
+            TSReturn.create(TEConst.genNone()),
+            new ShEnv(),
+            source
+        );
+        const objNew = SVFunc.create('__new__', List(['cls']), TSReturn.create(TEObject.create()), new ShEnv(), source);
         objectClass = objectClass.setAttr('__init__', objInit);
         objectClass = objectClass.setAttr('__new__', objNew);
 
@@ -60,7 +66,7 @@ export namespace LCBase {
         assignTo?: string;
     }
     // import is JS reserved keyword.
-    export function thImport(ctx: Context<ImportParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function thImport(ctx: Context<ImportParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const service = PyteaService.getGlobalService();
         if (!service) {
             return ctx.failWithMsg('PyTea service uninitialized.', source).toSet();
@@ -100,7 +106,7 @@ export namespace LCBase {
                 const newPath = isInit ? `${libRelPath}.__init__` : libRelPath;
 
                 const [moduleAddr, moduleHeap0] = ctx.heap.allocNew(SVUndef.create(source), source);
-                const [nameAddr, moduleHeap] = moduleHeap0.allocNew(SVString.create(libRelPath), source);
+                const [nameAddr, moduleHeap] = moduleHeap0.allocNew(SVString.create(libRelPath, source), source);
                 imported = imported.setId(libRelPath, moduleAddr);
 
                 const defaultEnv = currEnv.set(
@@ -182,7 +188,7 @@ export namespace LCBase {
         });
     }
 
-    export function genList(ctx: Context<ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function genList(ctx: Context<ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const { heap } = ctx;
         const params = ctx.retVal.params;
 
@@ -208,7 +214,7 @@ export namespace LCBase {
         return ctx.setHeap(newHeap.setVal(objAddr, obj)).toSetWith(objAddr);
     }
 
-    export function genDict(ctx: Context<ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function genDict(ctx: Context<ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         // TODO: genDict
         const { heap } = ctx;
         const params = ctx.retVal.params;
@@ -258,7 +264,7 @@ export namespace LCBase {
         $kwargsName?: string;
         $keyOnlyNum?: number;
     }
-    export function setDefault(ctx: Context<SetDefaultParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function setDefault(ctx: Context<SetDefaultParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const { $func, defaults, $varargsName, $kwargsName, $keyOnlyNum } = ctx.retVal;
 
         let newFunc = $func;
@@ -274,13 +280,13 @@ export namespace LCBase {
         $args: ShValue[];
         $kwargs: { [paramName: string]: ShValue };
     }
-    export function callKV(ctx: Context<CallKVParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function callKV(ctx: Context<CallKVParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const { $func, $args, $kwargs } = ctx.retVal;
 
         return TorchBackend.functionCall(ctx, $func, $args, source, $kwargs);
     }
 
-    export function DEBUG(ctx: Context<ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function DEBUG(ctx: Context<ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const heap = ctx.heap;
         const params = ctx.retVal.params;
 
@@ -303,7 +309,10 @@ export namespace LCBase {
         $module: SVAddr; // points SVObject
         globalVar: string;
     }
-    export function exportGlobal(ctx: Context<ExportGlobalParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function exportGlobal(
+        ctx: Context<ExportGlobalParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const addr = ctx.retVal.$module;
         const obj = ctx.heap.getVal(addr) as SVObject;
         const global = ctx.env.getId(ctx.retVal.globalVar) as SVAddr;
@@ -317,7 +326,7 @@ export namespace LCBase {
         bind: boolean;
         selfAddr?: SVAddr;
     }
-    export function getAttr(ctx: Context<GetAttrParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function getAttr(ctx: Context<GetAttrParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const { bind, selfAddr, name, self, baseClass } = ctx.retVal;
 
         const selfAttr = self.type === SVType.Object ? self.attrs.get(name) : undefined;
@@ -336,7 +345,7 @@ export namespace LCBase {
 
                 let addr = selfAddr;
                 if (!addr) {
-                    [addr, newHeap] = newHeap.malloc();
+                    [addr, newHeap] = newHeap.malloc(source);
                 }
 
                 const boundFunc = superAttr.bound(addr);
@@ -353,7 +362,7 @@ export namespace LCBase {
     export interface RaiseParams {
         value: ShValue;
     }
-    export function raise(ctx: Context<RaiseParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function raise(ctx: Context<RaiseParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const raisedVal = BackUtils.fetchAddr(ctx.retVal.value, ctx.heap);
 
         if (raisedVal?.type === SVType.Object) {

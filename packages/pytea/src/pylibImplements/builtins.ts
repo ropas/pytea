@@ -27,7 +27,10 @@ import { LCImpl } from '.';
 import { LCBase } from './libcall';
 
 export namespace BuiltinsLCImpl {
-    export function superGetAttr(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function superGetAttr(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -52,12 +55,12 @@ export namespace BuiltinsLCImpl {
             return ctx.warnWithMsg(`from 'LibCall.builtins.superGetAttr': has no superclass`, source).toSet();
         }
 
-        const superClass = fetchAddr(SVAddr.create(mro[1]), heap);
+        const superClass = fetchAddr(SVAddr.create(mro[1], source), heap);
         if (superClass?.type !== SVType.Object) {
             return ctx.warnWithMsg(`from 'LibCall.builtins.superGetAttr': superclass is not an object`, source).toSet();
         }
 
-        return TorchBackend.getAttrDeep(ctx, superClass, attr.value).map((ctx) => {
+        return TorchBackend.getAttrDeep(ctx, superClass, attr.value, source).map((ctx) => {
             const retVal = ctx.retVal;
             if (retVal.type === SVType.Func && self.type === SVType.Addr) {
                 return ctx.setRetVal(retVal.bound(self));
@@ -66,7 +69,10 @@ export namespace BuiltinsLCImpl {
         });
     }
 
-    export function isinstance(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function isinstance(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -88,7 +94,7 @@ export namespace BuiltinsLCImpl {
         return ctx.toSetWith(SVBool.create(result, source));
     }
 
-    export function cast(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function cast(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -172,11 +178,12 @@ export namespace BuiltinsLCImpl {
                             const ctrRank0 = ctx.genEq(size.rank(), 0, source);
                             const ctrRank1 = ctx.genAnd(
                                 ctx.genEq(size.rank(), 1, source),
-                                ctx.genEq(ExpNum.index(size.shape, 0, source), 1, source)
+                                ctx.genEq(ExpNum.index(size.shape, 0, source), 1, source),
+                                source
                             );
                             return ctx
                                 .require(
-                                    [ctx.genOr(ctrRank0, ctrRank1)],
+                                    [ctx.genOr(ctrRank0, ctrRank1, source)],
                                     `from 'LibCall.builtins.cast': must be scalar or tensor with 1 elem`,
                                     source
                                 )
@@ -247,11 +254,12 @@ export namespace BuiltinsLCImpl {
                             const ctrRank0 = ctx.genEq(size.rank(), 0, source);
                             const ctrRank1 = ctx.genAnd(
                                 ctx.genEq(size.rank(), 1, source),
-                                ctx.genEq(ExpNum.index(size.shape, 0, source), 1, source)
+                                ctx.genEq(ExpNum.index(size.shape, 0, source), 1, source),
+                                source
                             );
                             return ctx
                                 .require(
-                                    [ctx.genOr(ctrRank0, ctrRank1)],
+                                    [ctx.genOr(ctrRank0, ctrRank1, source)],
                                     `from 'LibCall.builtins.cast': must be scalar or tensor with 1 elem`,
                                     source
                                 )
@@ -289,7 +297,10 @@ export namespace BuiltinsLCImpl {
         return ctx.setRetVal(SVNotImpl.create('not implemented casting', source)).toSet();
     }
 
-    export function list_append(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function list_append(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -354,7 +365,10 @@ export namespace BuiltinsLCImpl {
         });
     }
 
-    export function dict_items(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function dict_items(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx
@@ -385,7 +399,10 @@ export namespace BuiltinsLCImpl {
         return finalCtx.toSetWith(itemList);
     }
 
-    export function dict_keys(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function dict_keys(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx
@@ -413,7 +430,10 @@ export namespace BuiltinsLCImpl {
         return finalCtx.toSetWith(itemList);
     }
 
-    export function dict_values(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function dict_values(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx
@@ -441,7 +461,10 @@ export namespace BuiltinsLCImpl {
     }
 
     // TODO: fix this to support non-string typed key
-    export function dict_setitem(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function dict_setitem(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -488,7 +511,10 @@ export namespace BuiltinsLCImpl {
     }
 
     // TODO: fix this to support non-string typed key
-    export function dict_getitem(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function dict_getitem(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -532,7 +558,7 @@ export namespace BuiltinsLCImpl {
     }
 
     // TODO: fix this to support non-string typed key
-    export function dict_pop(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function dict_pop(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -566,7 +592,10 @@ export namespace BuiltinsLCImpl {
         return ctx.toSetWith(retVal);
     }
 
-    export function str_islower(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function str_islower(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx
@@ -599,7 +628,10 @@ export namespace BuiltinsLCImpl {
         return ctx.toSetWith(SVBool.create(value === value.toLowerCase(), source));
     }
 
-    export function str_startswith(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function str_startswith(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -645,7 +677,10 @@ export namespace BuiltinsLCImpl {
         return ctx.toSetWith(SVBool.create(value.startsWith(testerVal), source));
     }
 
-    export function str_endswith(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function str_endswith(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -691,7 +726,7 @@ export namespace BuiltinsLCImpl {
         return ctx.toSetWith(SVBool.create(value.endsWith(testerVal), source));
     }
 
-    export function has_key(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function has_key(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -717,7 +752,7 @@ export namespace BuiltinsLCImpl {
         return ctx.toSetWith(SVBool.create(value.keyValues.has(key.value), source));
     }
 
-    export function len(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function len(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx
@@ -732,7 +767,7 @@ export namespace BuiltinsLCImpl {
         const value = fetchAddr(params[0], heap);
 
         if (value?.type === SVType.String) {
-            const len = strLen(ctx, value.value);
+            const len = strLen(ctx, value.value, source);
             if (len instanceof Context) {
                 return len.setRetVal(SVInt.create(len.retVal, source)).toSet();
             } else {
@@ -757,7 +792,7 @@ export namespace BuiltinsLCImpl {
     }
 
     // inclusive randint (a <= retVal <= b)
-    export function randInt(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function randInt(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -842,7 +877,10 @@ export namespace BuiltinsLCImpl {
     }
 
     // exclusive randfloat (a <= retVal < b)
-    export function randFloat(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function randFloat(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -927,7 +965,7 @@ export namespace BuiltinsLCImpl {
     }
 
     // get `(objectAddr, size)`, set object to SVSize with shape `size`
-    export function setSize(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function setSize(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -961,11 +999,11 @@ export namespace BuiltinsLCImpl {
         });
     }
 
-    export function exit(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function exit(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         return ctx.failWithMsg('explicit process exit function call', source).toSet();
     }
 
-    export function warn(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function warn(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const warnObj = fetchAddr(ctx.retVal.params[0], ctx.heap);
         const warnMsg =
             warnObj?.type === SVType.String && typeof warnObj.value === 'string'
@@ -975,7 +1013,10 @@ export namespace BuiltinsLCImpl {
     }
 
     // explicit setIndice by value
-    export function setIndice(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function setIndice(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -1003,7 +1044,10 @@ export namespace BuiltinsLCImpl {
     }
 
     // wrapper of getItemByIndexExpNum
-    export function getItemByIndex(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function getItemByIndex(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -1053,7 +1097,7 @@ export namespace BuiltinsLCImpl {
     }
 
     // explicit setAttr by value
-    export function setAttr(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function setAttr(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -1080,7 +1124,7 @@ export namespace BuiltinsLCImpl {
         return ctx.setHeap(heap.setVal(obj.addr, obj.setAttr(attr.value, value))).toSetWith(SVNone.create(source));
     }
 
-    export function callable(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function callable(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx
@@ -1122,12 +1166,12 @@ export namespace BuiltinsLCImpl {
         return ctx.setRetVal(SVBool.create(call?.type === SVType.Func, source)).toSet();
     }
 
-    export function time(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function time(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         return ctx.toSetWith(SVFloat.create(Date.now() / 1000.0, source));
     }
 
     // Debug probe for breakpoint in TS
-    export function debug(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function debug(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { env, heap, retVal, ctrSet, callStack, logs, relPath } = ctx;
         // eslint-disable-next-line @typescript-eslint/no-unused-vars

@@ -87,7 +87,7 @@ export interface CodeRange {
 
 interface ShValueBase {
     readonly type: SVType;
-    readonly source?: CodeSource;
+    readonly source: CodeSource | undefined;
 }
 
 export namespace ShValue {
@@ -211,7 +211,7 @@ export class SVAddr extends Record(svAddrDefaults) implements SVAddrProps {
         values ? super(values) : super();
     }
 
-    static create(addr: number, source?: CodeSource): SVAddr {
+    static create(addr: number, source: CodeSource | undefined): SVAddr {
         const value: SVAddr = new SVAddr({
             addr,
             source,
@@ -246,7 +246,7 @@ export class SVInt extends Record(svIntDefaults) implements SVIntProps {
         values ? super(values) : super();
     }
 
-    static create(intValue: number | ExpNum, source?: CodeSource): SVInt {
+    static create(intValue: number | ExpNum, source: CodeSource | undefined): SVInt {
         const value: SVInt = new SVInt({
             value: intValue,
             source,
@@ -277,7 +277,7 @@ export class SVFloat extends Record(svFloatDefaults) implements SVFloatProps {
         values ? super(values) : super();
     }
 
-    static create(floatValue: number | ExpNum, source?: CodeSource): SVFloat {
+    static create(floatValue: number | ExpNum, source: CodeSource | undefined): SVFloat {
         const value: SVFloat = new SVFloat({
             value: floatValue,
             source,
@@ -315,7 +315,7 @@ export class SVString extends Record(svStringDefaults) implements SVStringProps 
         values ? super(values) : super();
     }
 
-    static create(strValue: string | ExpString, source?: CodeSource): SVString {
+    static create(strValue: string | ExpString, source: CodeSource | undefined): SVString {
         const value: SVString = new SVString({
             value: strValue,
             source,
@@ -346,7 +346,7 @@ export class SVBool extends Record(svBoolDefaults) implements SVBoolProps {
         values ? super(values) : super();
     }
 
-    static create(boolValue: boolean | ExpBool, source?: CodeSource): SVBool {
+    static create(boolValue: boolean | ExpBool, source: CodeSource | undefined): SVBool {
         const value: SVBool = new SVBool({
             value: boolValue,
             source,
@@ -375,7 +375,7 @@ const svObjectProps: SVObjectProps = {
     attrs: Map(), // TODO: default methods
     indices: Map(),
     keyValues: Map(),
-    addr: SVAddr.create(Number.NEGATIVE_INFINITY),
+    addr: SVAddr.create(Number.NEGATIVE_INFINITY, undefined),
     source: undefined,
     shape: undefined,
 };
@@ -388,7 +388,7 @@ export class SVObject extends Record(svObjectProps) implements SVObjectProps {
     }
 
     // from now on, object creation should be bind with address.
-    static create(heap: ShHeap, source?: CodeSource): [SVObject, SVAddr, ShHeap] {
+    static create(heap: ShHeap, source: CodeSource | undefined): [SVObject, SVAddr, ShHeap] {
         const [addr, newHeap] = heap.malloc(source);
         const value: SVObject = new SVObject({
             id: getNextSVId(),
@@ -400,7 +400,7 @@ export class SVObject extends Record(svObjectProps) implements SVObjectProps {
     }
 
     // if address is fixed, use it and set addr after.
-    static createWithAddr(addr: SVAddr, source?: CodeSource): SVObject {
+    static createWithAddr(addr: SVAddr, source: CodeSource | undefined): SVObject {
         const value: SVObject = new SVObject({
             id: getNextSVId(),
             addr,
@@ -462,7 +462,7 @@ export class SVObject extends Record(svObjectProps) implements SVObjectProps {
 export class SVSize extends SVObject {
     shape!: ExpShape;
 
-    static createSize(ctx: Context<any>, shape: ExpShape, source?: CodeSource): SVSize {
+    static createSize(ctx: Context<any>, shape: ExpShape, source: CodeSource | undefined): SVSize {
         const sizeMro = fetchAddr(
             (fetchAddr(ctx.env.getId('tuple'), ctx.heap) as SVObject).getAttr('__mro__'),
             ctx.heap
@@ -535,7 +535,7 @@ const svFuncDefaults: SVFuncProps = {
     name: '',
     params: List(),
     defaults: Map(),
-    funcBody: TSPass.get(),
+    funcBody: TSPass.get(undefined),
     hasClosure: false,
     funcEnv: undefined,
     varargsParam: undefined,
@@ -551,7 +551,13 @@ export class SVFunc extends Record(svFuncDefaults) implements SVFuncProps {
         values ? super(values) : super();
     }
 
-    static create(name: string, params: List<string>, funcBody: ThStmt, funcEnv: ShEnv, source?: CodeSource): SVFunc {
+    static create(
+        name: string,
+        params: List<string>,
+        funcBody: ThStmt,
+        funcEnv: ShEnv,
+        source: CodeSource | undefined
+    ): SVFunc {
         const value: SVFunc = new SVFunc({
             id: getNextSVId(),
             name,
@@ -650,7 +656,7 @@ export class SVNotImpl extends Record(svNotImplDefaults) implements SVNotImplPro
         values ? super(values) : super();
     }
 
-    static create(reason?: string, source?: CodeSource): SVNotImpl {
+    static create(reason: string, source: CodeSource | undefined): SVNotImpl {
         if (!reason && !source) {
             return this._notImpl;
         }
@@ -683,7 +689,7 @@ export class SVUndef extends Record(svUndefDefaults) implements SVUndefProps {
         values ? super(values) : super();
     }
 
-    static create(source?: CodeSource): SVUndef {
+    static create(source: CodeSource | undefined): SVUndef {
         if (!source) {
             return SVUndef._undef;
         }
@@ -723,7 +729,7 @@ export class SVError extends Record(svErrorDefaults) implements SVErrorProps {
         values ? super(values) : super();
     }
 
-    static create(reason: string, level: SVErrorLevel, source?: CodeSource): SVError {
+    static create(reason: string, level: SVErrorLevel, source: CodeSource | undefined): SVError {
         const value: SVError = new SVError({
             reason,
             level,
@@ -732,15 +738,15 @@ export class SVError extends Record(svErrorDefaults) implements SVErrorProps {
         return value;
     }
 
-    static error(reason: string, source?: CodeSource): SVError {
+    static error(reason: string, source: CodeSource | undefined): SVError {
         return this.create(reason, SVErrorLevel.Error, source);
     }
 
-    static warn(reason: string, source?: CodeSource): SVError {
+    static warn(reason: string, source: CodeSource | undefined): SVError {
         return this.create(reason, SVErrorLevel.Warning, source);
     }
 
-    static log(reason: string, source?: CodeSource): SVError {
+    static log(reason: string, source: CodeSource | undefined): SVError {
         return this.create(reason, SVErrorLevel.Log, source);
     }
 

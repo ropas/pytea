@@ -103,13 +103,13 @@ export class ShHeap extends Record(shHeapDefaults) implements ShHeapProps {
     }
 
     // return new address and malloced heap
-    malloc(source?: CodeSource): [SVAddr, ShHeap] {
+    malloc(source: CodeSource | undefined): [SVAddr, ShHeap] {
         const addr = this.addrMax;
         return [SVAddr.create(addr + 1, source), this.set('addrMax', addr + 1)];
     }
 
     // malloc with value assignment
-    allocNew(value: ShValue, source?: CodeSource): [SVAddr, ShHeap] {
+    allocNew(value: ShValue, source: CodeSource | undefined): [SVAddr, ShHeap] {
         const [addr, heap] = this.malloc(source);
         return [addr, heap.setVal(addr, value)];
     }

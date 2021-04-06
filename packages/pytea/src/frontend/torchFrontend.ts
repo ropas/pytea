@@ -567,7 +567,7 @@ export class TorchIRFrontend {
             setStmt = TSAssign.create(TEAttr.create(className, '__init__'), funcName, func);
         }
 
-        return TSFunDef.create(funcName.ident, params, initBody, setStmt);
+        return TSFunDef.create(funcName.ident, params, initBody, setStmt, func);
     }
     private _genClassNew(node: ClassNode, hasCall: boolean): ThStmt {
         const className = TEName.create(node.name.value, node.name);

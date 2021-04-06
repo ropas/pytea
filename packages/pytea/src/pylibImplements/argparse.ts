@@ -19,7 +19,10 @@ import { LCImpl } from '.';
 import { LCBase } from './libcall';
 
 export namespace BuiltinsLCImpl {
-    export function inject_argument(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function inject_argument(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx
@@ -149,7 +152,7 @@ export namespace BuiltinsLCImpl {
                 // eslint-disable-next-line no-fallthrough
                 default:
                     // TODO: implement other actions like append
-                    return ctx.warnWithMsg(`unimplemented action: ${action}`).toSet();
+                    return ctx.warnWithMsg(`unimplemented action: ${action}`, source).toSet();
             }
         }
 
@@ -228,7 +231,10 @@ export namespace BuiltinsLCImpl {
     }
 
     // return current subcommand
-    export function set_subcommand(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function set_subcommand(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
@@ -247,7 +253,7 @@ export namespace BuiltinsLCImpl {
         const kwargs = fetchAddr(kwargsAddr, heap);
 
         if (selfAddr?.type !== SVType.Addr || self?.type !== SVType.Object || kwargs?.type !== SVType.Object) {
-            return ctx.warnWithMsg(`from 'LibCall.argparse.set_subcommand': got non-object values.`).toSet();
+            return ctx.warnWithMsg(`from 'LibCall.argparse.set_subcommand': got non-object values.`, source).toSet();
         }
 
         const subcmd = PyteaService.getSubcommand();

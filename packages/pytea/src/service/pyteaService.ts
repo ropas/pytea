@@ -265,7 +265,7 @@ export class PyteaService {
 
         const startSet = builtinSet.map((ctx) => {
             // set __name__ to '__main__'
-            const [nameAddr, newHeap] = ctx.heap.allocNew(SVString.create('__main__'));
+            const [nameAddr, newHeap] = ctx.heap.allocNew(SVString.create('__main__', undefined), undefined);
             return ctx.setRelPath(entryName).setEnv(ctx.env.setId('__name__', nameAddr)).setHeap(newHeap);
         });
 
@@ -403,7 +403,7 @@ export class PyteaService {
         return [pair ? pair[1] : undefined, fromInit];
     }
 
-    getSourceRange(source?: CodeSource): [string, Range] | undefined {
+    getSourceRange(source: CodeSource | undefined): [string, Range] | undefined {
         if (!source) return;
 
         const node = source;

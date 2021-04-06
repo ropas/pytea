@@ -233,7 +233,9 @@ export class NumSubSolver extends SubSolver {
             case ConstraintType.LessThan:
             case ConstraintType.LessThanOrEqual:
                 this.state = {
-                    left: normalizeExpNum(ExpNum.bop(NumBopType.Sub, constraint.left, constraint.right)),
+                    left: normalizeExpNum(
+                        ExpNum.bop(NumBopType.Sub, constraint.left, constraint.right, constraint.source)
+                    ),
                     right: new Fraction(0, 1),
                     symCexp: undefined,
                     type: constraint.type === ConstraintType.LessThan ? SolveType.LT : SolveType.LTE,
@@ -245,7 +247,9 @@ export class NumSubSolver extends SubSolver {
             case ConstraintType.NotEqual:
                 if (constraint.left.expType === SEType.Num && constraint.right.expType === SEType.Num) {
                     this.state = {
-                        left: normalizeExpNum(ExpNum.bop(NumBopType.Sub, constraint.left, constraint.right)),
+                        left: normalizeExpNum(
+                            ExpNum.bop(NumBopType.Sub, constraint.left, constraint.right, constraint.source)
+                        ),
                         right: new Fraction(0, 1),
                         symCexp: undefined,
                         type: constraint.type === ConstraintType.Equal ? SolveType.EQ : SolveType.NEQ,
@@ -504,15 +508,17 @@ export function evaluateNot(constraint: Constraint): Constraint {
                 id: -1,
                 constraint: constraint,
                 type: ConstraintType.Not,
+                source: constraint.source,
             };
         case ConstraintType.Broadcastable:
             return {
                 id: -1,
                 constraint: constraint,
                 type: ConstraintType.Not,
+                source: constraint.source,
             };
         case ConstraintType.Fail:
-            return expToCtr(ExpBool.fromConst(true));
+            return expToCtr(ExpBool.fromConst(true, constraint.source));
     }
 }
 
@@ -524,7 +530,8 @@ export function expToCtr(exp: ExpBool): Constraint {
                 type: ConstraintType.Equal,
                 id: -1,
                 left: exp,
-                right: ExpBool.fromConst(true),
+                right: ExpBool.fromConst(true, exp.source),
+                source: exp.source,
             };
         case BoolOpType.Equal:
             return {
@@ -532,6 +539,7 @@ export function expToCtr(exp: ExpBool): Constraint {
                 id: -1,
                 left: exp.left,
                 right: exp.right,
+                source: exp.source,
             };
         case BoolOpType.NotEqual:
             return {
@@ -539,6 +547,7 @@ export function expToCtr(exp: ExpBool): Constraint {
                 id: -1,
                 left: exp.left,
                 right: exp.right,
+                source: exp.source,
             };
         case BoolOpType.LessThan:
             return {
@@ -546,6 +555,7 @@ export function expToCtr(exp: ExpBool): Constraint {
                 id: -1,
                 left: exp.left,
                 right: exp.right,
+                source: exp.source,
             };
         case BoolOpType.LessThanOrEqual:
             return {
@@ -553,12 +563,14 @@ export function expToCtr(exp: ExpBool): Constraint {
                 id: -1,
                 left: exp.left,
                 right: exp.right,
+                source: exp.source,
             };
         case BoolOpType.Not:
             return {
                 type: ConstraintType.Not,
                 id: -1,
                 constraint: expToCtr(exp.baseBool),
+                source: exp.source,
             };
         case BoolOpType.And:
             return {
@@ -566,6 +578,7 @@ export function expToCtr(exp: ExpBool): Constraint {
                 id: -1,
                 left: expToCtr(exp.left),
                 right: expToCtr(exp.right),
+                source: exp.source,
             };
         case BoolOpType.Or:
             return {
@@ -573,6 +586,7 @@ export function expToCtr(exp: ExpBool): Constraint {
                 id: -1,
                 left: expToCtr(exp.left),
                 right: expToCtr(exp.right),
+                source: exp.source,
             };
     }
 }

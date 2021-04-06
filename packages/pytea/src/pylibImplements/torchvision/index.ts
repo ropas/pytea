@@ -7,7 +7,7 @@ import { LCImpl } from '..';
 import { LCBase } from '../libcall';
 
 export namespace TorchvisionLCImpl {
-    export function crop(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function crop(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -74,7 +74,10 @@ export namespace TorchvisionLCImpl {
             });
     }
 
-    export function to_pil_image(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function to_pil_image(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(

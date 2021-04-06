@@ -7,7 +7,7 @@ import { LCImpl } from '..';
 import { LCBase } from '../libcall';
 
 export namespace PILLCImpl {
-    export function blend(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function blend(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -50,7 +50,10 @@ export namespace PILLCImpl {
             .return(SVNone.create());
     }
 
-    export function fromarray(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function fromarray(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
             return ctx.warnTensorWithMsg(
@@ -99,7 +102,7 @@ export namespace PILLCImpl {
             const channel = ExpNum.index(shape, 2, source);
             const shapeC = ExpShape.fromConst(1, [channel], source);
             const shapeHW = ExpShape.slice(shape, 0, 2, source);
-            const newShape = simplifyShape(ctx.ctrSet, ExpShape.concat(shapeC, shapeHW));
+            const newShape = simplifyShape(ctx.ctrSet, ExpShape.concat(shapeC, shapeHW, source));
 
             return ctx
                 .require(
@@ -125,7 +128,10 @@ export namespace PILLCImpl {
         return leftPath.join(rightPath);
     }
 
-    export function getChannel(ctx: Context<LCBase.ExplicitParams>, source?: CodeSource): ContextSet<ShValue> {
+    export function getChannel(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
             return ctx.warnTensorWithMsg(
@@ -134,7 +140,7 @@ export namespace PILLCImpl {
             );
         }
 
-        const { env, heap } = ctx;
+        const heap = ctx.heap;
         const [imageAddr] = params;
 
         const image = fetchAddr(imageAddr, heap);
@@ -145,7 +151,7 @@ export namespace PILLCImpl {
         const shape = image.shape;
         const channel = ExpNum.index(shape, 0, source);
 
-        return ctx.toSetWith(SVInt.create(channel));
+        return ctx.toSetWith(SVInt.create(channel, source));
     }
 
     export const libCallImpls: { [key: string]: LCImpl } = {

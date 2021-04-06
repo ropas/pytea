@@ -21,7 +21,7 @@ import { libCallMap as torchvisionMap } from './torchvision';
 export type LCParamType = LCBase.BaseParamType;
 
 // TODO: how to not use any?
-export type LCImpl = (ctx: Context<any>, source?: CodeSource) => ContextSet<ShValue>;
+export type LCImpl = (ctx: Context<any>, source: CodeSource | undefined) => ContextSet<ShValue>;
 
 export function registLibCall(impls: Map<string, LCImpl>, relPath: string): Map<string, LCImpl> {
     const map: Map<string, LCImpl> = new Map();

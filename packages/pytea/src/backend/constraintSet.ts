@@ -58,40 +58,45 @@ import {
 } from './symExpressions';
 
 export interface ConstraintGen {
-    genSymInt(name: string, source?: CodeSource): SymInt;
-    genSymFloat(name: string, source?: CodeSource): SymFloat;
-    genSymBool(name: string, source?: CodeSource): SymBool;
-    genSymString(name: string, source?: CodeSource): SymString;
-    genSymShape(name: string, rank: ExpNum, source?: CodeSource): SymShape;
-    genSymIntGte(name: string, min: number, source?: CodeSource): CSReturn<SymInt>;
-    genSymFloatGte(name: string, min: number, source?: CodeSource): CSReturn<SymFloat>;
-    genShaped(name: string, rank: number, dims?: (ExpNum | number)[], source?: CodeSource): CSReturn<ExpShapeConst>;
+    genSymInt(name: string, source: CodeSource | undefined): SymInt;
+    genSymFloat(name: string, source: CodeSource | undefined): SymFloat;
+    genSymBool(name: string, source: CodeSource | undefined): SymBool;
+    genSymString(name: string, source: CodeSource | undefined): SymString;
+    genSymShape(name: string, rank: ExpNum, source: CodeSource | undefined): SymShape;
+    genSymIntGte(name: string, min: number, source: CodeSource | undefined): CSReturn<SymInt>;
+    genSymFloatGte(name: string, min: number, source: CodeSource | undefined): CSReturn<SymFloat>;
+    genShaped(
+        name: string,
+        rank: number,
+        dims: (ExpNum | number)[] | undefined,
+        source: CodeSource | undefined
+    ): CSReturn<ExpShapeConst>;
 
-    genFromBool(exp: ExpBool, source?: CodeSource): CtrExpBool;
+    genFromBool(exp: ExpBool, source: CodeSource | undefined): CtrExpBool;
     genEquality(
         type: ConstraintType.Equal | ConstraintType.NotEqual,
         left: SymExp,
         right: SymExp,
-        source?: CodeSource
+        source: CodeSource | undefined
     ): EqualityConstraint;
     genNumCompare(
         type: CompareConstraintType,
         left: ExpNum,
         right: ExpNum,
-        source?: CodeSource
+        source: CodeSource | undefined
     ): NumConstraint | EqualityConstraint;
 
-    genAnd(left: Constraint, right: Constraint, source?: CodeSource): CtrAnd;
-    genOr(left: Constraint, right: Constraint, source?: CodeSource): CtrOr;
-    genNot(constraint: Constraint, source?: CodeSource): CtrNot;
-    genBroad(left: ExpShape, right: ExpShape, source?: CodeSource): CtrBroad;
+    genAnd(left: Constraint, right: Constraint, source: CodeSource | undefined): CtrAnd;
+    genOr(left: Constraint, right: Constraint, source: CodeSource | undefined): CtrOr;
+    genNot(constraint: Constraint, source: CodeSource | undefined): CtrNot;
+    genBroad(left: ExpShape, right: ExpShape, source: CodeSource | undefined): CtrBroad;
     genForall(
         symbol: SymInt,
         range: [number | ExpNum, number | ExpNum],
         constraint: Constraint,
-        source?: CodeSource
+        source: CodeSource | undefined
     ): CtrForall;
-    genFail(reason: string, source?: CodeSource): CtrFail;
+    genFail(reason: string, source: CodeSource | undefined): CtrFail;
 }
 
 // ID Manager is shared for all paths.
@@ -259,7 +264,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
 
     /// ConstraintGen Implementations.
 
-    genSymInt(name: string, source?: CodeSource): SymInt {
+    genSymInt(name: string, source: CodeSource | undefined): SymInt {
         const id = this._getNextSymId();
         return {
             type: SymbolType.Int,
@@ -269,7 +274,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         };
     }
 
-    genSymFloat(name: string, source?: CodeSource): SymFloat {
+    genSymFloat(name: string, source: CodeSource | undefined): SymFloat {
         const id = this._getNextSymId();
         return {
             type: SymbolType.Float,
@@ -279,7 +284,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         };
     }
 
-    genSymBool(name: string, source?: CodeSource): SymBool {
+    genSymBool(name: string, source: CodeSource | undefined): SymBool {
         const id = this._getNextSymId();
         return {
             type: SymbolType.Bool,
@@ -289,7 +294,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         };
     }
 
-    genSymString(name: string, source?: CodeSource): SymString {
+    genSymString(name: string, source: CodeSource | undefined): SymString {
         const id = this._getNextSymId();
         return {
             type: SymbolType.String,
@@ -299,7 +304,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         };
     }
 
-    genSymShape(name: string, rank: ExpNum, source?: CodeSource): SymShape {
+    genSymShape(name: string, rank: ExpNum, source: CodeSource | undefined): SymShape {
         const id = this._getNextSymId();
         return {
             type: SymbolType.Shape,
@@ -310,22 +315,22 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         };
     }
 
-    genSymIntGte(name: string, min: number, source?: CodeSource): CSReturn<SymInt> {
+    genSymIntGte(name: string, min: number, source: CodeSource | undefined): CSReturn<SymInt> {
         const newSym = this.genSymInt(name, source);
         const comp = this.genNumCompare(
             ConstraintType.LessThanOrEqual,
-            ExpNum.fromConst(min),
+            ExpNum.fromConst(min, source),
             ExpNum.fromSymbol(newSym),
             source
         );
         return [newSym, this.guarantee(comp)];
     }
 
-    genSymFloatGte(name: string, min: number, source?: CodeSource): CSReturn<SymFloat> {
+    genSymFloatGte(name: string, min: number, source: CodeSource | undefined): CSReturn<SymFloat> {
         const newSym = this.genSymFloat(name, source);
         const comp = this.genNumCompare(
             ConstraintType.LessThanOrEqual,
-            ExpNum.fromConst(min),
+            ExpNum.fromConst(min, source),
             ExpNum.fromSymbol(newSym),
             source
         );
@@ -334,7 +339,12 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
 
     // This method clearly differs from `ExpShape.fromConst`.
     // It automatically generates constraints and push it to constraint set.
-    genShaped(name: string, rank: number, dims?: (ExpNum | number)[], source?: CodeSource): CSReturn<ExpShapeConst> {
+    genShaped(
+        name: string,
+        rank: number,
+        dims: (ExpNum | number)[] | undefined,
+        source: CodeSource | undefined
+    ): CSReturn<ExpShapeConst> {
         if (rank < 0) {
             throw `making shape '${name} got negative rank ${rank}`;
         }
@@ -354,7 +364,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         } else {
             for (const dim of dims) {
                 if (typeof dim === 'number') {
-                    newDims.push(ExpNum.fromConst(dim));
+                    newDims.push(ExpNum.fromConst(dim, source));
                 } else {
                     newDims.push(dim);
                 }
@@ -365,7 +375,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
     }
 
     // boolean to integer cast
-    castBoolToInt(exp: boolean | ExpBool, source?: CodeSource): CSReturn<number | ExpNum> {
+    castBoolToInt(exp: boolean | ExpBool, source: CodeSource | undefined): CSReturn<number | ExpNum> {
         if (typeof exp === 'boolean') {
             return [+exp, this];
         }
@@ -384,17 +394,17 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         const ctrNot = this.genNot(ctr, source);
         const num = ExpNum.fromSymbol(this.genSymInt(`num$castbool_${ctr.id}`, source));
 
-        const numZero = this.genEquality(ConstraintType.Equal, num, ExpNum.fromConst(0));
-        const numOne = this.genEquality(ConstraintType.Equal, num, ExpNum.fromConst(1));
+        const numZero = this.genEquality(ConstraintType.Equal, num, ExpNum.fromConst(0, source), source);
+        const numOne = this.genEquality(ConstraintType.Equal, num, ExpNum.fromConst(1, source), source);
 
-        const finalCtr = this.genOr(this.genAnd(ctr, numOne), this.genAnd(ctrNot, numZero));
+        const finalCtr = this.genOr(this.genAnd(ctr, numOne, source), this.genAnd(ctrNot, numZero, source), source);
 
         // return num
         return [num, this.guarantee(finalCtr)];
     }
 
     // integer to boolean cast
-    castNumToBool(exp: number | ExpNum, source?: CodeSource): CSReturnE<boolean | ExpBool> {
+    castNumToBool(exp: number | ExpNum, source: CodeSource | undefined): CSReturnE<boolean | ExpBool> {
         if (typeof exp === 'number') {
             return [!!exp, this];
         }
@@ -407,20 +417,24 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         if (range.gt(0) || range.lt(0)) return [true, this];
         else if (range.eq(0)) return [false, this];
 
-        const isZero = this.genEquality(ConstraintType.Equal, exp, ExpNum.fromConst(0), source);
-        const isNZero = this.genEquality(ConstraintType.NotEqual, exp, ExpNum.fromConst(0), source);
+        const isZero = this.genEquality(ConstraintType.Equal, exp, ExpNum.fromConst(0, source), source);
+        const isNZero = this.genEquality(ConstraintType.NotEqual, exp, ExpNum.fromConst(0, source), source);
 
         const sym = this.genSymBool(`bool$castnum_${isZero.id}`, source);
         const expSym = ExpBool.fromSymbol(sym);
         const ctrSym = this.genFromBool(expSym, source);
 
-        const finalCtr = this.genOr(this.genAnd(ctrSym, isNZero), this.genAnd(this.genNot(ctrSym), isZero));
+        const finalCtr = this.genOr(
+            this.genAnd(ctrSym, isNZero, source),
+            this.genAnd(this.genNot(ctrSym, source), isZero, source),
+            source
+        );
         return [expSym, this.guarantee(finalCtr)];
     }
 
     /// CONSTRAINT GENERATOR
 
-    genFromBool(exp: ExpBool, source?: CodeSource): CtrExpBool {
+    genFromBool(exp: ExpBool, source: CodeSource | undefined): CtrExpBool {
         const id = this._getNextCtrId();
         return {
             type: ConstraintType.ExpBool,
@@ -435,7 +449,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         type: ConstraintType.Equal | ConstraintType.NotEqual,
         left: SymExp,
         right: SymExp,
-        source?: CodeSource
+        source: CodeSource | undefined
     ): EqualityConstraint {
         if (left.expType === SEType.Num && right.expType === SEType.Num) {
             return this.genNumCompare(type, left, right, source) as EqualityConstraint;
@@ -458,11 +472,11 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         type: CompareConstraintType,
         left: number | ExpNum,
         right: number | ExpNum,
-        source?: CodeSource
+        source: CodeSource | undefined
     ): NumConstraint | EqualityConstraint {
         const id = this._getNextCtrId();
-        left = typeof left === 'number' ? ExpNum.fromConst(left) : left;
-        right = typeof right === 'number' ? ExpNum.fromConst(right) : right;
+        left = typeof left === 'number' ? ExpNum.fromConst(left, source) : left;
+        right = typeof right === 'number' ? ExpNum.fromConst(right, source) : right;
         const constraint: NumConstraint | EqualityConstraint = {
             type,
             id,
@@ -474,7 +488,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         return constraint;
     }
 
-    genAnd(left: Constraint, right: Constraint, source?: CodeSource): CtrAnd {
+    genAnd(left: Constraint, right: Constraint, source: CodeSource | undefined): CtrAnd {
         const id = this._getNextCtrId();
         const constraint: CtrAnd = {
             type: ConstraintType.And,
@@ -487,7 +501,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         return constraint;
     }
 
-    genOr(left: Constraint, right: Constraint, source?: CodeSource): CtrOr {
+    genOr(left: Constraint, right: Constraint, source: CodeSource | undefined): CtrOr {
         const id = this._getNextCtrId();
         const constraint: CtrOr = {
             type: ConstraintType.Or,
@@ -500,7 +514,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         return constraint;
     }
 
-    genNot(constraint: Constraint, source?: CodeSource): CtrNot {
+    genNot(constraint: Constraint, source: CodeSource | undefined): CtrNot {
         const id = this._getNextCtrId();
         const notCtr: CtrNot = {
             type: ConstraintType.Not,
@@ -512,7 +526,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         return notCtr;
     }
 
-    genBroad(left: ExpShape, right: ExpShape, source?: CodeSource): CtrBroad {
+    genBroad(left: ExpShape, right: ExpShape, source: CodeSource | undefined): CtrBroad {
         const id = this._getNextCtrId();
         const constraint: CtrBroad = {
             type: ConstraintType.Broadcastable,
@@ -529,13 +543,13 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         symbol: SymInt,
         range: [number | ExpNum, number | ExpNum],
         constraint: Constraint,
-        source?: CodeSource
+        source: CodeSource | undefined
     ): CtrForall {
         const id = this._getNextCtrId();
 
         const expRange: [ExpNum, ExpNum] = [
-            typeof range[0] === 'number' ? ExpNum.fromConst(range[0]) : range[0],
-            typeof range[1] === 'number' ? ExpNum.fromConst(range[1]) : range[1],
+            typeof range[0] === 'number' ? ExpNum.fromConst(range[0], source) : range[0],
+            typeof range[1] === 'number' ? ExpNum.fromConst(range[1], source) : range[1],
         ];
 
         return {
@@ -548,7 +562,7 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         };
     }
 
-    genFail(reason: string, source?: CodeSource): CtrFail {
+    genFail(reason: string, source: CodeSource | undefined): CtrFail {
         const id = this._getNextCtrId();
         const failCtr: CtrFail = {
             type: ConstraintType.Fail,
