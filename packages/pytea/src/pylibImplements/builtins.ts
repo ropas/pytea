@@ -1170,6 +1170,40 @@ export namespace BuiltinsLCImpl {
         return ctx.toSetWith(SVFloat.create(Date.now() / 1000.0, source));
     }
 
+    // IMPORTANT API:
+    // boxed lengthed list is not unfoled by for loop
+    // it prevents constant unfolding of torch DataLoader
+    // to prevent boxing, set 'boxDataLoader' option to false in 'pyteaconfig.json'
+    export function box(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 1) {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.builtins.box': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const valueAddr = params[0];
+
+        if (!PyteaService.isBoxAllowed()) {
+            return ctx.toSetWith(valueAddr);
+        }
+
+        const value = fetchAddr(valueAddr, ctx.heap);
+
+        if (value?.type === SVType.Int) {
+            const range = ctx.getCachedRange(value.value);
+            if (range?.isConst()) {
+                const boxed = SVInt.create(ExpNum.box(range.start, source), source);
+                return ctx.toSetWith(boxed);
+            }
+        }
+
+        return ctx.toSetWith(valueAddr);
+    }
+
     // Debug probe for breakpoint in TS
     export function debug(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -1220,8 +1254,9 @@ export namespace BuiltinsLCImpl {
         setIndice,
         getItemByIndex,
         callable,
-        debug,
+        box,
         time,
+        debug,
     };
 }
 

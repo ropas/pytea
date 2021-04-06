@@ -20,11 +20,10 @@ class MNIST(data.Dataset):
         self.transforms = transforms
         self.target_transform = target_transform
 
-        x = LibCall.builtins.randInt(0, 1, "MNIST_Len")
         if train:
-            self._len = 60000 + (x // (x + 1))
+            self._len = 600
         else:
-            self._len = 10000 + (x // (x + 1))
+            self._len = 100
 
     def __getitem__(self, index):
         img = Image.Image()
@@ -39,4 +38,6 @@ class MNIST(data.Dataset):
         return img, target
 
     def __len__(self):
-        return self._len
+        # box constant value to prevent constant iteration by for-loop
+        # to prevent boxing, set 'boxDataLoader' option to false in 'pyteaconfig.json'
+        return LibCall.builtins.box(self._len)

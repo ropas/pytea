@@ -24,17 +24,19 @@ class DataLoader:
         self.batch_size = batch_size
         self.drop_last = drop_last
 
-        self._datalen = len(dataset)
+        datalen = len(dataset)
         if self.drop_last == True:
-            self._len = self._datalen // self.batch_size
+            self._len = datalen // self.batch_size
             self._last_batch = batch_size
         else:
-            self._last_batch = self._datalen % self.batch_size
+            self._last_batch = datalen % self.batch_size
             remainder = math.ceil(self._last_batch / self.batch_size)
-            self._len = self._datalen // self.batch_size + remainder
+            self._len = datalen // self.batch_size + remainder
 
     def __len__(self):
-        return self._len
+        # box constant value to prevent constant iteration by for-loop
+        # to prevent boxing, set 'boxDataLoader' option to false in 'pyteaconfig.json'
+        return LibCall.builtins.box(self._len)
 
     def __getitem__(self, index):
         item_tuple = self.dataset[index * self.batch_size]

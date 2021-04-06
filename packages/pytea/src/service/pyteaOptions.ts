@@ -52,17 +52,21 @@ export interface PyteaOptions {
     // [1, 10000] (int) or [0.0, 1.0] (float).
     variableSeed: { [prefix: string]: number | null };
 
-    // Pass analysis result to Python Z3 server (default: false)
+    // Iterate torch DataLoader only once. (default: true)
+    // If it is set to false, large dataset will give its all data (e.g. MNIST gives 60000 items)
+    boxDataLoader: boolean;
+
+    // Analyzer timeout in millisecond. undefined means no timeout (default: 60000 (1 min))
+    timeout: number | undefined;
+
+    // Set max path count, throw runtime error if path count exceeds it (default: 1000)
+    maxPath: number | undefined;
+
+    // JS program itself spawns Python Z3 server (default: false)
     runZ3: boolean;
 
-    // Port to Python Z3 server
+    // Port to Python Z3 server (default: 17851)
     z3Port: number;
-
-    // Analyzer timeout in millisecond. undefined means no timeout (default: undefined)
-    timeout?: number;
-
-    // Set max path count, throw runtime error if path count exceeds it (default: undefined)
-    maxPath?: number;
 }
 
 export const defaultOptions: PyteaOptions = {
@@ -79,4 +83,7 @@ export const defaultOptions: PyteaOptions = {
     variableSeed: {},
     runZ3: false,
     z3Port: 17851,
+    timeout: undefined,
+    maxPath: undefined,
+    boxDataLoader: true,
 };

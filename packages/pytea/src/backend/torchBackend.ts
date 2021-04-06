@@ -68,7 +68,7 @@ import {
     svTypeToString,
     SVUndef,
 } from './sharpValues';
-import { ExpNum, ExpString, NumBopType, SymExp } from './symExpressions';
+import { ExpNum, ExpString, NumBopType, NumOpType, SymExp } from './symExpressions';
 
 export namespace TorchBackend {
     export function runEmpty(stmt: ThStmt): ContextSet<ShValue | ShContFlag> {
@@ -831,7 +831,6 @@ export namespace TorchBackend {
                 }
 
                 return BuiltinsLCImpl.len(ctx.setRetVal({ params: [objAddr] }), exp.source).flatMap((ctx) => {
-                    // TODO: in case of symbolic number len
                     const len = BackUtils.fetchAddr(ctx.retVal, ctx.heap);
                     let length: number | ExpNum;
 
@@ -851,6 +850,8 @@ export namespace TorchBackend {
                         return ctx
                             .failWithMsg(`length is not an int type: got ${svTypeToString(len.type)}`, exp.source)
                             .toSet() as CtxStmt;
+                    } else if (typeof len.value === 'object' && 'boxed' in len.value) {
+                        length = len.value;
                     } else {
                         length = len.value;
                         length = typeof length === 'number' ? length : simplifyNum(ctx.ctrSet, length);

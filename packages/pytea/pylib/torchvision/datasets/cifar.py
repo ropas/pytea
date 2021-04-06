@@ -13,11 +13,11 @@ class CIFAR10(data.Dataset):
         self.transform = transform
         self.target_transform = target_transform
 
-        x = LibCall.builtins.randInt(0, 1, "CIFAR10_Len")
+        x = LibCall.builtins.randInt(0, 1, "CIFAR10_Dummy")
         if train
-            self._len = 50000 + (x // (x + 1))
+            self._len = 50000 + (1 // (abs(x) + 1))
         else:
-            self._len = 10000 + (x // (x + 1))
+            self._len = 10000 + (1 // (abs(x) + 1))
 
     def __getitem__(self, index):
         if index < 0 or len(self) <= index:
@@ -36,7 +36,9 @@ class CIFAR10(data.Dataset):
         return img, target
 
     def __len__(self):
-        return self._len
+        # box constant value to prevent constant iteration by for-loop
+        # to prevent boxing, set 'boxDataLoader' option to false in 'pyteaconfig.json'
+        return LibCall.builtins.box(self._len)
 
 
 class CIFAR100(data.Dataset):
@@ -48,7 +50,7 @@ class CIFAR100(data.Dataset):
         self.transform = transform
         self.target_transform = target_transform
 
-        x = LibCall.builtins.randInt(0, 1, "CIFAR100_Len")
+        x = LibCall.builtins.randInt(0, 1, "CIFAR100_Dummy")
         if train
             self._len = 50000 + (x // (x + 1))
         else:
@@ -71,4 +73,6 @@ class CIFAR100(data.Dataset):
         return img, target
 
     def __len__(self):
-        return self._len
+        # box constant value to prevent constant iteration by for-loop
+        # to prevent boxing, set 'boxDataLoader' option to false in 'pyteaconfig.json'
+        return LibCall.builtins.box(self._len)

@@ -99,6 +99,11 @@ export class PyteaService {
         return options ? options.immediateConstraintCheck : true;
     }
 
+    static isBoxAllowed(): boolean {
+        const options = _globalService?.options;
+        return options ? options.boxDataLoader : true;
+    }
+
     static getCmdArgs(): PyCmdArgs {
         const options = _globalService?.options;
         return options ? options.pythonCmdArgs : {};

@@ -16,6 +16,7 @@ export type SymNumeric = SymInt | SymFloat;
 export type SymExp = ExpShape | ExpNum | ExpString | ExpBool;
 export type ExpNum =
     | ExpNumConst
+    | ExpNumConstBoxed
     | ExpNumSymbol
     | ExpNumBop
     | ExpNumIndex
@@ -204,6 +205,12 @@ export interface ExpNumBase extends SymExpBase {
 export interface ExpNumConst extends ExpNumBase {
     opType: NumOpType.Const;
     value: number;
+}
+
+export interface ExpNumConstBoxed extends ExpNumBase {
+    opType: NumOpType.Const;
+    value: number;
+    boxed: true;
 }
 
 export interface ExpNumSymbol extends ExpNumBase {
@@ -704,6 +711,16 @@ export namespace ExpNum {
             opType: NumOpType.Symbol,
             symbol,
             source: symbol.source,
+        };
+    }
+
+    export function box(value: number, source: CodeSource | undefined): ExpNumConstBoxed {
+        return {
+            expType: SEType.Num,
+            opType: NumOpType.Const,
+            value,
+            source,
+            boxed: true,
         };
     }
 
