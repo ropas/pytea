@@ -29,7 +29,7 @@ class DataLoader:
             self._len = datalen // self.batch_size
             self._last_batch = batch_size
         else:
-            self._last_batch = datalen % self.batch_size
+            self._last_batch = (datalen - 1) % self.batch_size + 1
             remainder = math.ceil(self._last_batch / self.batch_size)
             self._len = datalen // self.batch_size + remainder
 
@@ -44,15 +44,15 @@ class DataLoader:
         if self.drop_last == True:
             batch_size = self.batch_size
         else:
-            # if index < self._len - 1:
-            #     batch_size = self.batch_size
-            # else:
+            # if index == self._len - 1:
             #     batch_size = self._last_batch
+            # else:
+            #     batch_size = self.batch_size
             # below is single expression version of above
             lb = self.batch_size - self._last_batch
             li = self._len - 1
-            step = ((index - li) // (abs(index - li) + 1))
-            batch_size = self._last_batch - step * lb
+            step = 1 // (abs(index - li) + 1)
+            batch_size = self.batch_size - lb * step
 
 
         ret_list = []
