@@ -11,7 +11,7 @@ class Module:
     def modules(self):
         def modules_(this, moduleList):
             moduleList.append(this)
-            for key, value in this.__dict__.items():
+            for value in this.__dict__.values():
                 if isinstance(value, Module):
                     moduleList = modules_(value, moduleList)
             return moduleList
@@ -22,9 +22,10 @@ class Module:
         pass
 
     def train(self, mode=True):
-        self.training = mode
-        for module in self.modules():
-            module.training = mode
+        if self.training != mode:
+            self.training = mode
+        # for module in self.modules():
+        #    module.train()
         return self
 
     def eval(self):

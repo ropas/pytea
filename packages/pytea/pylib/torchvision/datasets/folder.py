@@ -18,7 +18,7 @@ class ImageFolder(data.Dataset):
         self.transform = transform
         self.target_transform = target_transform
 
-        self.len = 100
+        self.len = LibCall.builtins.randInt(1000, 2000, "ImageFolder_Length")
 
     def __getitem__(self, index):
         img = Image.open("RANDOM_IMAGE").convert("RGB")
