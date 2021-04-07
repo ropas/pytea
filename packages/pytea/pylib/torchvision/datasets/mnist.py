@@ -21,9 +21,9 @@ class MNIST(data.Dataset):
         self.target_transform = target_transform
 
         if train:
-            self._len = 600
+            self._len = 60000
         else:
-            self._len = 100
+            self._len = 10000
 
     def __getitem__(self, index):
         img = Image.Image()
