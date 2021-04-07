@@ -71,3 +71,9 @@ The final result of Offline analyzer is divided into sevral cases.
 ![result](img/result3.png)
 
 Offline analyzer have found a conflicted constraint (#7). Then, run `pytea.py` with `--log=2` to find code position of violated constraint.
+
+# License
+
+MIT License
+
+This project is based on [Pyright](https://github.com/microsoft/pyright), also [MIT License](https://github.com/microsoft/pyright/blob/master/LICENSE.txt)
