@@ -62,9 +62,6 @@ export interface PyteaOptions {
     // Set max path count, throw runtime error if path count exceeds it (default: 1000)
     maxPath: number | undefined;
 
-    // JS program itself spawns Python Z3 server (default: false)
-    runZ3: boolean;
-
     // Port to Python Z3 server (default: 17851)
     z3Port: number;
 }
@@ -81,7 +78,6 @@ export const defaultOptions: PyteaOptions = {
     extractIR: false,
     variableRange: {},
     variableSeed: {},
-    runZ3: false,
     z3Port: 17851,
     timeout: undefined,
     maxPath: undefined,

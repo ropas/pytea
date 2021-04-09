@@ -6,6 +6,7 @@
  *
  * Utility functions for PyTea service.
  */
+import axios from 'axios';
 import { CommandLineOptions } from 'command-line-args';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -50,12 +51,13 @@ import { ThStmt } from '../frontend/torchStatements';
 import { FilePathStore } from './executionPaths';
 import { PyteaOptions } from './pyteaOptions';
 
-export enum PyZ3RPCResultType {
+export const enum PyZ3RPCResultType {
     Unreachable = 0,
     Valid = 1,
-    MayInvalid = 2,
-    Invalid = 3,
-    Undecidable = 4,
+    Sat = 2,
+    Unsat = 3,
+    DontKnow = 4,
+    Timeout = -1,
 }
 
 export interface PyZ3RPCResult {
@@ -599,4 +601,24 @@ export function formatCodeSource(node?: CodeSource, pathStore?: FilePathStore): 
         const { start, end } = node.range;
         return `[${start.line + 1}:${start.character} - ${end.line + 1}:${end.character}] (file ${node.fileId})`;
     }
+}
+
+export async function postJsonRpc(address: string, id: number, method: string, params: any) {
+    const respond = await axios.post(
+        address,
+        {
+            jsonrpc: '2.0',
+            id,
+            method,
+            params,
+        },
+        {
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+            },
+        }
+    );
+
+    return respond.data.result;
 }

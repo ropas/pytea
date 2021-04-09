@@ -185,17 +185,17 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         return this.ctrPool.map((ctr) => simplifyConstraint(this, ctr)).toArray();
     }
 
+    getConstraintObject(pathStore?: FilePathStore): object {
+        return {
+            ctrPool: sanitizeSource(this.getConstraints(), pathStore),
+            hardCtr: this.hardCtr.toArray(),
+            softCtr: this.softCtr.toArray(),
+            pathCtr: this.pathCtr.toArray(),
+        }
+    }
+
     getConstraintJSON(pathStore?: FilePathStore): string {
-        return JSON.stringify(
-            {
-                ctrPool: sanitizeSource(this.getConstraints(), pathStore),
-                hardCtr: this.hardCtr.toArray(),
-                softCtr: this.softCtr.toArray(),
-                pathCtr: this.pathCtr.toArray(),
-            },
-            null,
-            2
-        );
+        return JSON.stringify(this.getConstraintObject(pathStore));
     }
 
     // return false if added constraint is trivially unsat.

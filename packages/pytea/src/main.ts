@@ -46,8 +46,7 @@ function parsePyrightArgs(): CommandLineOptions | undefined {
         { name: 'logLevel', type: String },
         { name: 'verbose', type: Boolean, defaultValue: false },
         { name: 'version', type: Boolean },
-        { name: 'watch', alias: 'w', type: Boolean, defaultValue: false },
-        { name: 'runZ3', type: Boolean, defaultValue: false },
+        { name: 'z3', type: Boolean, defaultValue: false },
         { name: 'timeout', type: Number },
         { name: 'maxPath', type: Number },
     ];
@@ -127,8 +126,8 @@ function runMain(args: CommandLineOptions) {
     const output = new NullConsole();
     const realFileSystem = createFromRealFileSystem(output);
 
-    const watch = args.watch === true || args.runZ3 === true;
-    options.watchForSourceChanges = watch;
+    const runZ3 = args.z3;
+    options.watchForSourceChanges = false;
 
     const pyrightService = new AnalyzerService('<default>', realFileSystem, output);
     let pyteaService: PyteaService | undefined;
@@ -172,11 +171,11 @@ function runMain(args: CommandLineOptions) {
                 try {
                     const result = await pyteaService.analyze();
                     if (pyteaService && result) {
-                        pyteaService!.printLog(result);
-                        if (watch) {
-                            pyteaService.spawnZ3Py();
-                            await pyteaService.runZ3Py(result);
+                        if (runZ3) {
+                            const z3Result = await pyteaService.runZ3Py(result);
+                            pyteaService.printLogWithZ3(result, z3Result);
                         } else {
+                            pyteaService!.printLog(result);
                             exportConstraintSet(result, resultPath);
                         }
                     }
@@ -189,12 +188,7 @@ function runMain(args: CommandLineOptions) {
             console.error('pytea service is not initialized');
         }
 
-        if (!watch) {
-            process.exit(ExitStatus.NoErrors);
-            // process.exit(errorCount > 0 ? ExitStatus.ErrorsReported : ExitStatus.NoErrors);
-        } else if (!args.outputjson) {
-            console.error('Watching for file changes...');
-        }
+        process.exit(ExitStatus.NoErrors);
     });
 
     // This will trigger the pyright analyzer.
@@ -212,19 +206,19 @@ function printUsage() {
             toolName +
             ' [options] file\n' +
             '  Options:\n' +
-            '  -h,--help                        Show this help message\n' +
+            '  -h,--help                       Show this help message\n' +
             '  -e,--extractIR                  Run the parser only and extract\n' +
             '                                      internal representations of Python scripts\n' +
-            '  -a,--pythonArgs                 command line arguments for main Python script\n' +
             '  -l,--libPath                    Path to the PyTea Python library implementations\n' +
             '  --configPath                    Path to pyteaconfig.json\n' +
             '  --resultPath                    Path to save the result (constraint json or extracted IR)\n' +
             '  --logLevel                      Verbosity of log (none, result-only, reduced, full)\n' +
-            '  --verbose                       Emit Pyright verbose diagnostics\n' +
-            '  --version                       Print PyTea version\n' +
-            '  --maxPath                       Limit maximum path number\n' +
+            '  --z3                            Interact with local Z3Py server (need to run pyteaserver.py first)\n' +
+            '  --z3Port                        Port to Z3Py server (default: 17851)\n' +
+            '  --extract                       Extract PyTea IR in S-Expression format\n' +
             '  --timeout                       Set timeout in miliseconds\n' +
-            '  -w,--watch                      Continue to run and watch for changes\n'
+            '  --verbose                       Emit verbose Pyright (parser) diagnostics\n' +
+            '  --version                       Print version\n'
     );
 }
 

@@ -14,7 +14,7 @@ import json
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from http import HTTPStatus
-from json2z3 import Z3Encoder, CtrSet
+from json2z3 import CtrSet, PathResult, timeout
 
 
 DEFAULT_PORT = 17851
@@ -75,10 +75,8 @@ class LocalLogger:
 class PyTeaServer:
     def __init__(self, port):
         self.port = port
-        self.logger = LocalLogger()
-        self.encoder = Z3Encoder(self.logger)
-
         self.httpd = HTTPServer(("127.0.0.1", port), gen_handler(self.handler))
+
         print(f"python server listening port {port}...")
         self.httpd.serve_forever()
 
@@ -89,24 +87,36 @@ class PyTeaServer:
         if message["method"] == "ping":
             result = message["params"]
         elif message["method"] == "solve":
-            result, log = self.analyze(message["params"])
+            result = self.analyze(message["params"])
+        else:
+            result = None
 
-        return json.dumps(respond_rpc(message_id, result, log=log)).encode("utf-8")
+        return json.dumps(respond_rpc(message_id, result)).encode("utf-8")
 
-    def analyze(self, paths):
-        ctr_set_list = map(CtrSet, paths)
+    def analyze(self, obj_list):
+        ctrset_list = list(map(CtrSet, obj_list))
         result = []
 
-        for ctr_set in ctr_set_list:
-            path_result = dict()
-            path_type, log, extras = ctr_set.analysis()  # side effect: print result
+        for ctr_set in ctrset_list:
+            # 5 seconds timeout
+            result_obj = dict()
+            analyze_tm = timeout(5)(ctr_set.analysis)
+            try:
+                (
+                    path_result,
+                    path_log,
+                    extras,
+                ) = analyze_tm()  # side effect: print result
 
-            path_result["type"] = path_type
-            path_result["extras"] = extras
+                result_obj["type"] = path_result
+                result_obj["extras"] = extras
+            except TimeoutError:
+                result_obj["type"] = PathResult.Timeout.value
+                result_obj["extras"] = dict()
 
-            result.append(path_result)
+            result.append(result_obj)
 
-        return result, log
+        return result
 
 
 def parse_args():
@@ -117,7 +127,6 @@ def parse_args():
         "--port",
         default=DEFAULT_PORT,
         type=int,
-        required=True,
         help="main port to communicate with PyTea node server",
     )
 
@@ -136,7 +145,6 @@ def main():
         sys.exit(-1)
 
     server = PyTeaServer(args.port)
-    # server.listen()
 
 
 if __name__ == "__main__":

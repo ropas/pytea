@@ -34,8 +34,10 @@ import {
     CustomObjectPrinter,
     formatCodeSource,
     getStmtsFromDir,
+    postJsonRpc,
     PyZ3RPCRespond,
     PyZ3RPCResult,
+    PyZ3RPCResultType,
     reducedToString,
 } from './pyteaUtils';
 
@@ -44,7 +46,6 @@ let _globalService: PyteaService | undefined;
 export class PyteaService {
     private _options?: PyteaOptions;
     private _service?: AnalyzerService;
-    private _z3Process?: ChildProcess;
 
     private _console: ConsoleInterface;
 
@@ -287,44 +288,46 @@ export class PyteaService {
         return result;
     }
 
-    spawnZ3Py(): ChildProcess | undefined {
-        if (this._z3Process) return this._z3Process;
+    // spawnZ3Py(): ChildProcess | undefined {
+    //     if (this._z3Process) return this._z3Process;
 
-        if (!this.options?.pyteaLibPath) {
-            this._console.error(`pyteaLibPath is not set'. skip z3`);
-            return;
-        }
+    //     if (!this.options?.pyteaLibPath) {
+    //         this._console.error(`pyteaLibPath is not set'. skip z3`);
+    //         return;
+    //     }
 
-        const pyteaPath = path.join(this.options.pyteaLibPath, '..', 'z3wrapper', 'pyteaserver.py');
+    //     const pyteaPath = path.join(this.options.pyteaLibPath, '..', 'z3wrapper', 'pyteaserver.py');
 
-        if (!fs.existsSync(pyteaPath)) {
-            this._console.error(`cannot found pytea server script at '${pyteaPath}'. skip z3`);
-            return;
-        }
+    //     if (!fs.existsSync(pyteaPath)) {
+    //         this._console.error(`cannot found pytea server script at '${pyteaPath}'. skip z3`);
+    //         return;
+    //     }
 
-        const child = spawn('python', [pyteaPath, `--port=${this.options.z3Port}`]);
-        child.on('exit', () => {
-            this._z3Process = undefined;
-        });
-        this._z3Process = child;
+    //     const child = spawn('python', [pyteaPath, `--port=${this.options.z3Port}`]);
+    //     child.on('exit', () => {
+    //         this._z3Process = undefined;
+    //     });
+    //     this._z3Process = child;
 
-        return child;
-    }
+    //     return child;
+    // }
 
     async runZ3Py(result: ContextSet<ShValue | ShContFlag>): Promise<PyZ3RPCResult[]> {
         const port = this._options?.z3Port ?? defaultOptions.z3Port;
-        this._console.info(`connecting PyZ3 server... (port ${port})`);
+        const address = `http://localhost:${port}/`;
 
-        if (!this._z3Process) {
-            return Promise.reject('z3 process is not spawned. please call spawnZ3Py before.');
+        const randNum = Math.floor(Math.random() * 10000);
+        const ping = await postJsonRpc(address, -1, 'ping', randNum);
+        if (ping !== randNum) {
+            return Promise.reject(`Z3 Python server send wrong respond. send: ${randNum}, got: ${ping}`);
         }
 
-        const jsonList: string[] = [];
+        const jsonList: object[] = [];
         result.getList().forEach((ctx) => {
-            jsonList.push(ctx.ctrSet.getConstraintJSON());
+            jsonList.push(ctx.ctrSet.getConstraintObject());
         });
         result.getStopped().forEach((ctx) => {
-            jsonList.push(ctx.ctrSet.getConstraintJSON());
+            jsonList.push(ctx.ctrSet.getConstraintObject());
         });
         if (jsonList.length === 0) {
             return Promise.resolve([]);
@@ -332,17 +335,12 @@ export class PyteaService {
 
         // random segmented id
         this._requestId = (this._requestId + 1) % 10000000;
-        const jsonParams = `${jsonList.join(',')}`;
-        const jsonStr = `{"jsonrpc":"2.0","id":${this._requestId},"method":"solve","params":[${jsonParams}]}`;
 
-        const respond = await axios.post(`http://localhost:${port}/`, jsonStr);
-        const data = respond.data as PyZ3RPCRespond;
+        const respond = (await postJsonRpc(address, this._requestId, 'solve', jsonList)) as PyZ3RPCResult[];
 
-        if (data.log) {
-            this._console.info(data.log);
-        }
+        this._pushTimeLog('Running Z3 solver');
 
-        return Promise.resolve(data.result);
+        return respond;
     }
 
     printLog(result: ContextSet<ShValue | ShContFlag>): void {
@@ -361,11 +359,28 @@ export class PyteaService {
             case 'reduced':
                 this._reducedLog(result);
                 break;
-
             case 'full':
                 this._fullLog(result);
                 break;
+            default:
+                this._noneLog(result);
+                break;
+        }
+    }
 
+    printLogWithZ3(result: ContextSet<ShValue | ShContFlag>, z3Result: PyZ3RPCResult[]): void {
+        const logLevel = this._options!.logLevel;
+
+        switch (logLevel) {
+            case 'result-only':
+                this._resultOnlyLogWithZ3(result, z3Result);
+                break;
+            case 'reduced':
+                this._reducedLog(result);
+                break;
+            case 'full':
+                this._fullLog(result);
+                break;
             default:
                 this._noneLog(result);
                 break;
@@ -519,6 +534,122 @@ export class PyteaService {
                 chalk.yellow(`potential unreachable path #: ${stopped.count()}\n`) +
                 chalk.red(`immediate failed path #: ${failed.count()}\n`) +
                 (timeout ? `  - timed out path #: ${timeout}\n` : '')
+        );
+    }
+
+    private _resultOnlyLogWithZ3(result: ContextSet<ShValue | ShContFlag>, z3Result: PyZ3RPCResult[]): void {
+        const success = result.getList();
+        const stopped = result.getStopped();
+        const failed = result.getFailed();
+
+        let validCnt = 0;
+        let invalidCnt = 0;
+        let unreachCnt = 0;
+        let undecCnt = 0;
+        let idx = 0;
+        const z3Len = z3Result.length;
+
+        success.forEach((ctx, i) => {
+            const z3 = idx < z3Len ? z3Result[idx] : undefined;
+            if (z3) {
+                switch (z3.type) {
+                    case PyZ3RPCResultType.Valid:
+                    case PyZ3RPCResultType.Sat:
+                        validCnt += 1;
+                        break;
+                    case PyZ3RPCResultType.Unsat:
+                        invalidCnt += 1;
+                        break;
+                    case PyZ3RPCResultType.Unreachable:
+                        unreachCnt += 1;
+                        break;
+                    case PyZ3RPCResultType.DontKnow:
+                    case PyZ3RPCResultType.Timeout:
+                        undecCnt += 1;
+                        break;
+                }
+            }
+
+            if (ctx.logs.count() > 0) {
+                this._console.info(
+                    chalk.green(`success path #${i + 1}`) + `\n\n${chalk.bold('LOGS')}:\n${this._logsToString(ctx)}`
+                );
+            }
+            idx += 1;
+        });
+
+        stopped.forEach((ctx, i) => {
+            const z3 = idx < z3Len ? z3Result[idx] : undefined;
+            if (z3) {
+                switch (z3.type) {
+                    case PyZ3RPCResultType.Valid:
+                    case PyZ3RPCResultType.Sat:
+                        validCnt += 1;
+                        break;
+                    case PyZ3RPCResultType.Unsat:
+                        invalidCnt += 1;
+                        break;
+                    case PyZ3RPCResultType.Unreachable:
+                        unreachCnt += 1;
+                        break;
+                    case PyZ3RPCResultType.DontKnow:
+                    case PyZ3RPCResultType.Timeout:
+                        undecCnt += 1;
+                        break;
+                }
+            }
+
+            const source = ctx.retVal.source;
+
+            let logs = '';
+            if (ctx.logs.count() > 0) {
+                logs = `\n${chalk.bold('LOGS')}:\n${this._logsToString(ctx)}\n`;
+            }
+
+            this._console.info(
+                chalk.yellow(`stopped path #${idx + 1}`) +
+                    chalk.bold(`: ${ctx.retVal.reason}`) +
+                    ` - ${formatCodeSource(source, this._pathStore)}\n` +
+                    `\n${chalk.bold('CALL STACK')}:\n${this._callStackToString(ctx)}\n` +
+                    logs
+            );
+
+            idx += 1;
+        });
+
+        let timeout = 0;
+        failed.forEach((ctx, i) => {
+            const source = ctx.retVal.source;
+            if (ctx.isTimedOut()) {
+                timeout++;
+                return;
+            }
+
+            let logs = '';
+            if (ctx.logs.count() > 0) {
+                logs = `\n${chalk.bold('LOGS')}:\n${this._logsToString(ctx)}\n`;
+            }
+
+            this._console.info(
+                chalk.red(`failed path #${idx + 1}`) +
+                    chalk.bold(`: ${ctx.retVal.reason}`) +
+                    `- ${formatCodeSource(source, this._pathStore)}\n` +
+                    `\n${chalk.bold('CALL STACK')}:\n${this._callStackToString(ctx)}\n` +
+                    logs
+            );
+
+            idx += 1;
+        });
+
+        this._pushTimeLog('printing results');
+
+        this._console.info(
+            `${chalk.bold('<OVERALL: total ' + idx + ' paths>\n')}` +
+                chalk.green(`valid path #: ${validCnt}\n`) +
+                chalk.red(`invalid path #: ${invalidCnt + failed.count()}\n`) +
+                (undecCnt > 0 ? chalk.yellow(`undecidable path #: ${undecCnt}\n`) : '') +
+                (unreachCnt > 0 ? chalk.gray(`unreachable path #: ${unreachCnt}\n`) : '') +
+                (timeout ? `  - constraint generator timed out path #: ${timeout}\n` : '')
         );
     }
 

@@ -9,8 +9,6 @@ Author: Se Hoon Kim
 Encode json-formatted constraints to z3 formula, solve it,
 and return constraint conditions.
 """
-
-from z3 import *
 from enum import Enum
 from functools import reduce, wraps
 from pathlib import Path
@@ -18,6 +16,8 @@ import json
 import sys
 import time
 from threading import Thread
+
+from z3 import *
 
 # code from https://stackoverflow.com/questions/21827874/timeout-a-function-windows
 def timeout(timeout):
@@ -92,6 +92,7 @@ class PathResult(Enum):
     Sat = 2
     Unsat = 3
     DontKnow = 4
+    Timeout = -1
 
 
 # Type enums: Must be consistent with enums in "symExpressions.ts", "constraintType.ts".
@@ -210,7 +211,7 @@ class Z3Encoder:
             # 5 seconds timeout
             analyze_tm = timeout(5)(ctrSet.analysis)
             try:
-                (pathResult, pathLog, _,) = analyze_tm()  # side effect: print result
+                pathResult, pathLog, _ = analyze_tm()  # side effect: print result
                 # log += pathLog
 
                 if pathResult == PathResult.Valid.value:

@@ -6,7 +6,7 @@
 ### ping
 
 #### request (node -> python, 100ms timeout)
-```json
+```js
 {
     "jsonrpc": "2.0",
     "method": "ping",
@@ -16,7 +16,7 @@
 ```
 
 #### respond (python -> node)
-```json
+```js
 {
     "jsonrpc": "2.0",
     "id": 0, // number
@@ -27,7 +27,7 @@
 ```
 
 ### z3 solve request (node -> python)
-```json
+```js
 {
     "jsonrpc": "2.0",
     "method": "solve",
@@ -45,12 +45,12 @@
 ```
 
 #### send result (python -> node)
-```json
+```js
 {
     "jsonrpc": "2.0",
     "id": 0, // number
     "result": [
-        { "type": 1 }, // type: PathResult
+        { "type": 1 }, // type: PyZ3RPCResult
     ], // results for each paths
     "log": "<some extra messages>"
 }
@@ -62,9 +62,10 @@
 enum PyZ3RPCResultType {
     Unreachable = 0,
     Valid = 1,
-    MayInvalid = 2,
-    Invalid = 3,
-    Undecidable = 4,
+    Sat = 2,
+    Unsat = 3,
+    DontKnow = 4,
+    Timeout = -1,
 }
 
 interface PyZ3RPCResult {
