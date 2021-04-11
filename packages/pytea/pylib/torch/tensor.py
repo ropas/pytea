@@ -74,6 +74,18 @@ class Tensor:
         torch._bop(self, other)
         return self
 
+    def exp(self):
+        return torch.exp(self)
+
+    def exp_(self):
+        return self
+
+    def expm1(self):
+        return torch.exp(self)
+
+    def expm1_(self):
+        return self
+
     def normal_(self, *args, **kwargs):
         return self
 

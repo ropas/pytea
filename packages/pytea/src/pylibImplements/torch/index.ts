@@ -121,6 +121,13 @@ export namespace TorchLCImpl {
         });
     }
 
+    export function scalarTensor(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
+        return genTensor(ctx, ExpShape.fromConst(0, [], source), source);
+    }
+
     export function identityShape(
         ctx: Context<LCBase.ExplicitParams>,
         source: CodeSource | undefined
@@ -145,6 +152,40 @@ export namespace TorchLCImpl {
         const inputShape = inputSize.shape;
 
         return genTensor(ctx, inputShape, source);
+    }
+
+    export function sameShape(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.sameShape': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [tensor1, tensor2] = params;
+
+        const size1 = fetchSize(tensor1, heap);
+        const size2 = fetchSize(tensor2, heap);
+
+        if (typeof size1 === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.sameShape': ${size1}`, source);
+        }
+        if (typeof size2 === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.sameShape': ${size2}`, source);
+        }
+
+        return ctx
+            .require(
+                ctx.genEq(size1.shape, size2.shape, source),
+                "from 'LibCall.torch.sameShape': not same shapes.",
+                source
+            )
+            .flatMap((ctx) => genTensor(ctx, size1.shape, source));
     }
 
     // return broadcasted tensor
@@ -2398,7 +2439,9 @@ export namespace TorchLCImpl {
 
     export const libCallImpls: { [key: string]: LCImpl } = {
         tensorInit,
+        scalarTensor,
         identityShape,
+        sameShape,
         matmul,
         mm,
         bmm,

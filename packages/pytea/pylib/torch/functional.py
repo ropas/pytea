@@ -253,6 +253,18 @@ def pow(input, exponent, out=None):
     return result
 
 
+def exp(input, out=None):
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
+
+
+def expm1(input, out=None):
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
+
+
 def _bop(tensor, other):
     if isinstance(other, Tensor):
         dtype = torch.maxDtype(tensor, other)
