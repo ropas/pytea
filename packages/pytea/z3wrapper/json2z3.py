@@ -626,7 +626,6 @@ class Ctr:
             left = self.encodeExpBool(expBool["left"])
             right = self.encodeExpBool(expBool["right"])
             return Or(left, right)
-
     def getRank(self, expShape):
         if expShape["expType"] != SEType.Shape.value:
             raise Exception("getRank Error: not a ExpShape")
@@ -641,9 +640,17 @@ class Ctr:
         elif expShape["opType"] == ShapeOpType.Set.value:
             return self.getRank(expShape["baseShape"])
         elif expShape["opType"] == ShapeOpType.Slice.value:
-            return self.encodeExpNum(expShape["end"]) - self.encodeExpNum(
-                expShape["start"]
+            if "start" in expShape:
+                start = self.encodeExpNum(expShape["start"])
+            else:
+                start = IntVal(0)
+
+            end = (
+                expShape["end"]
+                if "end" in expShape
+                else self.getRank(self.encodeExpShape(expShape["baseShape"]))
             )
+            return self.encodeExpNum(end) - start
         elif expShape["opType"] == ShapeOpType.Concat.value:
             return self.getRank(expShape["left"]) + self.getRank(expShape["right"])
         elif expShape["opType"] == ShapeOpType.Broadcast.value:
@@ -809,14 +816,19 @@ class Ctr:
         dims = self.encodeExpShape(expShape["baseShape"])
 
         # TODO: How to handle cases where "start" and "end" are not given?
-        start = self.encodeExpNum(expShape["start"])
-        if start is None:
-            start = 0
+        if "start" not in expShape:
+            start = IntVal(0)
+        else:
+            start = self.encodeExpNum(expShape["start"])
+
         if not is_int(start):
             raise Exception("_encodeExpShapeSlice: a start index must be an int")
-        end = self.encodeExpNum(expShape["end"])
-        if end is None:
-            end = self.getRank(dims)
+
+        if "end" not in expShape:
+            end = self.getRank(expShape["baseShape"])
+        else:
+            end = self.encodeExpNum(expShape["end"])
+
         if not is_int(end):
             raise Exception("_encodeExpShapeSlice: a end index must be an int")
         i = Int("i")
