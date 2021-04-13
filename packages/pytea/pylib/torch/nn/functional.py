@@ -3,10 +3,6 @@ from ..tensor import Tensor
 import torch
 
 
-def relu(input, inplace=False):
-    return input
-
-
 def conv2d(
     input, weight, bias=None, stride=None, padding=0, dilation=1, groups=1,
 ):
@@ -109,20 +105,6 @@ def linear(input, weight, bias=None):
         return input.matmul(weight.transpose(0, 1)) + bias
 
 
-def log_softmax(input, dim=None, _stacklevel=3, dtype=None):
-    return LibCall.torch.identityShape(input)
-
-
-def softmax(input, dim=None, _stacklevel=3, dtype=None):
-    return LibCall.torch.identityShape(input)
-
-
-def dropout(input, p=0.5, training=True, inplace=False):
-    if p < 0.0 or p > 1.0:
-        raise ValueError("dropout probability has to be between 0 and 1, but got ...")
-    return LibCall.torch.identityShape(input)
-
-
 def instance_norm(
     input,
     running_mean=None,
@@ -150,13 +132,38 @@ def mse_loss(input, target, size_average=None, reduce=None, reduction="mean"):
         return torch.Tensor()
 
 
+def log_softmax(input, dim=None, _stacklevel=3, dtype=None):
+    return LibCall.torch.identityShape(input)
+
+
+def softmax(input, dim=None, _stacklevel=3, dtype=None):
+    return LibCall.torch.identityShape(input)
+
+
+def dropout(input, p=0.5, training=True, inplace=False):
+    if p < 0.0 or p > 1.0:
+        raise ValueError("dropout probability has to be between 0 and 1, but got ...")
+    return LibCall.torch.identityShape(input)
+
+
+def relu(input):
+    return LibCall.torch.identityShape(input)
+
+
 def gelu(input):
     return LibCall.torch.identityShape(input)
 
 
 def tanh(input, out=None):
-    LibCall.torch.copyOut(input, out)
-    return input
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
+
+
+def sigmoid(input, out=None):
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
 
 
 def embedding(

@@ -6,7 +6,7 @@ from .conv import Conv2d
 from .distance import CosineSimilarity
 from .dropout import Dropout2d, Dropout
 from .linear import Linear
-from .loss import CrossEntropyLoss, MSELoss
+from .loss import CrossEntropyLoss, MSELoss, BCELoss
 from .pooling import AdaptiveAvgPool2d, AvgPool2d, MaxPool2d
 from .instancenorm import InstanceNorm2d
 from .padding import ReflectionPad2d

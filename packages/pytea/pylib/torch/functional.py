@@ -302,26 +302,31 @@ def flatten(input, start_dim=0, end_dim=-1):
 
 
 def sqrt(input, out=None):
-    LibCall.torch.copyOut(input, out)
-    return input
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
 
 
 def tanh(input, out=None):
-    LibCall.torch.copyOut(input, out)
-    return input
-
-
-def relu(input):
-    return input
-
-
-def gelu(input):
-    return input
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
 
 
 def sigmoid(input, out=None):
-    LibCall.torch.copyOut(input, out)
-    return input
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
+
+
+def relu(input):
+    result = LibCall.torch.identityShape(input)
+    return result
+
+
+def gelu(input):
+    result = LibCall.torch.identityShape(input)
+    return result
 
 
 def softmax(input, dim=None, dtype=None):
