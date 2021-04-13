@@ -1178,8 +1178,9 @@ export function strLen(
 }
 
 // return closed expression of normalized index of list. (e.g. a[-1] with length 5 => 4)
-// if it cannot determine that index is neg or pos, return i + r * (1 - (r - |i|) // (r - i)) for safety
-// this function requires -r <= i <= r - 1
+// if it cannot determine that index is neg or pos,
+// return i + r * (1 - (1 // (abs(i) - i + 1))) for safety
+// this is equivalent to i if i >= 0 else r - i
 export function absExpIndexByLen(
     index: number | ExpNum,
     rank: number | ExpNum,
@@ -1204,12 +1205,17 @@ export function absExpIndexByLen(
         const r = ctrSet ? simplifyNum(ctrSet, rank) : rank;
         if (r.opType === NumOpType.Const) return r.value + index;
         return ExpNum.bop(NumBopType.Add, r, index, source);
+    } else if (ctrSet) {
+        const idxRange = ctrSet.getCachedRange(i);
+        if (idxRange?.gte(0)) {
+            return i;
+        }
     }
 
     // don't know sign of i
-    // return i + r * (1 - (r - |i|) // (r - i))
+    // return i + r * (1 - (1 // (abs(i) - i + 1)))
     const r = typeof rank === 'number' ? ExpNum.fromConst(rank, source) : ctrSet ? simplifyNum(ctrSet, rank) : rank;
-    return ExpNum.bop(
+    const result = ExpNum.bop(
         NumBopType.Add,
         i,
         ExpNum.bop(
@@ -1220,8 +1226,13 @@ export function absExpIndexByLen(
                 1,
                 ExpNum.bop(
                     NumBopType.FloorDiv,
-                    ExpNum.bop(NumBopType.Sub, r, ExpNum.uop(NumUopType.Abs, i, source), source),
-                    ExpNum.bop(NumBopType.Sub, r, i, source),
+                    1,
+                    ExpNum.bop(
+                        NumBopType.Sub,
+                        ExpNum.bop(NumBopType.Sub, ExpNum.uop(NumUopType.Abs, i, source), i, source),
+                        1,
+                        source
+                    ),
                     source
                 ),
                 source
@@ -1231,6 +1242,7 @@ export function absExpIndexByLen(
         ),
         source
     );
+    return result;
 }
 
 // return closed expression of length of a:b

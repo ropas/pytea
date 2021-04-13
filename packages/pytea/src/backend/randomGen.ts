@@ -18,10 +18,18 @@ export class RandomGen {
 
     nextInt(from?: number | null, to?: number | null): number {
         if (from === undefined || from === null) {
-            from = 1;
+            if (to !== undefined && to !== null) {
+                from = to - 10000;
+            } else {
+                from = 1;
+            }
         }
         if (to === undefined || to === null) {
-            to = 10000;
+            if (from !== undefined && from !== null) {
+                to = from + 10000;
+            } else {
+                to = 10000;
+            }
         }
 
         let a = Math.floor(from);
@@ -34,10 +42,18 @@ export class RandomGen {
 
     nextFloat(from?: number | null, to?: number | null): number {
         if (from === undefined || from === null) {
-            from = 0;
+            if (to !== undefined && to !== null) {
+                from = to - 10000;
+            } else {
+                from = 1;
+            }
         }
         if (to === undefined || to === null) {
-            to = 1;
+            if (from !== undefined && from !== null) {
+                to = from + 10000;
+            } else {
+                to = 10000;
+            }
         }
         return (from - to) * this._rng.random() + to;
     }
