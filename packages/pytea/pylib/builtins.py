@@ -192,14 +192,14 @@ def _list__getitem__(self, index):
                 return self
             else:
                 # index by [:stop]
-                return [self[i] for i in range(0, stop)]
+                return LibCall.builtins.getItemBySlice(self, 0, stop)
         else:
             if index.stop is None:
                 # index by [start:]
-                return [self[i] for i in range(start, len(self))]
+                return LibCall.builtins.getItemBySlice(self, start, len(self))
             else:
                 # index by [start:stop]
-                return [self[i] for i in range(start, stop)]
+                return LibCall.builtins.getItemBySlice(self, start, stop)
     else:
         # TODO: filter SVWarning
         raise IndexError("index is not an integer or slice")

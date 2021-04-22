@@ -12,3 +12,6 @@ def uniform(a, b):
 def randint(a, b):
     return LibCall.builtins.randInt(a, b, "randint")
 
+
+def seed(a=None, version=2):
+    pass
