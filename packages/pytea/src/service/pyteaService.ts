@@ -481,7 +481,7 @@ export class PyteaService {
         success.forEach((ctx, i) => {
             if (ctx.logs.count() > 0) {
                 this._console.info(
-                    chalk.green(`success path #${i + 1}`) + `\n\n${chalk.bold('LOGS')}:\n${this._logsToString(ctx)}`
+                    chalk.green(`success path #${i + 1}`) + `\n\n${chalk.bold('LOGS')}:\n${this._logsToString(ctx)}\n`
                 );
             }
         });
@@ -499,7 +499,8 @@ export class PyteaService {
                     chalk.bold(`: ${ctx.retVal.reason}`) +
                     ` - ${formatCodeSource(source, this._pathStore)}\n` +
                     `\n${chalk.bold('CALL STACK')}:\n${this._callStackToString(ctx)}\n` +
-                    logs
+                    logs +
+                    '\n'
             );
         });
 
@@ -521,7 +522,8 @@ export class PyteaService {
                     chalk.bold(`: ${ctx.retVal.reason}`) +
                     `- ${formatCodeSource(source, this._pathStore)}\n` +
                     `\n${chalk.bold('CALL STACK')}:\n${this._callStackToString(ctx)}\n` +
-                    logs
+                    logs +
+                    '\n'
             );
         });
 
@@ -572,7 +574,7 @@ export class PyteaService {
 
             if (ctx.logs.count() > 0) {
                 this._console.info(
-                    chalk.green(`success path #${i + 1}`) + `\n\n${chalk.bold('LOGS')}:\n${this._logsToString(ctx)}`
+                    chalk.green(`success path #${i + 1}`) + `\n\n${chalk.bold('LOGS')}:\n${this._logsToString(ctx)}\n`
                 );
             }
             idx += 1;
@@ -611,7 +613,8 @@ export class PyteaService {
                     chalk.bold(`: ${ctx.retVal.reason}`) +
                     ` - ${formatCodeSource(source, this._pathStore)}\n` +
                     `\n${chalk.bold('CALL STACK')}:\n${this._callStackToString(ctx)}\n` +
-                    logs
+                    logs +
+                    '\n'
             );
 
             idx += 1;
@@ -635,7 +638,8 @@ export class PyteaService {
                     chalk.bold(`: ${ctx.retVal.reason}`) +
                     `- ${formatCodeSource(source, this._pathStore)}\n` +
                     `\n${chalk.bold('CALL STACK')}:\n${this._callStackToString(ctx)}\n` +
-                    logs
+                    logs +
+                    '\n'
             );
 
             idx += 1;

@@ -117,6 +117,7 @@ export namespace BuiltinsLCImpl {
         const argDefault = fetchAddr(kwargs.getKeyVal('default'), heap);
         const argAction = fetchAddr(kwargs.getKeyVal('action'), heap);
         const argConst = sanitizeAddr(kwargs.getKeyVal('const'), heap);
+        const required = fetchAddr(kwargs.getKeyVal('required'), heap);
         const argValue = cmdArgs[argName];
 
         let action = '';
@@ -190,6 +191,29 @@ export namespace BuiltinsLCImpl {
             return ctx
                 .setRetVal(SVNone.create())
                 .setHeap(heap.setVal(namespace, nsObj.setAttr(argPyName, argDefault)))
+                .toSet();
+        } else if (required?.type === SVType.Bool && required.value === false) {
+            // set non-required input to default value
+            let setVal: ShValue;
+            switch (argType) {
+                case SVType.Func:
+                    return TorchBackend.functionCall(ctx, argTypeAddr as SVFunc, [SVString.create('', source)], source);
+                case SVType.Int:
+                    setVal = SVInt.create(0, source);
+                    break;
+                case SVType.Float:
+                    setVal = SVFloat.create(0, source);
+                    break;
+                case SVType.Bool:
+                    setVal = SVBool.create(false, source);
+                    break;
+                default:
+                    // fall back to string
+                    setVal = SVString.create('', source);
+            }
+            return ctx
+                .setRetVal(SVNone.create())
+                .setHeap(heap.setVal(namespace, nsObj.setAttr(argPyName, setVal)))
                 .toSet();
         } else {
             // not found value. log and use symbolic value.

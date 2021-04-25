@@ -4,7 +4,7 @@ import torch
 
 
 def conv2d(
-    input, weight, bias=None, stride=None, padding=0, dilation=1, groups=1,
+    input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1,
 ):
     if isinstance(stride, int):
         stride = (stride, stride)
@@ -13,6 +13,29 @@ def conv2d(
     if isinstance(dilation, int):
         dilation = (dilation, dilation)
     return LibCall.torch.conv2d(input, weight, bias, stride, padding, dilation, groups)
+
+
+def conv_transpose2d(
+    input,
+    weight,
+    bias=None,
+    stride=1,
+    padding=0,
+    output_padding=0,
+    groups=1,
+    dilation=1,
+):
+    if isinstance(stride, int):
+        stride = (stride, stride)
+    if isinstance(padding, int):
+        padding = (padding, padding)
+    if isinstance(dilation, int):
+        dilation = (dilation, dilation)
+    if isinstance(output_padding, int):
+        output_padding = (output_padding, output_padding)
+    return LibCall.torch.conv_transpose2d(
+        input, weight, bias, stride, padding, output_padding, groups, dilation
+    )
 
 
 def max_pool2d(

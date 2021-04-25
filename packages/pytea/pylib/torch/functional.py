@@ -118,6 +118,13 @@ def cat(tensors, dim=0, out=None):
     return tensor
 
 
+def squeeze(input, dim=None, out=None):
+    dtype = input.dtype
+    tensor = LibCall.torch.squeeze(input, dim)
+    tensor.dtype = dtype
+    return tensor
+
+
 def unsqueeze(input, dim):
     dtype = input.dtype
     tensor = LibCall.torch.unsqueeze(input, dim)
@@ -220,10 +227,9 @@ def max(input, dim=None, keepdim=False, out=None):
         return tensor, indice
 
 
-def mean(input, dim=None, keepdim=False, out=None):
-    if not (input.dtype in torch.floatTypes):
-        raise TypeError("Can only calculate the mean of floating types")
-    dtype = input.dtype
+def mean(input, dim=None, keepdim=False, dtype=None, out=None):
+    if dtype is None:
+        dtype = input.dtype
     tensor = LibCall.torch.reduce(input, dim, keepdim)
     tensor.dtype = dtype
     return tensor
@@ -348,6 +354,14 @@ def arange(start, end=None, step=1, out=None, **kwargs):
         dtype = torch.floatDefault
     tensor = Tensor(int((end - start) / step))
     tensor.dtype = dtype
+    LibCall.torch.copyOut(tensor, out)
+    return tensor
+
+
+def full(size, fill_value, out=None, dtype=None, **kwargs):
+    if dtype is None:
+        dtype = torch.floatDefault
+    tensor = Tensor(*size, dtype=dtype)
     LibCall.torch.copyOut(tensor, out)
     return tensor
 

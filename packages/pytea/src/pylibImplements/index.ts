@@ -10,6 +10,7 @@ import { Context, ContextSet } from '../backend/context';
 import { CodeSource, ShValue } from '../backend/sharpValues';
 import { libCallMap as argparseMap } from './argparse';
 import { libCallMap as builtinsMap } from './builtins';
+import { libCallMap as guardMap } from './guard';
 import { LCBase, libCallMap as baseMap } from './libcall';
 import { libCallMap as mathMap } from './math';
 import { libCallMap as numpyMap } from './numpy';
@@ -41,4 +42,5 @@ export const libCallMap: Map<string, LCImpl> = new Map([
     ...registLibCall(shapeMap, 'shape'),
     ...registLibCall(builtinsMap, 'builtins'),
     ...registLibCall(argparseMap, 'argparse'),
+    ...registLibCall(guardMap, 'guard'),
 ]);

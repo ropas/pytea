@@ -796,7 +796,10 @@ export namespace ExpNum {
         };
     }
 
-    export function toString(exp: ExpNum): string {
+    export function toString(exp: number | ExpNum): string {
+        if (typeof exp === 'number') {
+            return exp.toString();
+        }
         switch (exp.opType) {
             case NumOpType.Const:
                 return `${exp.value}`;

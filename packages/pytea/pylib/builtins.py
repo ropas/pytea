@@ -208,6 +208,16 @@ def _list__getitem__(self, index):
 list.__getitem__ = _list__getitem__
 
 
+def _list__contains__(self, value):
+    for item in self:
+        if item == value:
+            return True
+    return False
+
+
+list.__contains__ = _list__contains__
+
+
 def _list__add__(self, items):
     ret = []
     for item in self:
@@ -363,7 +373,7 @@ str.join = _str_join
 
 
 def _str_replace(self, old, new, count=None):
-    # TODO: replace it.
+    # TODO: implement it.
     return self
 
 
@@ -371,7 +381,7 @@ str.replace = _str_replace
 
 # temp
 def _str_ljust(self, length, character=" "):
-    # TODO:
+    # TODO: implement it.
     return self
 
 

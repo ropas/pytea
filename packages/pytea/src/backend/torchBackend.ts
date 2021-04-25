@@ -68,7 +68,7 @@ import {
     svTypeToString,
     SVUndef,
 } from './sharpValues';
-import { ExpNum, ExpString, NumBopType, NumOpType, SymExp } from './symExpressions';
+import { ExpNum, ExpString, NumBopType, SymExp } from './symExpressions';
 
 export namespace TorchBackend {
     export function runEmpty(stmt: ThStmt): ContextSet<ShValue | ShContFlag> {
@@ -1241,44 +1241,45 @@ export namespace TorchBackend {
                 let ctrSet = ctx.ctrSet;
 
                 if (!leftVal || !rightVal) {
-                    return ctx.warnWithMsg('errornous binary operation', expr.source).toSet();
+                    return ctx.warnWithMsg('operand address is undefined (segfault)', expr.source).toSet();
+                }
+
+                // error propagation
+                if (leftVal.type === SVType.Error) {
+                    return ctx.toSetWith(leftVal);
+                } else if (rightVal.type === SVType.Error) {
+                    return ctx.toSetWith(rightVal);
                 }
 
                 // string bop
                 let result: ShValue | undefined;
                 let hasString = false;
                 if (leftVal.type === SVType.String && rightVal.type === SVType.String) {
-                    result = SymOpUtils.binOpStr(
-                        ctx.ctrSet,
-                        leftVal,
-                        rightVal,
-                        expr.bopType,
-                        expr.source as ExpressionNode
-                    );
+                    result = SymOpUtils.binOpStr(ctx.ctrSet, leftVal, rightVal, expr.bopType, expr.source);
                     hasString = true;
                 } else if (leftVal.type === SVType.String && SymOpUtils.isNumeric(rightVal)) {
-                    result = SymOpUtils.binOpStrNum(
-                        ctrSet,
-                        leftVal,
-                        rightVal,
-                        expr.bopType,
-                        expr.source as ExpressionNode
-                    );
+                    result = SymOpUtils.binOpStrNum(ctrSet, leftVal, rightVal, expr.bopType, expr.source);
                     hasString = true;
                 } else if (rightVal.type === SVType.String && SymOpUtils.isNumeric(leftVal)) {
-                    result = SymOpUtils.binOpStrNum(
-                        ctrSet,
-                        rightVal,
-                        leftVal,
-                        expr.bopType,
-                        expr.source as ExpressionNode
+                    result = SymOpUtils.binOpStrNum(ctrSet, rightVal, leftVal, expr.bopType, expr.source);
+                    hasString = true;
+                } else if (leftVal.type === SVType.String && expr.bopType === TEBopType.Mod) {
+                    // TODO: format string
+                    result = SVString.create(
+                        ExpString.fromSymbol(ctrSet.genSymString('str_format', expr.source)),
+                        expr.source
                     );
                     hasString = true;
                 }
 
                 if (hasString) {
                     if (result === undefined) {
-                        return ctx.failWithMsg(`invalid operation ${expr.bopType} in string`, expr.source).toSet();
+                        return ctx
+                            .failWithMsg(
+                                `invalid operation ${TEBinOp.toStringBop(expr.bopType)} in string`,
+                                expr.source
+                            )
+                            .toSet();
                     }
                     return ctx.toSetWith(result);
                 }
@@ -1302,7 +1303,6 @@ export namespace TorchBackend {
                 }
 
                 // object addr check bop or check nonetype
-                // TODO: == None / != None
                 if (expr.bopType === TEBopType.Is) {
                     if (leftAddr.type === SVType.Addr && rightAddr.type === SVType.Addr) {
                         return ctx.toSetWith(SVBool.create(leftAddr.addr === rightAddr.addr, expr.source));
@@ -1332,29 +1332,26 @@ export namespace TorchBackend {
 
                 if (leftVal.type === SVType.Object) {
                     const lv = leftVal;
-                    return ctx
-                        .toSet()
-                        .flatMap((ctx) => getAttrDeep(ctx, lv, lop, expr.source))
-                        .flatMap((ctx) => {
-                            const lopFun = BackUtils.fetchAddr(ctx.retVal, ctx.heap);
-                            if (lopFun?.type === SVType.Func) {
-                                return functionCall(ctx, lopFun, [rightAddr], expr.source).flatMap((ctx) => {
-                                    const calcVal = ctx.retVal;
-                                    if (calcVal.type === SVType.NotImpl && rightVal?.type === SVType.Object) {
-                                        return getAttrDeep(ctx, rightVal, rop, expr.source).flatMap((ctx) => {
-                                            const ropFun = BackUtils.fetchAddr(ctx.retVal, ctx.heap);
-                                            if (ropFun?.type === SVType.Func) {
-                                                return functionCall(ctx, ropFun, [leftAddr], expr.source);
-                                            }
-                                            return ctx.toSetWith(defaultRetVal);
-                                        });
-                                    }
-                                    return ctx.toSet();
-                                });
-                            }
+                    return ctx.getAttrDeep(lv, lop, expr.source).flatMap((ctx) => {
+                        const lopFun = BackUtils.fetchAddr(ctx.retVal, ctx.heap);
+                        if (lopFun?.type === SVType.Func) {
+                            return functionCall(ctx, lopFun, [rightAddr], expr.source).flatMap((ctx) => {
+                                const calcVal = ctx.retVal;
+                                if (calcVal.type === SVType.NotImpl && rightVal?.type === SVType.Object) {
+                                    return getAttrDeep(ctx, rightVal, rop, expr.source).flatMap((ctx) => {
+                                        const ropFun = BackUtils.fetchAddr(ctx.retVal, ctx.heap);
+                                        if (ropFun?.type === SVType.Func) {
+                                            return functionCall(ctx, ropFun, [leftAddr], expr.source);
+                                        }
+                                        return ctx.toSetWith(defaultRetVal);
+                                    });
+                                }
+                                return ctx.toSet();
+                            });
+                        }
 
-                            return ctx.toSetWith(defaultRetVal);
-                        });
+                        return ctx.toSetWith(defaultRetVal);
+                    });
                 }
 
                 if (rightVal.type === SVType.Object) {
@@ -1365,6 +1362,22 @@ export namespace TorchBackend {
                         }
                         return ctx.toSetWith(defaultRetVal);
                     });
+                }
+
+                if (expr.bopType === TEBopType.Eq || expr.bopType === TEBopType.Neq) {
+                    const isNeq = expr.bopType === TEBopType.Neq;
+                    if (leftVal.type === SVType.None) {
+                        if (isNeq) {
+                            return ctx.toSetWith(SVBool.create(rightVal.type !== SVType.None, expr.source));
+                        } else {
+                            return ctx.toSetWith(SVBool.create(rightVal.type === SVType.None, expr.source));
+                        }
+                    } else if (rightVal.type === SVType.None) {
+                        return ctx.toSetWith(SVBool.create(isNeq, expr.source));
+                    }
+
+                    // string / numeric / object comparison is done from above
+                    return ctx.toSetWith(SVBool.create(isNeq, expr.source));
                 }
 
                 return ctx.toSetWith(defaultRetVal);

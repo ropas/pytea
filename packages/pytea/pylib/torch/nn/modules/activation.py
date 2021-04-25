@@ -1,6 +1,7 @@
 import LibCall
-from .module import Module
+from .... import torch
 from .. import functional as F
+from .module import Module
 
 
 class LeakyReLU(Module):
@@ -45,3 +46,12 @@ class Softmax(Module):
     def extra_repr(self):
         return "dim={dim}".format(dim=self.dim)
 
+
+class Sigmoid(Module):
+    def forward(self, input):
+        return torch.sigmoid(input)
+
+
+class Tanh(Module):
+    def forward(self, input):
+        return torch.tanh(input)

@@ -58,3 +58,7 @@ class Module:
 
     def share_memory(self):
         return self
+
+    def apply(self, fn):
+        # TODO: recursively add apply fn in children
+        return self

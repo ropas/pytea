@@ -6,7 +6,7 @@
  *
  * Utility functions for She interpreter.
  */
-import { ExpressionNode, ParseNode } from 'pyright-internal/parser/parseNodes';
+import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
 import { TEBopType, TEUopType } from '../frontend/torchStatements';
 import { FilePathStore } from '../service/executionPaths';
@@ -365,57 +365,53 @@ export namespace SymOpUtils {
         switch (bop) {
             case TEBopType.Add:
                 resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Int);
-                resultValue = ExpNum.bop(NumBopType.Add, leftVal, rightVal, source as ExpressionNode);
+                resultValue = ExpNum.bop(NumBopType.Add, leftVal, rightVal, source);
                 break;
             case TEBopType.Sub:
                 resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Int);
-                resultValue = ExpNum.bop(NumBopType.Sub, leftVal, rightVal, source as ExpressionNode);
+                resultValue = ExpNum.bop(NumBopType.Sub, leftVal, rightVal, source);
                 break;
             case TEBopType.Mul:
                 resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Int);
-                resultValue = ExpNum.bop(NumBopType.Mul, leftVal, rightVal, source as ExpressionNode);
+                resultValue = ExpNum.bop(NumBopType.Mul, leftVal, rightVal, source);
                 break;
             case TEBopType.FloorDiv:
                 resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Int);
-                resultValue = ExpNum.bop(NumBopType.FloorDiv, leftVal, rightVal, source as ExpressionNode);
+                resultValue = ExpNum.bop(NumBopType.FloorDiv, leftVal, rightVal, source);
                 break;
             case TEBopType.Mod:
                 resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Int);
-                resultValue = ExpNum.bop(NumBopType.Mod, leftVal, rightVal, source as ExpressionNode);
+                resultValue = ExpNum.bop(NumBopType.Mod, leftVal, rightVal, source);
                 break;
             case TEBopType.TrueDiv:
                 resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Float);
-                resultValue = ExpNum.bop(NumBopType.TrueDiv, leftVal, rightVal, source as ExpressionNode);
+                resultValue = ExpNum.bop(NumBopType.TrueDiv, leftVal, rightVal, source);
                 break;
             case TEBopType.Lt:
                 resultType = SVType.Bool;
-                resultValue = ExpBool.lt(leftVal, rightVal, source as ExpressionNode);
+                resultValue = ExpBool.lt(leftVal, rightVal, source);
                 break;
             case TEBopType.Lte:
                 resultType = SVType.Bool;
-                resultValue = ExpBool.lte(leftVal, rightVal, source as ExpressionNode);
+                resultValue = ExpBool.lte(leftVal, rightVal, source);
                 break;
             case TEBopType.Eq:
                 resultType = SVType.Bool;
-                resultValue = ExpBool.eq(leftExp, rightExp, source as ExpressionNode);
+                resultValue = ExpBool.eq(leftExp, rightExp, source);
                 break;
             case TEBopType.Neq:
                 resultType = SVType.Bool;
-                resultValue = ExpBool.neq(leftExp, rightExp, source as ExpressionNode);
+                resultValue = ExpBool.neq(leftExp, rightExp, source);
                 break;
             case TEBopType.Is:
                 resultType = SVType.Bool;
                 resultValue =
-                    left.type === right.type
-                        ? ExpBool.eq(leftExp, rightExp, source as ExpressionNode)
-                        : ExpBool.fromConst(false, source as ExpressionNode);
+                    left.type === right.type ? ExpBool.eq(leftExp, rightExp, source) : ExpBool.fromConst(false, source);
                 break;
             case TEBopType.IsNot:
                 resultType = SVType.Bool;
                 resultValue =
-                    left.type === right.type
-                        ? ExpBool.neq(leftExp, rightExp, source as ExpressionNode)
-                        : ExpBool.fromConst(true, source as ExpressionNode);
+                    left.type === right.type ? ExpBool.neq(leftExp, rightExp, source) : ExpBool.fromConst(true, source);
                 break;
             case TEBopType.In:
             case TEBopType.NotIn:
@@ -433,6 +429,7 @@ export namespace SymOpUtils {
     }
 
     export function binOpStrLiteral(
+        ctrSet: ConstraintSet,
         left: string,
         right: string,
         bop: TEBopType,
@@ -457,6 +454,9 @@ export namespace SymOpUtils {
                 return SVBool.create(right.search(left) !== -1, source);
             case TEBopType.NotIn:
                 return SVBool.create(right.search(left) === -1, source);
+            case TEBopType.Mod:
+                // TODO: format string
+                return SVString.create(ExpString.fromSymbol(ctrSet.genSymString('str_format', source)), source);
             default:
                 return;
         }
@@ -468,10 +468,10 @@ export namespace SymOpUtils {
         left: SVString,
         right: SVString,
         bop: TEBopType,
-        source?: ExpressionNode
+        source?: CodeSource | undefined
     ): ShValue | undefined {
         if (typeof left.value === 'string' && typeof right.value === 'string') {
-            return binOpStrLiteral(left.value, right.value, bop, source);
+            return binOpStrLiteral(ctrSet, left.value, right.value, bop, source);
         }
 
         const leftExp = typeof left.value === 'string' ? ExpString.fromConst(left.value, source) : left.value;
@@ -487,6 +487,9 @@ export namespace SymOpUtils {
             case TEBopType.Neq:
             case TEBopType.IsNot:
                 return SVBool.create(ExpBool.neq(leftExp, rightExp, source), source);
+            case TEBopType.Mod:
+                // TODO: format string
+                return SVString.create(ExpString.fromSymbol(ctrSet.genSymString('str_format', source)), source);
             case TEBopType.Lt:
                 symName = 'bop_lt';
                 break;
@@ -515,7 +518,7 @@ export namespace SymOpUtils {
         left: SVString,
         right: SVNumeric,
         bop: TEBopType,
-        source?: ExpressionNode
+        source?: CodeSource | undefined
     ): ShValue | undefined {
         switch (bop) {
             case TEBopType.Mul: {

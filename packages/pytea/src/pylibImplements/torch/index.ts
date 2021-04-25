@@ -1208,7 +1208,7 @@ export namespace TorchLCImpl {
         const weightRank = weightSize.rank();
 
         const out_channels = SVInt.create(ExpNum.index(weightShape, 0, source), source);
-        const in_channels = SVInt.create(ExpNum.index(weightShape, 1, source), source);
+        const in_channels_div_g = ExpNum.index(weightShape, 1, source);
         const kernel_size_0 = SVInt.create(ExpNum.index(weightShape, 2, source), source);
         const kernel_size_1 = SVInt.create(ExpNum.index(weightShape, 3, source), source);
 
@@ -1270,7 +1270,12 @@ export namespace TorchLCImpl {
             dilation_1 = dilation;
         }
 
-        const groups = fetchAddr(groupsAddr, heap) as SVInt;
+        const groups = fetchAddr(groupsAddr, heap);
+        if (groups?.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.conv2d: groups is not an int nor int pair`, source);
+        }
+
+        const in_channels = SVInt.create(ExpNum.bop(NumBopType.Mul, in_channels_div_g, groups.value, source), source);
 
         // size1 = input[2] + 2 * padding - dilation * (kernel_size - 1) - 1
         const exp1 = ExpNum.bop(NumBopType.Mul, 2, padding_0.value, source);
@@ -1307,7 +1312,7 @@ export namespace TorchLCImpl {
         return ctx
             .require(
                 [ctx.genEq(4, inputRank, source), ctx.genEq(4, weightRank, source), ctx.genEq(1, biasRank, source)],
-                `from 'LibCall.torch.conv2d': (input, weight, bias) rank is not (4, 4, 1)`,
+                `from 'LibCall.torch.conv2d': ranks of (input, weight, bias) are not (4, 4, 1)`,
                 source
             )
             .require(
@@ -1327,13 +1332,230 @@ export namespace TorchLCImpl {
                 source
             )
             .require(
-                [
-                    ctx.genLte(0, size1, source),
-                    ctx.genLte(0, size2, source),
-                    ctx.genEq(0, ExpNum.bop(NumBopType.Mod, in_channels.value, groups.value, source), source),
-                    ctx.genEq(0, ExpNum.bop(NumBopType.Mod, out_channels.value, groups.value, source), source),
-                ],
+                [ctx.genLte(0, size1, source), ctx.genLte(0, size2, source)],
                 `from 'LibCall.torch.conv2d': output size should be non-negative`,
+                source
+            )
+            .require(
+                ctx.genEq(0, ExpNum.bop(NumBopType.Mod, out_channels.value, groups.value, source), source),
+                `from 'LibCall.torch.conv2d': out_channel size must be divisible by 'groups'`,
+                source
+            )
+            .flatMap((ctx) => genTensor(ctx, ExpShape.fromConst(4, [dim0, dim1, dim2, dim3], source), source));
+    }
+
+    export function conv_transpose2d(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 8) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.conv_transpose2d': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [
+            inputAddr,
+            weightAddr,
+            biasAddr,
+            strideAddr,
+            paddingAddr,
+            outputPaddingAddr,
+            groupsAddr,
+            dilationAddr,
+        ] = params;
+
+        const inputSize = fetchSize(inputAddr, heap);
+        const weightSize = fetchSize(weightAddr, heap);
+
+        if (typeof inputSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.conv_transpose2d: ${inputSize}`, source);
+        }
+        if (typeof weightSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.conv_transpose2d: ${weightSize}`, source);
+        }
+
+        const inputShape = inputSize.shape;
+        const inputRank = inputSize.rank();
+        const weightShape = weightSize.shape;
+        const weightRank = weightSize.rank();
+
+        const in_channels = SVInt.create(ExpNum.index(weightShape, 0, source), source);
+        const out_channels_div_g = ExpNum.index(weightShape, 1, source);
+        const kernel_size_0 = SVInt.create(ExpNum.index(weightShape, 2, source), source);
+        const kernel_size_1 = SVInt.create(ExpNum.index(weightShape, 3, source), source);
+
+        // bias can be either None or (out_channels) shaped tensor
+        let bias_channels: ExpNum | number;
+        let biasRank: ExpNum | number;
+        if (biasAddr.type === SVType.None) {
+            bias_channels = -1;
+            biasRank = 1;
+        } else {
+            const biasSize = fetchSize(biasAddr, heap);
+            if (typeof biasSize === 'string') {
+                return ctx.warnTensorWithMsg(`from 'Libcall.torch.conv_transpose2d: ${biasSize}`, source);
+            }
+            const biasShape = biasSize.shape;
+            bias_channels = ExpNum.index(biasShape, 0, source);
+            biasRank = biasSize.rank();
+        }
+
+        const stride = fetchAddr(strideAddr, heap);
+        let stride_0, stride_1: SVInt;
+        if (stride === undefined) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.conv_transpose2d: stride is undefined`, source);
+        } else if (stride.type !== SVType.Object && stride.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(
+                `from 'Libcall.torch.conv_transpose2d: stride is not an int nor int pair`,
+                source
+            );
+        } else if (stride.type === SVType.Object) {
+            stride_0 = stride.getIndice(0) as SVInt;
+            stride_1 = stride.getIndice(1) as SVInt;
+        } else {
+            stride_0 = stride;
+            stride_1 = stride;
+        }
+
+        const padding = fetchAddr(paddingAddr, heap);
+        let padding_0, padding_1: SVInt;
+        if (padding === undefined) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.conv_transpose2d: padding is undefined`, source);
+        } else if (padding.type !== SVType.Object && padding.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(
+                `from 'Libcall.torch.conv_transpose2d: padding is not an int nor int pair`,
+                source
+            );
+        } else if (padding.type === SVType.Object) {
+            padding_0 = padding.getIndice(0) as SVInt;
+            padding_1 = padding.getIndice(1) as SVInt;
+        } else {
+            padding_0 = padding;
+            padding_1 = padding;
+        }
+
+        const outPadding = fetchAddr(outputPaddingAddr, heap);
+        let outPadding_0, outPadding_1: SVInt;
+        if (outPadding === undefined) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.conv_transpose2d: output_padding is undefined`, source);
+        } else if (outPadding.type !== SVType.Object && outPadding.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(
+                `from 'Libcall.torch.conv_transpose2d: output_padding is not an int nor int pair`,
+                source
+            );
+        } else if (outPadding.type === SVType.Object) {
+            outPadding_0 = outPadding.getIndice(0) as SVInt;
+            outPadding_1 = outPadding.getIndice(1) as SVInt;
+        } else {
+            outPadding_0 = outPadding;
+            outPadding_1 = outPadding;
+        }
+
+        const dilation = fetchAddr(dilationAddr, heap);
+        let dilation_0, dilation_1: SVInt;
+        if (dilation === undefined) {
+            return ctx.warnTensorWithMsg(`from 'Libcall.torch.conv_transpose2d: dilation is undefined`, source);
+        } else if (dilation.type !== SVType.Object && dilation.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(
+                `from 'Libcall.torch.conv_transpose2d: dilation is not an int nor int pair`,
+                source
+            );
+        } else if (dilation.type === SVType.Object) {
+            dilation_0 = dilation.getIndice(0) as SVInt;
+            dilation_1 = dilation.getIndice(1) as SVInt;
+        } else {
+            dilation_0 = dilation;
+            dilation_1 = dilation;
+        }
+
+        const groups = fetchAddr(groupsAddr, heap);
+        if (groups?.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(
+                `from 'Libcall.torch.conv_transpose2d: groups is not an int nor int pair`,
+                source
+            );
+        }
+
+        const out_channels = SVInt.create(ExpNum.bop(NumBopType.Mul, out_channels_div_g, groups.value, source), source);
+
+        // size1 = (input[2] - 1) * stride[0] - 2 * padding[0] + dilation[0] * (kernel_size[0] - 1) + output_padding[0] + 1
+        const exp1 = ExpNum.bop(NumBopType.Sub, ExpNum.index(inputShape, 2, source), 1, source);
+        const exp2 = ExpNum.bop(NumBopType.Mul, exp1, stride_0.value, source);
+        const exp3 = ExpNum.bop(NumBopType.Mul, 2, padding_0.value, source);
+        const exp4 = ExpNum.bop(NumBopType.Sub, exp2, exp3, source);
+        const exp5 = ExpNum.bop(
+            NumBopType.Mul,
+            dilation_0.value,
+            ExpNum.bop(NumBopType.Sub, kernel_size_0.value, 1, source),
+            source
+        );
+        const exp6 = ExpNum.bop(NumBopType.Add, exp4, exp5, source);
+        const size1 = ExpNum.bop(
+            NumBopType.Add,
+            exp6,
+            ExpNum.bop(NumBopType.Add, outPadding_0.value, 1, source),
+            source
+        );
+
+        // size2 = (input[3] - 1) * stride[1] - 2 * padding[1] + dilation[1] * (kernel_size[1] - 1) + output_padding[1] + 1
+        const exp12 = ExpNum.bop(NumBopType.Sub, ExpNum.index(inputShape, 3, source), 1, source);
+        const exp22 = ExpNum.bop(NumBopType.Mul, exp12, stride_1.value, source);
+        const exp32 = ExpNum.bop(NumBopType.Mul, 2, padding_1.value, source);
+        const exp42 = ExpNum.bop(NumBopType.Sub, exp22, exp32, source);
+        const exp52 = ExpNum.bop(
+            NumBopType.Mul,
+            dilation_1.value,
+            ExpNum.bop(NumBopType.Sub, kernel_size_1.value, 1, source),
+            source
+        );
+        const exp62 = ExpNum.bop(NumBopType.Add, exp42, exp52, source);
+        const size2 = ExpNum.bop(
+            NumBopType.Add,
+            exp62,
+            ExpNum.bop(NumBopType.Add, outPadding_1.value, 1, source),
+            source
+        );
+
+        // dims of return shape
+        const dim0 = ExpNum.index(inputShape, 0, source);
+        const dim1 = out_channels.value;
+        const dim2 = size1;
+        const dim3 = size2;
+
+        return ctx
+            .require(
+                [ctx.genEq(4, inputRank, source), ctx.genEq(4, weightRank, source), ctx.genEq(1, biasRank, source)],
+                `from 'LibCall.torch.conv_transpose2d': ranks of (input, weight, bias) are not (4, 4, 1)`,
+                source
+            )
+            .require(
+                [
+                    ctx.genOr(
+                        ctx.genEq(-1, bias_channels, source),
+                        ctx.genEq(out_channels.value, bias_channels, source),
+                        source
+                    ),
+                ],
+                `from 'LibCall.torch.conv_transpose2d': bias channel mismatch`,
+                source
+            )
+            .require(
+                [ctx.genEq(ExpNum.index(inputShape, 1, source), in_channels.value, source)],
+                `from 'LibCall.torch.conv_transpose2d': in-channel mismatch`,
+                source
+            )
+            .require(
+                [ctx.genLte(0, size1, source), ctx.genLte(0, size2, source)],
+                `from 'LibCall.torch.conv_transpose2d': output size should be non-negative`,
+                source
+            )
+            .require(
+                ctx.genEq(0, ExpNum.bop(NumBopType.Mod, in_channels.value, groups.value, source), source),
+                `from 'LibCall.torch.conv_transpose2d': channel size must be divisible by groups`,
                 source
             )
             .flatMap((ctx) => genTensor(ctx, ExpShape.fromConst(4, [dim0, dim1, dim2, dim3], source), source));
@@ -1861,7 +2083,7 @@ export namespace TorchLCImpl {
             return ctx.warnTensorWithMsg(`from 'LibCall.torch.unsqueeze': ${inputSize}`, source);
         }
         if (dim?.type !== SVType.Int) {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.unsqueeze': ${dim}`, source);
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.unsqueeze': dimension is not an integer`, source);
         }
 
         const inputShape = inputSize.shape;
@@ -1881,6 +2103,95 @@ export namespace TorchLCImpl {
                 source
             )
             .flatMap((ctx) => genTensor(ctx, returnShape, source));
+    }
+
+    export function squeeze(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.squeeze': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [inputAddr, dimAddr] = params;
+
+        const inputSize = fetchSize(inputAddr, heap);
+        const dim = fetchAddr(dimAddr, heap);
+
+        if (typeof inputSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.squeeze': ${inputSize}`, source);
+        }
+
+        if (!(dim?.type === SVType.Int || dim?.type === SVType.None)) {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.squeeze': dimension is not an int or none`, source);
+        }
+
+        const inputShape = inputSize.shape;
+        let inputRank = inputSize.rank();
+
+        if (dim.type === SVType.None) {
+            if (typeof inputRank !== 'number') {
+                inputRank = simplifyNum(ctx.ctrSet, inputRank);
+                const rankRange = ctx.ctrSet.getCachedRange(inputRank);
+                if (!rankRange?.isConst()) {
+                    return ctx.warnTensorWithMsg(
+                        `from 'LibCall.torch.squeeze: cannot squeeze non-constant ranked tensor. return random tensor.`,
+                        source
+                    );
+                }
+                inputRank = rankRange.start;
+            }
+
+            const outShapes: (number | ExpNum)[] = [];
+            const ctrs: Constraint[] = [];
+
+            for (let i = 0; i < inputRank; i++) {
+                const dim = simplifyNum(ctx.ctrSet, ExpNum.index(inputShape, i, source));
+                const dimRng = ctx.ctrSet.getCachedRange(dim);
+                if (!(dimRng?.isConst() && dimRng.start === 1)) {
+                    outShapes.push(dim);
+                    ctrs.push(ctx.genLt(1, dim, source));
+                }
+            }
+
+            return ctx
+                .require(
+                    ctrs,
+                    `from 'LibCall.torch.squeeze': non-constant dimension can be 1. This behavior is permitted but can lead to unexpected errors.`,
+                    source
+                )
+                .flatMap((ctx) => {
+                    return genTensor(ctx, ExpShape.fromConst(outShapes.length, outShapes, source), source);
+                });
+        } else {
+            const index = simplifyNum(ctx.ctrSet, ExpNum.index(inputShape, dim.value, source));
+            const dimRng = ctx.ctrSet.getCachedRange(index);
+            if (dimRng?.isConst() && dimRng.start === 1) {
+                const left = ExpShape.slice(inputShape, undefined, dim.value, source);
+                const right = ExpShape.slice(
+                    inputShape,
+                    ExpNum.bop(NumBopType.Add, dim.value, 1, source),
+                    undefined,
+                    source
+                );
+                const newShape = simplifyShape(ctx.ctrSet, ExpShape.concat(left, right, source));
+                return genTensor(ctx, newShape, source);
+            } else if (dimRng?.gt(1)) {
+                return genTensor(ctx, inputShape, source);
+            }
+
+            return ctx
+                .require(
+                    ctx.genLt(1, index, source),
+                    `from 'LibCall.torch.squeeze': non-constant dimension can be 1. This behavior is permitted but can lead to unexpected errors.`,
+                    source
+                )
+                .flatMap((ctx) => {
+                    return genTensor(ctx, inputShape, source);
+                });
+        }
     }
 
     export function diag(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
@@ -2456,6 +2767,7 @@ export namespace TorchLCImpl {
         view,
         topk,
         conv2d,
+        conv_transpose2d,
         broadcast,
         pool2d,
         batchnorm2d,
@@ -2465,6 +2777,7 @@ export namespace TorchLCImpl {
         checkSameShape,
         cat,
         unsqueeze,
+        squeeze,
         diag,
         flatten,
         embedding,

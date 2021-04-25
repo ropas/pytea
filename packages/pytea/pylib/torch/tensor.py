@@ -77,6 +77,9 @@ class Tensor:
     def exp(self):
         return torch.exp(self)
 
+    def fill_(self):
+        return self
+
     def exp_(self):
         return self
 
@@ -110,6 +113,9 @@ class Tensor:
     def sum(self, dim=None, keepdim=False, dtype=None):
         return torch.sum(self, dim, keepdim, dtype)
 
+    def mean(self, dim=None, keepdim=False, dtype=None):
+        return torch.mean(self, dim, keepdim, dtype)
+
     def item(self):
         return LibCall.torch.item(self)
 
@@ -132,8 +138,21 @@ class Tensor:
     def reshape_as(self, other):
         return self.view(other.size())
 
+    def squeeze(self, dim=None):
+        return torch.squeeze(self, dim)
+
+    def squeeze_(self, dim=None):
+        value = torch.squeeze(self, dim)
+        self.shape = value.shape
+        return self
+
     def unsqueeze(self, dim):
         return torch.unsqueeze(self, dim)
+
+    def unsqueeze_(self, dim=None):
+        value = torch.unsqueeze(self, dim)
+        self.shape = value.shape
+        return self
 
     def cuda(self, **kwargs):
         return self
