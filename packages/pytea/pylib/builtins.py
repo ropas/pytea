@@ -258,6 +258,14 @@ def _list__getitem__(self, index):
 list.__getitem__ = _list__getitem__
 
 
+def _list__setitem__(self, key, value):
+    # TODO: set iterable
+    LibCall.builtins.setIndice(self, key, value)
+
+
+list.__setitem__ = _list__setitem__
+
+
 def _list__contains__(self, value):
     for item in self:
         if item == value:
