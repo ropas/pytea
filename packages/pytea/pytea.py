@@ -32,6 +32,9 @@ def parse_arg():
         help="output file path of constraint json. if not set, send constraints to temporary file",
     )
     parser.add_argument(
+        "--config", default=None, help="set path to pyteaconfig.json",
+    )
+    parser.add_argument(
         "--z3_only", action="store_true", help="run z3py on z3 json file <path>"
     )
     parser.add_argument(
@@ -85,8 +88,10 @@ def main_with_temp(args, entry_path):
             os.remove(json_path)
 
         log_level = parse_log_level(args)
+        config = args.config
+        config = f"--configPath={config} " if config else ""
 
-        frontend_command = f"node {args.front_path} {entry_path} {log_level}{args.node_args} --resultPath={json_path}"
+        frontend_command = f"node {args.front_path} {entry_path} {config}{log_level} {args.node_args} --resultPath={json_path}"
         print(frontend_command)
         subprocess.call(frontend_command, shell=True)
 
@@ -116,8 +121,10 @@ def main():
             os.remove(json_path)
 
         log_level = parse_log_level(args)
+        config = args.config
+        config = f"--configPath={config} " if config else ""
 
-        frontend_command = f"node {args.front_path} {entry_path} {log_level}{args.node_args} --resultPath={json_path}"
+        frontend_command = f"node {args.front_path} {entry_path} {config}{log_level} {args.node_args} --resultPath={json_path}"
         print(frontend_command)
         subprocess.call(frontend_command, shell=True)
 

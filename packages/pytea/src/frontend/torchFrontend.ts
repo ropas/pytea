@@ -768,7 +768,15 @@ export class TorchIRFrontend {
     }
 
     visitAssignment(node: AssignmentNode): ThStmt {
-        const right = this.visitExprNode(node.rightExpression);
+        // handle multiple assignment
+        let right: ThExpr;
+        let double: ThStmt | undefined;
+        if (node.rightExpression.nodeType === ParseNodeType.Assignment) {
+            double = this.visitStmtNode(node.rightExpression);
+            right = this.visitExprNode(node.rightExpression.leftExpression);
+        } else {
+            right = this.visitExprNode(node.rightExpression);
+        }
 
         if (node.leftExpression.nodeType === ParseNodeType.Tuple) {
             return this._assignTuple(node.leftExpression, right, node);
@@ -776,7 +784,11 @@ export class TorchIRFrontend {
             return this._assignList(node.leftExpression, right, node);
         }
 
-        return TSAssign.create(this.visitExprNode(node.leftExpression) as ThLeftExpr, right, node);
+        let retVal: ThStmt = TSAssign.create(this.visitExprNode(node.leftExpression) as ThLeftExpr, right, node);
+        if (double) {
+            retVal = TSSeq.create(double, retVal, node);
+        }
+        return retVal;
     }
 
     visitAugmentedAssignment(node: AugmentedAssignmentNode): ThStmt {

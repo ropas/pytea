@@ -1,0 +1,2 @@
+class TextIOWrapper:
+    pass

@@ -752,6 +752,60 @@ export namespace BuiltinsLCImpl {
         return ctx.toSetWith(SVBool.create(value.keyValues.has(key.value), source));
     }
 
+    export function namedtuple_pushField(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx
+                .failWithMsg(
+                    `from 'LibCall.builtins.namedtuple_pushField': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const { heap } = ctx;
+        const nameList = fetchAddr(params[0], heap);
+        const field = fetchAddr(params[1], heap);
+
+        if (nameList?.type !== SVType.Object) {
+            return ctx
+                .warnWithMsg(`from 'LibCall.builtins.namedtuple_pushField': 'names' is not a list`, source)
+                .toSet();
+        }
+
+        if (field?.type !== SVType.String || typeof field.value !== 'string') {
+            return ctx
+                .warnWithMsg(`from 'LibCall.builtins.namedtuple_pushField': field is not a constant string`, source)
+                .toSet();
+        }
+
+        const len = fetchAddr(nameList.getAttr('$length'), heap);
+        if (len?.type !== SVType.Int || typeof len.value !== 'number') {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.builtins.namedtuple_pushField': 'names' does not have constant length`,
+                    source
+                )
+                .toSet();
+        }
+
+        let newName = nameList;
+        const lenVal = len.value;
+        const fields = field.value.split(/[ ,]/).filter((v) => v !== '');
+        for (let i = 0; i < fields.length; i++) {
+            newName = newName.setIndice(lenVal + i, SVString.create(fields[i], source));
+        }
+
+        newName = newName.setAttr('$length', SVInt.create(fields.length, source));
+
+        const newHeap = heap.setVal(newName.addr, newName);
+
+        return ctx.setHeap(newHeap).toSetWith(SVNone.create(undefined));
+    }
+
     export function len(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
@@ -1243,6 +1297,7 @@ export namespace BuiltinsLCImpl {
         str_islower,
         str_startswith,
         str_endswith,
+        namedtuple_pushField,
         has_key,
         len,
         randInt,

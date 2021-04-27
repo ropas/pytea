@@ -185,6 +185,10 @@ class LocalExtractor extends ParseTreeWalker {
     }
 
     visitAssignment(node: AssignmentNode) {
+        if (node.rightExpression.nodeType === ParseNodeType.Assignment) {
+            this.visitAssignment(node.rightExpression);
+        }
+
         const names = extractIds(node.leftExpression);
         names?.forEach((name) => {
             this._names.add(name);

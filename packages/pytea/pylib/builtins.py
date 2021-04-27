@@ -459,6 +459,23 @@ def abs(x):
     return LibCall.math.abs(x)
 
 
+class _TextIOWrapper:
+    pass
+
+
+def open(
+    file,
+    mode="r",
+    buffering=-1,
+    encoding=None,
+    errors=None,
+    newline=None,
+    closefd=True,
+    opener=None,
+):
+    return _TextIOWrapper()
+
+
 class BaseException:
     def __init__(self, *args):
         self.args = args
