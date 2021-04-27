@@ -136,31 +136,35 @@ def _tuple__getitem__(self, index):
         return LibCall.builtins.getItemByIndex(self, index)
     elif isinstance(index, slice):
         start, stop = None, None
+        self_len = len(self)
         if index.start is not None:
-            start = index.start if index.start >= 0 else len(self) + index.start
+            if index.start >= 0:
+                start = index.start
+            else:
+                start = self_len + index.start
+        else:
+            start = 0
+
         if index.stop is not None:
-            len_self = len(self)
-            if index.stop >= len_self:
-                stop = len_self
-            elif index.stop >= 0:
+            if index.stop >= 0:
                 stop = index.stop
             else:
-                stop = len(self) + index.stop
+                stop = self_len + index.stop
 
         if index.start is None:
             if index.stop is None:
                 # index by [:]
-                return self
+                return tuple(self[i] for i in range(0, self_len))
             else:
                 # index by [:stop]
-                return (self[i] for i in range(0, stop))
+                return tuple(self[i] for i in range(0, stop))
         else:
             if index.stop is None:
                 # index by [start:]
-                return (self[i] for i in range(start, len(self)))
+                return tuple(self[i] for i in range(start, self_len))
             else:
                 # index by [start:stop]
-                return (self[i] for i in range(start, stop))
+                return tuple(self[i] for i in range(start, stop))
 
 
 tuple.__getitem__ = _tuple__getitem__
@@ -173,33 +177,79 @@ def _list_append(self, item):
 list.append = _list_append
 
 
+class proxy_list(list):
+    def __init__(self, base, offset, length):
+        super().__init__()
+        self.base = LibCall.builtins.clone(base)
+        self.offset = offset
+        LibCall.builtins.setAttr(self, "$length", length)
+
+    def __setitem__(self, key, value):
+        self.base[key + self.offset] = value
+
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            return self.base[index + self.offset]
+        elif isinstance(index, slice):
+            start, stop = None, None
+            self_len = len(self)
+            if index.start is not None:
+                start = index.start
+            else:
+                start = 0
+
+            if index.stop is not None:
+                stop = index.stop
+            else:
+                stop = self_len
+
+            return self.base[slice(start + self.offset, stop + self.offset, index.step)]
+        else:
+            # TODO: filter SVWarning
+            raise IndexError("index is not an integer or slice")
+
+
 def _list__getitem__(self, index):
     if isinstance(index, int):
         return LibCall.builtins.getItemByIndex(self, index)
     elif isinstance(index, slice):
         start, stop = None, None
+        self_len = len(self)
         if index.start is not None:
-            start = index.start if index.start >= 0 else len(self) + index.start
+            if index.start >= 0:
+                start = index.start
+            else:
+                start = self_len + index.start
         else:
-            start = None
+            start = 0
 
         if index.stop is not None:
-            stop = index.stop if index.stop >= 0 else len(self) + index.stop
+            if index.stop >= 0:
+                stop = index.stop
+            else:
+                stop = self_len + index.stop
+        else:
+            stop = self_len
+
+        # TODO: if stop/start out of bound?
+        # Bypass big slicing
+        if stop - start >= 50:
+            return proxy_list(self, start, stop - start)
 
         if index.start is None:
             if index.stop is None:
                 # index by [:]
-                return self
+                return list(self[i] for i in range(0, self_len))
             else:
                 # index by [:stop]
-                return LibCall.builtins.getItemBySlice(self, 0, stop)
+                return list(self[i] for i in range(0, stop))
         else:
             if index.stop is None:
                 # index by [start:]
-                return LibCall.builtins.getItemBySlice(self, start, len(self))
+                return list(self[i] for i in range(start, self_len))
             else:
                 # index by [start:stop]
-                return LibCall.builtins.getItemBySlice(self, start, stop)
+                return list(self[i] for i in range(start, stop))
     else:
         # TODO: filter SVWarning
         raise IndexError("index is not an integer or slice")

@@ -8,6 +8,10 @@ from torch.tensor import Tensor
 TVI = namedtuple("TorchValId", ["values", "indices"])
 
 
+def tensor(*args, **kwargs):
+    return Tensor(*args, **kwargs)
+
+
 def rand(*size, out=None, dtype=None, **kwargs):
     if dtype is None:
         dtype = torch.floatDefault
@@ -273,6 +277,12 @@ def pow(input, exponent, out=None):
     return result
 
 
+def abs(input, out=None):
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
+
+
 def neg(input, out=None):
     result = LibCall.torch.identityShape(input)
     LibCall.torch.copyOut(result, out)
@@ -313,6 +323,12 @@ def log1p(input, out=None):
 
 
 def log2(input, out=None):
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
+
+
+def bernoulli(input, generator=None, out=None):
     result = LibCall.torch.identityShape(input)
     LibCall.torch.copyOut(result, out)
     return result

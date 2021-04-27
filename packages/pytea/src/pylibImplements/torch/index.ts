@@ -1,7 +1,7 @@
 import { fetchAddr } from '../../backend/backUtils';
 import { Constraint } from '../../backend/constraintType';
 import { Context, ContextSet } from '../../backend/context';
-import { ceilDiv, fetchSize, genTensor, simplifyNum, simplifyShape } from '../../backend/expUtils';
+import { absExpIndexByLen, ceilDiv, fetchSize, genTensor, simplifyNum, simplifyShape } from '../../backend/expUtils';
 import {
     CodeSource,
     ShValue,
@@ -928,13 +928,13 @@ export namespace TorchLCImpl {
         const inputShape = inputSize.shape;
         const inputRank = inputSize.rank();
 
-        const shape1 = ExpShape.slice(inputShape, 0, dim.value, source);
-        const shape2 = ExpShape.slice(inputShape, ExpNum.bop(NumBopType.Add, dim.value, 1, source), inputRank, source);
+        const axis = absExpIndexByLen(dim.value, inputRank, source, ctx.ctrSet);
+        const shape1 = ExpShape.slice(inputShape, 0, axis, source);
+        const shape2 = ExpShape.slice(inputShape, ExpNum.bop(NumBopType.Add, axis, 1, source), inputRank, source);
 
         return ctx
             .require(
-                // TODO: handle negative index
-                [ctx.genLte(0, dim.value, source), ctx.genLt(dim.value, inputRank, source)],
+                [ctx.genLte(0, axis, source), ctx.genLt(axis, inputRank, source)],
                 `from 'LibCall.torch.reduce': dim must be within rank`,
                 source
             )

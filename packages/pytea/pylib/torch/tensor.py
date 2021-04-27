@@ -80,6 +80,12 @@ class Tensor:
     def neg_(self):
         return self
 
+    def abs(self):
+        return torch.abs(self)
+
+    def abs_(self):
+        return self
+
     def log(self):
         return torch.log(self)
 
@@ -117,6 +123,12 @@ class Tensor:
         return self
 
     def fill_(self):
+        return self
+
+    def bernoulli(self, generator=None):
+        return torch.bernoulli(self)
+
+    def bernoulli_(self, p=0.5, generator=None):
         return self
 
     def normal_(self, *args, **kwargs):
@@ -397,6 +409,21 @@ class Tensor:
         return torch.sqrt(self)
 
 
-class tensor(Tensor):
-    def __init__(self, *args, **kwargs):
-        super(tensor, self).__init__(*args, **kwargs)
+def FloatTensor(*args, **kwargs):
+    return Tensor(*args, **kwargs)
+
+
+def DoubleTensor(*args, **kwargs):
+    kwargs["dtype"] = torch.float64
+    return Tensor(*args, **kwargs)
+
+
+def IntTensor(*args, **kwargs):
+    kwargs["dtype"] = torch.int32
+    return Tensor(*args, **kwargs)
+
+
+def LongTensor(*args, **kwargs):
+    kwargs["dtype"] = torch.int64
+    return Tensor(*args, **kwargs)
+

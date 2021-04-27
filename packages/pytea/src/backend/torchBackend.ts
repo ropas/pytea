@@ -1505,7 +1505,6 @@ export namespace TorchBackend {
         source: CodeSource | undefined
     ): ShValue | undefined {
         // TODO: compromise idx is not a constant
-        // TODO: typecheck that obj is tensor.
         const idxRng = ctx.ctrSet.getCachedRange(idx);
         if (!idxRng || !idxRng.isConst()) {
             return SVError.warn(`cannot infer index ${SymExp.toString(idx)} statically`, source);

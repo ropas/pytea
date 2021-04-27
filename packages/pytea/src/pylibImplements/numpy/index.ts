@@ -3,13 +3,35 @@ import { ConstraintSet } from '../../backend/constraintSet';
 import { Constraint } from '../../backend/constraintType';
 import { Context, ContextSet } from '../../backend/context';
 import { absExpIndexByLen, fetchSize, isSize, simplifyBool, simplifyNum, simplifyShape } from '../../backend/expUtils';
-import { CodeSource, ShValue, SVAddr, SVNone, SVObject, SVSize, SVType } from '../../backend/sharpValues';
+import {
+    CodeSource,
+    ShValue,
+    SVAddr,
+    SVError,
+    SVErrorLevel,
+    SVNone,
+    SVObject,
+    SVSize,
+    SVType,
+} from '../../backend/sharpValues';
 import { BoolOpType, ExpBool, ExpNum, ExpShape, NumBopType, NumOpType } from '../../backend/symExpressions';
 import { TorchBackend } from '../../backend/torchBackend';
 import { LCImpl } from '..';
 import { LCBase } from '../libcall';
 
 export namespace NumpyLCImpl {
+    export function warnNdarrayWithMsg(
+        ctx: Context<unknown>,
+        message: string,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
+        const warning = SVError.create(message, SVErrorLevel.Warning, source);
+        const newCtx = ctx.addLogValue(warning);
+        const rank = newCtx.genSymInt('WarnTempRank', source);
+        const shape = newCtx.genSymShape('WarnTempShape', ExpNum.fromSymbol(rank), source);
+        return genNdarray(newCtx, ExpShape.fromSymbol(shape), source);
+    }
+
     export function ndarrayInit(
         ctx: Context<LCBase.ExplicitParams>,
         source: CodeSource | undefined
@@ -18,7 +40,7 @@ export namespace NumpyLCImpl {
         // internally, numpy.ndarray shares structure with torch.Tensor.
 
         const params = ctx.retVal.params;
-        if (params.length !== 7) {
+        if (params.length !== 2) {
             return ctx
                 .warnWithMsg(
                     `from 'LibCall.numpy.ndarrayInit': got insufficient number of argument: ${params.length}`,
@@ -28,7 +50,7 @@ export namespace NumpyLCImpl {
         }
 
         const heap = ctx.heap;
-        const [selfAddr, shapeAddr, dtypeAddr] = params;
+        const [selfAddr, shapeAddr] = params;
 
         // TODO: use dtype
 
@@ -75,7 +97,8 @@ export namespace NumpyLCImpl {
     ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 1) {
-            return ctx.warnTensorWithMsg(
+            return warnNdarrayWithMsg(
+                ctx,
                 `from 'LibCall.numpy.identityShape': got insufficient number of argument: ${params.length}`,
                 source
             );
@@ -87,7 +110,7 @@ export namespace NumpyLCImpl {
         const inputSize = fetchSize(inputAddr, heap);
 
         if (typeof inputSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.numpy.identityShape': ${inputSize}`, source);
+            return warnNdarrayWithMsg(ctx, `from 'LibCall.numpy.identityShape': ${inputSize}`, source);
         }
 
         const inputShape = inputSize.shape;
@@ -102,7 +125,8 @@ export namespace NumpyLCImpl {
     ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
-            return ctx.warnTensorWithMsg(
+            return warnNdarrayWithMsg(
+                ctx,
                 `from 'LibCall.numpy.broadcast': got insufficient number of argument: ${params.length}`,
                 source
             );
@@ -115,9 +139,9 @@ export namespace NumpyLCImpl {
         const rightSize = fetchSize(rightAddr, heap);
 
         if (typeof leftSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.numpy.broadcast': ${leftSize}`, source);
+            return warnNdarrayWithMsg(ctx, `from 'LibCall.numpy.broadcast': ${leftSize}`, source);
         } else if (typeof rightSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.numpy.broadcast': ${rightSize}`, source);
+            return warnNdarrayWithMsg(ctx, `from 'LibCall.numpy.broadcast': ${rightSize}`, source);
         }
 
         const leftShape = leftSize.shape;
@@ -130,7 +154,8 @@ export namespace NumpyLCImpl {
     export function matmul(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
-            return ctx.warnTensorWithMsg(
+            return warnNdarrayWithMsg(
+                ctx,
                 `from 'LibCall.numpy.matmul': got insufficient number of argument: ${params.length}`,
                 source
             );
@@ -143,9 +168,9 @@ export namespace NumpyLCImpl {
         const rightSize = fetchSize(rightAddr, heap);
 
         if (typeof leftSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.numpy.matmul': ${leftSize}`, source);
+            return warnNdarrayWithMsg(ctx, `from 'LibCall.numpy.matmul': ${leftSize}`, source);
         } else if (typeof rightSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.numpy.matmul': ${rightSize}`, source);
+            return warnNdarrayWithMsg(ctx, `from 'LibCall.numpy.matmul': ${rightSize}`, source);
         }
 
         const leftShape = leftSize.shape;
@@ -342,7 +367,7 @@ export namespace NumpyLCImpl {
         for (let i = 1; i < seqLen; i++) {
             const sizeI = fetchSize(seq.getIndice(i), heap);
             if (typeof sizeI === 'string') {
-                return ctx.warnTensorWithMsg(`from 'LibCall.numpy.concatenate': ${sizeI}`, source);
+                return warnNdarrayWithMsg(ctx, `from 'LibCall.numpy.concatenate': ${sizeI}`, source);
             }
             const sizeIshape = sizeI.shape;
             const shapeIFront = ExpShape.slice(sizeIshape, 0, axis, source);
@@ -374,7 +399,7 @@ export namespace NumpyLCImpl {
         if (params.length !== 2) {
             return ctx
                 .warnWithMsg(
-                    `from 'LibCall.numpy.copyOUt': got insufficient number of argument: ${params.length}`,
+                    `from 'LibCall.numpy.copyOut': got insufficient number of argument: ${params.length}`,
                     source
                 )
                 .toSet();
@@ -406,19 +431,20 @@ export namespace NumpyLCImpl {
 
     export function reduce(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
-        if (params.length !== 4) {
-            return ctx.warnTensorWithMsg(
+        if (params.length !== 3) {
+            return warnNdarrayWithMsg(
+                ctx,
                 `from 'LibCall.numpy.reduce': got insufficient number of argument: ${params.length}`,
                 source
             );
         }
 
         const heap = ctx.heap;
-        const [selfAddr, axisAddr, outAddr, keepdimsAddr] = params;
+        const [selfAddr, axisAddr, keepdimsAddr] = params;
 
         const selfSize = fetchSize(selfAddr, heap);
         if (typeof selfSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.numpy.reduce': ${selfSize}`, source);
+            return warnNdarrayWithMsg(ctx, `from 'LibCall.numpy.reduce': ${selfSize}`, source);
         }
         const selfShape = selfSize.shape;
         const selfRank = selfSize.rank();
@@ -453,7 +479,8 @@ export namespace NumpyLCImpl {
         } else {
             const keepdims_: ExpBool = simplifyBool(ctx.ctrSet, keepdims.value);
             if (keepdims_.opType !== BoolOpType.Const) {
-                return ctx.warnTensorWithMsg(
+                return warnNdarrayWithMsg(
+                    ctx,
                     `from 'LibCall.numpy.reduce': cannot infer value of keepdims ${keepdims.value}`,
                     source
                 );
@@ -565,7 +592,8 @@ export namespace NumpyLCImpl {
     export function flatten(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length < 1) {
-            return ctx.warnTensorWithMsg(
+            return warnNdarrayWithMsg(
+                ctx,
                 `from 'LibCall.torch.flatten': got insufficient number of argument: ${params.length}`,
                 source
             );
@@ -579,7 +607,7 @@ export namespace NumpyLCImpl {
 
         const inputSize = fetchSize(inputAddr, heap);
         if (typeof inputSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.flatten': ${inputSize}`, source);
+            return warnNdarrayWithMsg(ctx, `from 'LibCall.torch.flatten': ${inputSize}`, source);
         }
         const inputShape = inputSize.shape;
 
@@ -641,7 +669,8 @@ export namespace NumpyLCImpl {
     ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
-            return ctx.warnTensorWithMsg(
+            return warnNdarrayWithMsg(
+                ctx,
                 `from 'LibCall.ndarray.indexIntarrays': got insufficient number of argument: ${params.length}`,
                 source
             );
@@ -658,17 +687,17 @@ export namespace NumpyLCImpl {
             return ctx.warnWithMsg(`from 'LibCall.ndarray.indexIntarrays': input is not a Size type`, source).toSet();
         }
         if (len?.type !== SVType.Int) {
-            return ctx.warnTensorWithMsg(`from 'LibCall.ndarray.indexIntarrays': ${len}`, source);
+            return warnNdarrayWithMsg(ctx, `from 'LibCall.ndarray.indexIntarrays': ${len}`, source);
         }
         if (arrays?.type !== SVType.Object) {
-            return ctx.warnTensorWithMsg(`from 'LibCall.ndarray.indexIntarrays': ${arrays}`, source);
+            return warnNdarrayWithMsg(ctx, `from 'LibCall.ndarray.indexIntarrays': ${arrays}`, source);
         }
 
         // TODO: broadcasting, check all shapes of indice
         const first = arrays.getIndice(0);
         const firstSize = fetchSize(first, heap);
         if (typeof firstSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.ndarray.indexIntarrays': ${firstSize}`, source);
+            return warnNdarrayWithMsg(ctx, `from 'LibCall.ndarray.indexIntarrays': ${firstSize}`, source);
         }
         const elemShape = ExpShape.slice(size.shape, len.value, size.rank(), source);
         const indexShape = firstSize.shape;
@@ -690,7 +719,8 @@ export namespace NumpyLCImpl {
     ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 2) {
-            return ctx.warnTensorWithMsg(
+            return warnNdarrayWithMsg(
+                ctx,
                 `from 'LibCall.ndarray.indexIntarray': got insufficient number of argument: ${params.length}`,
                 source
             );
@@ -706,7 +736,7 @@ export namespace NumpyLCImpl {
             return ctx.warnWithMsg(`from 'LibCall.ndarray.indexIntarray': input is not a Size type`, source).toSet();
         }
         if (typeof boolarray === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.ndarray.indexIntarray': ${boolarray}`, source);
+            return warnNdarrayWithMsg(ctx, `from 'LibCall.ndarray.indexIntarray': ${boolarray}`, source);
         }
 
         // mask indexing

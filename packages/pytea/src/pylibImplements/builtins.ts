@@ -1118,9 +1118,7 @@ export namespace BuiltinsLCImpl {
         const indice = fetchAddr(indiceAddr, heap);
 
         if (indice?.type !== SVType.Int) {
-            return ctx
-                .warnWithMsg(`from 'LibCall.builtins.getItemByIndex': attribute is not an integer`, source)
-                .toSet();
+            return ctx.warnWithMsg(`from 'LibCall.builtins.getItemByIndex': index is not an integer`, source).toSet();
         }
 
         if (obj?.type !== SVType.Object) {
@@ -1148,6 +1146,32 @@ export namespace BuiltinsLCImpl {
         }
 
         return ctx.toSetWith(item);
+    }
+
+    // clone object (shallow-clone)
+    export function clone(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 1) {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.builtins.clone': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+        const heap = ctx.heap;
+        const [objAddr] = params;
+
+        const obj = fetchAddr(objAddr, heap);
+
+        if (obj?.type === SVType.Object) {
+            const [newAddr, heap2] = heap.malloc(source);
+            const newObj = obj.set('addr', newAddr);
+            const heap3 = heap2.setVal(newAddr, newObj);
+            return ctx.setHeap(heap3).toSetWith(newAddr);
+        }
+
+        return ctx.toSetWith(objAddr);
     }
 
     // explicit setAttr by value
@@ -1305,6 +1329,7 @@ export namespace BuiltinsLCImpl {
         setSize,
         exit,
         warn,
+        clone,
         setAttr,
         setIndice,
         getItemByIndex,

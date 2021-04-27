@@ -1,7 +1,7 @@
 import LibCall
 
 # from .functional import *
-from .tensor import Tensor, tensor
+from .tensor import Tensor, FloatTensor, DoubleTensor, LongTensor, IntTensor
 from .functional import *
 
 from . import nn as nn

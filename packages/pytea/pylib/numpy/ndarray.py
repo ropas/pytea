@@ -2,12 +2,11 @@ import LibCall
 import numpy as np
 
 
-
 class ndarray:
     def __init__(
         self, shape, dtype=float, buffer=None, offset=0, strides=None, order=None
     ):
-        LibCall.numpy.ndarrayInit(self, shape, dtype, buffer, offset, strides, order)
+        LibCall.numpy.ndarrayInit(self, shape)
         if dtype is float:
             dtype = np.floatDefault
         elif dtype is int:
@@ -132,3 +131,6 @@ class ndarray:
 
     def flatten(self, order="C"):
         return LibCall.numpy.flatten(self)
+
+    def copy(self, order="C"):
+        return np.copy(self, order=order)
