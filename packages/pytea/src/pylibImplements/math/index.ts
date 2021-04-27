@@ -149,10 +149,70 @@ export namespace MathLCImpl {
         }
     }
 
+    export function log(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 1) {
+            return ctx
+                .warnWithMsg(`from 'LibCall.math.log': got insufficient number of argument: ${params.length}`, source)
+                .toSet();
+        }
+
+        const heap = ctx.heap;
+        const [numAddr] = params;
+
+        const num = fetchAddr(numAddr, heap);
+
+        if (!num) {
+            return ctx.failWithMsg(`from 'LibCall.math.log': got undefined value`, source).toSet();
+        }
+
+        switch (num.type) {
+            case SVType.Int:
+            case SVType.Float: {
+                let numExp = num.value;
+                const numRng = ctx.getCachedRange(num.value);
+                if (numRng?.isConst()) {
+                    numExp = numRng.start;
+                }
+
+                if (typeof numExp === 'number') {
+                    if (numExp <= 0) {
+                        return ctx
+                            .warnWithMsg(`from 'LibCall.math.log': math domain error. got ${numExp}`, source)
+                            .toSet();
+                    }
+                    return ctx.toSetWith(SVFloat.create(Math.log(numExp), source));
+                }
+
+                const value = SVFloat.create(ExpNum.fromSymbol(ctx.genSymFloat('WarnMathLog', source)), source);
+                return ctx
+                    .warnWithMsg(`from 'LibCall.math.log': got non-constant value. return symbolic float.`, source)
+                    .toSetWith(value);
+            }
+            case SVType.Object:
+                return ctx.getAttrDeep(num, '__abs__', source).flatMap((ctx) => {
+                    const abs = ctx.retVal;
+                    if (abs.type === SVType.Func) {
+                        return TorchBackend.functionCall(ctx, abs, [], source);
+                    }
+                    return ctx
+                        .warnWithMsg(`from 'LibCall.math.abs: object does not have __abs__ method`, source)
+                        .toSet();
+                });
+            case SVType.Error:
+                return ctx.warnWithMsg(`from 'LibCall.math.abs: got unknown value`, source).toSet();
+            default:
+                return ctx
+                    .failWithMsg(`from 'LibCall.math.abs: invalid type - ${svTypeToString(num.type)}`, source)
+                    .toSet();
+        }
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         floor,
         ceil,
         abs,
+        log,
     };
 }
 

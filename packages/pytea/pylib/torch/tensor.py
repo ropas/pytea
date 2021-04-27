@@ -376,6 +376,9 @@ class Tensor:
     def __rmul__(self, other):
         return torch._bop(self, other)
 
+    def __pow__(self, other):
+        return torch._bop(self, other)
+
     def __truediv__(self, other):
         return torch._bop(self, other)
 
