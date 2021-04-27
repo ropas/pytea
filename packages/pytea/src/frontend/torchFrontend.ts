@@ -1296,9 +1296,20 @@ export class TorchIRFrontend {
 
     visitLambda(node: LambdaNode): ThExpr {
         const tempFun = this._getImm() + '_LMFun';
-        const funBody = TSReturn.create(this.visitExprNode(node.expression), node.expression);
+
+        // make local temp-func stack
+        const oldStack = this._preStmtStack;
+        this._preStmtStack = [];
+
+        let funBody: ThStmt = TSReturn.create(this.visitExprNode(node.expression), node.expression);
+        if (this._preStmtStack.length > 0) {
+            this._preStmtStack.reverse().forEach(([tempFunName, tempFunParams, tempFunBody]) => {
+                funBody = TSFunDef.create(tempFunName, tempFunParams, tempFunBody, funBody);
+            });
+        }
         const params = extractIds(node.parameters) ?? [];
 
+        this._preStmtStack = oldStack;
         this._preStmtStack.push([tempFun, params, funBody]);
 
         return TEName.create(tempFun, node);

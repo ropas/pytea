@@ -6,20 +6,10 @@
  *
  * require guard in pylib side
  */
-import { fetchAddr, sanitizeAddr } from '../backend/backUtils';
-import { Constraint } from '../backend/constraintType';
+import { fetchAddr } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
-import {
-    absExpIndexByLen,
-    fetchSize,
-    genTensor,
-    isInstanceOf,
-    reluLen,
-    simplifyNum,
-    simplifyShape,
-} from '../backend/expUtils';
-import { CodeSource, ShValue, SVBool, SVInt, SVSize, SVType } from '../backend/sharpValues';
-import { ExpNum, ExpShape, NumBopType, NumUopType } from '../backend/symExpressions';
+import { fetchSize } from '../backend/expUtils';
+import { CodeSource, ShValue, SVBool, SVType } from '../backend/sharpValues';
 import { LCImpl } from '.';
 import { LCBase } from './libcall';
 
@@ -71,10 +61,12 @@ export namespace GuardLCImpl {
     ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
-            return ctx.warnTensorWithMsg(
-                `from 'LibCall.guard.require_lte': got insufficient number of argument: ${params.length}`,
-                source
-            );
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.guard.require_lte': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSetWith(SVBool.create(true, source));
         }
 
         const heap = ctx.heap;
@@ -107,10 +99,12 @@ export namespace GuardLCImpl {
     ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
-            return ctx.warnTensorWithMsg(
-                `from 'LibCall.guard.require_eq': got insufficient number of argument: ${params.length}`,
-                source
-            );
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.guard.require_eq': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSetWith(SVBool.create(true, source));
         }
 
         const heap = ctx.heap;
@@ -143,10 +137,12 @@ export namespace GuardLCImpl {
     ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
         if (params.length !== 3) {
-            return ctx.warnTensorWithMsg(
-                `from 'LibCall.guard.require_neq': got insufficient number of argument: ${params.length}`,
-                source
-            );
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.guard.require_neq': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSetWith(SVBool.create(true, source));
         }
 
         const heap = ctx.heap;
@@ -173,11 +169,58 @@ export namespace GuardLCImpl {
         return ctx.require(ctx.genNeq(a.value, b.value, source), msg.value, source).return(SVBool.create(true, source));
     }
 
+    // shapeConcat(T[1, 2, 3], T[4, 5, 6], obj):
+    //     set size of 'obj' to be T[1, 2, 3, 4, 5, 6].
+    export function require_broadcastable(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 3) {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.shape.require_broadcastable': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSetWith(SVBool.create(true, source));
+        }
+
+        const heap = ctx.heap;
+        const [leftAddr, rightAddr, messageAddr] = params;
+
+        const left = fetchSize(leftAddr, heap);
+        const right = fetchSize(rightAddr, heap);
+        const msg = fetchAddr(messageAddr, heap);
+
+        if (typeof left === 'string') {
+            return ctx
+                .warnWithMsg(`from 'LibCall.shape.require_broadcastable': left is not a Size type`, source)
+                .toSet();
+        }
+
+        if (typeof right === 'string') {
+            return ctx
+                .warnWithMsg(`from 'LibCall.shape.require_broadcastable': right is not a Size type`, source)
+                .toSet();
+        }
+
+        if (!(msg?.type === SVType.String && typeof msg.value === 'string')) {
+            return ctx
+                .warnWithMsg(`from 'LibCall.guard.require_broadcastable: message is not a constant string`, source)
+                .toSetWith(SVBool.create(true, source));
+        }
+
+        return ctx
+            .require(ctx.genBroadcastable(left.shape, right.shape, source), msg.value, source)
+            .return(SVBool.create(true, source));
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         require_lt,
         require_lte,
         require_eq,
         require_neq,
+        require_broadcastable,
     };
 }
 
