@@ -8,8 +8,11 @@ from torch.tensor import Tensor
 TVI = namedtuple("TorchValId", ["values", "indices"])
 
 
-def tensor(*args, **kwargs):
-    return Tensor(*args, **kwargs)
+def tensor(data, dtype=None, device=None, requires_grad=False, pin_memory=False):
+    # TODO: infer dtype from data
+    shape = LibCall.shape.extractShape(data)
+    result = torch.Tensor(shape, dtype=dtype)
+    return result
 
 
 def rand(*size, out=None, dtype=None, **kwargs):

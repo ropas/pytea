@@ -29,7 +29,7 @@ import {
     ctrToStr,
     extractSymbols,
 } from './constraintType';
-import { genTensor, isStructuallyEq, simplifyExp } from './expUtils';
+import { genTensor, isStructuallyEq, simplifyExp, simplifyShape } from './expUtils';
 import { NumRange } from './range';
 import { ShEnv, ShHeap } from './sharpEnvironments';
 import {
@@ -185,26 +185,6 @@ interface ContextMethods<T> {
 
     // return shape without `axis`-th. `axis` is 0-based
     shReduce(shape: ExpShape, axis: ExpNum | number, source: CodeSource | undefined): ContextSet<ExpShape>;
-
-    // slice shape along `axis`. ranges is 0-based and exclusive
-    shSubtensor(
-        shape: ExpShape,
-        ranges: [(ExpNum | number)?, (ExpNum | number)?],
-        axis: ExpNum | number,
-        source: CodeSource | undefined
-    ): ContextSet<ExpShape>;
-
-    // reshape `shape` into `dims`
-    shReshape(shape: ExpShape, dims: (ExpNum | number)[], source: CodeSource | undefined): ContextSet<ExpShape>;
-
-    // permute dimensions of `shape` by `axes`. `axes` is 0-based
-    shPermute(shape: ExpShape, axes: (ExpNum | number)[], source: CodeSource | undefined): ContextSet<ExpShape>;
-
-    // concat `shapes` along `axis`. `axis` is 0-based
-    shConcat(shapes: ExpShape[], axis: ExpNum | number, source: CodeSource | undefined): ContextSet<ExpShape>;
-
-    // make new dimension and stack `shapes` along `axis`. `axis` is 0-based
-    shStack(shapes: ExpShape[], axis: ExpNum | number, source: CodeSource | undefined): ContextSet<ExpShape>;
 
     // repeat `shape` by `count` times and stack along `axis`. `axis` is 0-based
     shRepeat(
@@ -665,8 +645,11 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     }
 
     shReduce(shape: ExpShape, axis: ExpNum | number, source: CodeSource | undefined): ContextSet<ExpShape> {
-        // TODO: implement this.
-        return this.setRetVal(shape).toSet();
+        const left = ExpShape.slice(shape, undefined, axis, source);
+        const right = ExpShape.slice(shape, ExpNum.bop(NumBopType.Add, axis, 1, source), undefined, source);
+        let newShape: ExpShape = ExpShape.concat(left, right, source);
+        newShape = simplifyShape(this.ctrSet, newShape);
+        return this.setRetVal(newShape).toSet();
     }
 
     shMatmul(left: ExpShape, right: ExpShape, source: CodeSource | undefined): ContextSet<ExpShape> {
@@ -702,43 +685,12 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
             });
     }
 
-    shSubtensor(
-        shape: ExpShape,
-        ranges: [(ExpNum | number)?, (ExpNum | number)?],
-        axis: ExpNum | number,
-        source: CodeSource | undefined
-    ): ContextSet<ExpShape> {
-        // TODO: implement this.
-        return this.setRetVal(shape).toSet();
-    }
-
-    shReshape(shape: ExpShape, dims: (ExpNum | number)[], source: CodeSource | undefined): ContextSet<ExpShape> {
-        // TODO: implement this.
-        return this.setRetVal(shape).toSet();
-    }
-
-    shPermute(shape: ExpShape, axes: (ExpNum | number)[], source: CodeSource | undefined): ContextSet<ExpShape> {
-        // TODO: implement this.
-        return this.setRetVal(shape).toSet();
-    }
-
-    shConcat(shapes: ExpShape[], axis: ExpNum | number, source: CodeSource | undefined): ContextSet<ExpShape> {
-        // TODO: implement this.
-        return this.setRetVal(shapes[0]).toSet();
-    }
-
-    shStack(shapes: ExpShape[], axis: ExpNum | number, source: CodeSource | undefined): ContextSet<ExpShape> {
-        // TODO: implement this.
-        return this.setRetVal(shapes[0]).toSet();
-    }
-
     shRepeat(
         shape: ExpShape,
         axis: ExpNum | number,
         count: ExpNum | number,
         source: CodeSource | undefined
     ): ContextSet<ExpShape> {
-        // TODO: implement this.
         const rank = ExpShape.getRank(shape);
         const axisCtr = this.genAnd(this.genLte(0, axis, source), this.genLt(axis, rank, source), source);
         const countCtr = this.genLte(0, count, source);

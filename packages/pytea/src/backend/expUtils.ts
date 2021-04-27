@@ -1118,8 +1118,8 @@ export function genTensor<T>(ctx: Context<T>, shape: ExpShape, source: CodeSourc
 }
 
 // return either size of tensor in `mayAddr` or return error message
-export function fetchSize(mayAddr: ShValue | undefined, heap: ShHeap): SVSize | string {
-    const obj = fetchAddr(mayAddr, heap);
+export function fetchSize(value: ShValue | undefined, heap: ShHeap): SVSize | string {
+    const obj = fetchAddr(value, heap);
     if (obj?.type !== SVType.Object) {
         return `value is not sized type. got ${ShValue.toStringType(obj?.type)}`;
     }

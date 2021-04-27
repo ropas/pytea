@@ -147,10 +147,10 @@ def pad(input, pad, mode="constant", value=0):
 
 
 def mse_loss(input, target, size_average=None, reduce=None, reduction="mean"):
-    LibCall.torch.checkSameShape(input, target)
+    result = LibCall.torch.sameShape(input, target)
 
     if reduction == "none":
-        return LibCall.torch.identityShape(input)
+        return result
     else:
         return torch.Tensor()
 

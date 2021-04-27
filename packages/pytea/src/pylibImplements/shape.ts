@@ -312,12 +312,103 @@ export namespace ShapeLCImpl {
         return ctx.setHeap(newHeap).toSetWith(objAddr);
     }
 
+    // extract shape from list of list of ... list of integer/tensor/ndarray
+    //
+    // TODO: we look only the first items of list to infer a shape.
+    //       consistency of each item's shape is not checked for now.
+    export function extractShape(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+
+        function randSize(ctx: Context<unknown>, message: string) {
+            return randShape(ctx, message, source).map((ctx) =>
+                ctx.setRetVal(SVSize.createSize(ctx, ctx.retVal, source))
+            );
+        }
+
+        if (params.length !== 1) {
+            return randSize(
+                ctx,
+                `from 'LibCall.shape.extractShape': got insufficient number of argument: ${params.length}`
+            );
+        }
+
+        const valueAddr = params[0];
+
+        return buildShape(ctx, valueAddr, source).map((ctx) =>
+            ctx.setRetVal(SVSize.createSize(ctx, ctx.retVal, source))
+        );
+    }
+
+    function buildShape(
+        ctx: Context<unknown>,
+        maySized: ShValue,
+        source: CodeSource | undefined
+    ): ContextSet<ExpShape> {
+        const value = fetchAddr(maySized, ctx.heap);
+        if (!value) {
+            return randShape(ctx, `from 'LibCall.shape.extractShape': got undefined value`, source);
+        }
+
+        switch (value.type) {
+            case SVType.Bool:
+            case SVType.Int:
+            case SVType.Float:
+                return ctx.toSetWith(ExpShape.fromConst(0, [], source));
+            case SVType.Object: {
+                // already has size
+                const size = fetchSize(value, ctx.heap);
+                if (typeof size === 'object') {
+                    return ctx.toSetWith(size.shape);
+                }
+
+                // has length
+                const length = value.getAttr('$length');
+                if (length?.type === SVType.Int) {
+                    return ctx.getIndiceDeep(value, 0, source).flatMap((ctx) => {
+                        const inner = ctx.retVal;
+                        return buildShape(ctx, inner, source).map((ctx) => {
+                            const shape = simplifyShape(
+                                ctx.ctrSet,
+                                ExpShape.concat(ExpShape.fromConst(1, [length.value], source), ctx.retVal, source)
+                            );
+                            return ctx.setRetVal(shape);
+                        });
+                    });
+                }
+
+                // fall back to unknown
+                return randShape(
+                    ctx,
+                    `from 'LibCall.shape.extractShape': failed to infer size. return temp shape.`,
+                    source
+                );
+            }
+            default:
+                return randShape(
+                    ctx,
+                    `from 'LibCall.shape.extractShape': extract shape from invalid type. return temp shape.`,
+                    source
+                );
+        }
+    }
+
+    function randShape(ctx: Context<unknown>, msg: string, source: CodeSource | undefined): ContextSet<ExpShape> {
+        const rank = ctx.genSymInt('WarnTempRank', source);
+        const sym = ctx.genSymShape('WarnTempShape', ExpNum.fromSymbol(rank), source);
+        const shape = ExpShape.fromSymbol(sym);
+        return ctx.warnWithMsg(msg, source).toSetWith(shape);
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         repeat,
         size_getitem,
         size_len,
         tensorGetItem,
         shapeConcat,
+        extractShape,
     };
 }
 

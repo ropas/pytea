@@ -1928,42 +1928,6 @@ export namespace TorchLCImpl {
             });
     }
 
-    export function checkSameShape(
-        ctx: Context<LCBase.ExplicitParams>,
-        source: CodeSource | undefined
-    ): ContextSet<ShValue> {
-        const params = ctx.retVal.params;
-        if (params.length !== 2) {
-            return ctx.warnTensorWithMsg(
-                `from 'LibCall.torch.checkSameShape': got insufficient number of argument: ${params.length}`,
-                source
-            );
-        }
-
-        const heap = ctx.heap;
-        const [inputAddr, targetAddr] = params;
-
-        const inputSize = fetchSize(inputAddr, heap);
-        if (typeof inputSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.checkSameShape': ${inputSize}`, source);
-        }
-        const inputShape = inputSize.shape;
-
-        const targetSize = fetchSize(targetAddr, heap);
-        if (typeof targetSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.checkSameShape': ${targetSize}`, source);
-        }
-        const targetShape = targetSize.shape;
-
-        return ctx
-            .setRetVal(SVNone.create(source))
-            .require(
-                ctx.genEq(inputShape, targetShape, source),
-                "from 'LibCall.torch.checkSameShape': got different shape",
-                source
-            );
-    }
-
     // Assumption: "tensors" is a constantRanked sequence, and each element is available.
     // TODO: handle empty tensor.
     export function cat(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
@@ -2751,31 +2715,30 @@ export namespace TorchLCImpl {
     export const libCallImpls: { [key: string]: LCImpl } = {
         tensorInit,
         scalarTensor,
+        callTensor,
         identityShape,
         sameShape,
+        copyOut,
+        broadcast,
+        cat,
         matmul,
         mm,
         bmm,
         item,
-        copyOut,
         repeat,
         expand,
         expand_as,
-        callTensor,
         transpose,
         reduce,
         view,
         topk,
         conv2d,
         conv_transpose2d,
-        broadcast,
         pool2d,
         batchnorm2d,
         interpolate,
         cosine_similarity,
         cross_entropy,
-        checkSameShape,
-        cat,
         unsqueeze,
         squeeze,
         diag,
