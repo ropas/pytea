@@ -24,6 +24,10 @@ class Tensor:
     def new_tensor(self, data, dtype=None, device=None, requires_grad=False):
         return Tensor(data, dtype=dtype, device=device, requires_grad=requires_grad)
 
+    def tolist(self):
+        # TODO: make real array
+        return self.clone()
+
     def backward(self):
         return self
 

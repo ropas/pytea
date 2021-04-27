@@ -38,7 +38,7 @@ def _parseShape(arrObj, size):
     raise TypeError("invalid array")
 
 
-def _parseDtype(arrObj, size):
+def _parseDtype(arrObj):
     if isinstance(arrObj, ndarray):
         return arrObj.dtype
     if isinstance(arrObj, torch.Tensor):
@@ -84,24 +84,28 @@ def eye(N, M=None, k=0, dtype=float, order="C", like=None):
 
 
 def matmul(x1, x2, out=None, casting="same_kind", order="K", dtype=None, subok=True):
-    if not (isinstance(x1, ndarray) and isinstance(x2, ndarray)):
-        raise TypeError("not a numpy.ndarray object")
+    if not isinstance(x1, ndarray):
+        x1 = array(x1)
+    if not isinstance(x2, ndarray):
+        x2 = array(x2)
     dtype = x1.dtype
-    array = LibCall.numpy.matmul(x1, x2)
-    array.dtype = dtype
-    LibCall.numpy.copyOut(array, out)
-    return array
+    arr = LibCall.numpy.matmul(x1, x2)
+    arr.dtype = dtype
+    LibCall.numpy.copyOut(arr, out)
+    return arr
 
 
 def concatenate(seq, axis=0, out=None):
     dtype = np.maxDtype(*seq)
-    array = LibCall.numpy.concatenate(seq, axis)
-    array.dtype
+    arr = LibCall.numpy.concatenate(seq, axis)
+    arr.dtype = dtype
     LibCall.numpy.copyOut(array, out)
-    return array
+    return arr
 
 
 def sum(a, axis=None, dtype=None, out=None, keepdims=False, initial=None, where=True):
+    if not isinstance(a, ndarray):
+        a = array(a)
     if dtype is None:
         dtype = a.dtype
     arr = LibCall.numpy.reduce(a, axis, keepdims)
@@ -112,20 +116,45 @@ def sum(a, axis=None, dtype=None, out=None, keepdims=False, initial=None, where=
 
 def average(a, axis=None, weights=None, returned=False):
     # TODO: implement returned
+    if not isinstance(a, ndarray):
+        a = array(a)
     arr = LibCall.numpy.reduce(a, axis, False)
     arr.dtype = a.dtype
     return arr
 
 
+def mean(a, axis=None, dtype=None, out=None, keepdims=False, where=None):
+    # TODO: implement `where` option
+    if not isinstance(a):
+        a = array(a)
+    arr = LibCall.numpy.reduce(a, axis, keepdims)
+    LibCall.numpy.copyOut(arr, out)
+    return arr
+
+
 def max(a, axis=None, out=None, keepdims=False, initial=None, where=True):
+    if not isinstance(a, ndarray):
+        a = array(a)
     dtype = a.dtype
-    maxArray = LibCall.numpy.reduce(a, axis, keepdims)
-    maxArray.dtype = dtype
-    LibCall.numpy.copyOut(maxArray, out)
-    return maxArray
+    arr = LibCall.numpy.reduce(a, axis, keepdims)
+    arr.dtype = dtype
+    LibCall.numpy.copyOut(arr, out)
+    return arr
+
+
+def min(a, axis=None, out=None, keepdims=False, initial=None, where=True):
+    if not isinstance(a, ndarray):
+        a = array(a)
+    dtype = a.dtype
+    arr = LibCall.numpy.reduce(a, axis, keepdims)
+    arr.dtype = dtype
+    LibCall.numpy.copyOut(arr, out)
+    return arr
 
 
 def argmax(a, axis=None, out=None):
+    if not isinstance(a, ndarray):
+        a = array(a)
     if (axis is not None) and (not isinstance(axis, int)):  # tuple axis is not allowed
         raise TypeError("axis must be an int")
     indexArray = LibCall.numpy.reduce(a, axis, False)
@@ -164,9 +193,3 @@ def _bop(array, other):
     else:
         return NotImplemented
 
-
-def mean(a, axis=None, dtype=None, out=None, keepdims=False, where=None):
-    # TODO: implement `where` option
-    array = LibCall.numpy.reduce(a, axis, keepdims)
-    LibCall.numpy.copyOut(array, out)
-    return array

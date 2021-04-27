@@ -134,3 +134,6 @@ class ndarray:
 
     def copy(self, order="C"):
         return np.copy(self, order=order)
+
+    def item(self):
+        return LibCall.torch.item(self)

@@ -450,7 +450,9 @@ export namespace TorchLCImpl {
             return ctx.failWithMsg(`from 'LibCall.torch.item': not a tensor object`, source).toSet();
         }
         if (typeof selfSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.item': ${selfSize}`, source);
+            return ctx
+                .warnWithMsg(`from 'LibCall.torch.item': ${selfSize}; return symbolic value.`, source)
+                .toSetWith(SVFloat.create(ExpNum.fromSymbol(ctx.genSymFloat('tensorItem', source)), source));
         }
 
         const selfShape = selfSize.shape;
@@ -473,11 +475,11 @@ export namespace TorchLCImpl {
         );
 
         if (isFloat) {
-            return ctxSet.return(SVFloat.create(ExpNum.fromSymbol(ctx.genSymFloat('torchItem', source)), source));
+            return ctxSet.return(SVFloat.create(ExpNum.fromSymbol(ctx.genSymFloat('tensorItem', source)), source));
         } else if (isInt) {
-            return ctxSet.return(SVInt.create(ExpNum.fromSymbol(ctx.genSymInt('torchItem', source)), source));
+            return ctxSet.return(SVInt.create(ExpNum.fromSymbol(ctx.genSymInt('tensorItem', source)), source));
         } else if (isBool) {
-            return ctxSet.return(SVBool.create(ExpBool.fromSymbol(ctx.genSymBool('torchItem', source)), source));
+            return ctxSet.return(SVBool.create(ExpBool.fromSymbol(ctx.genSymBool('tensorItem', source)), source));
         } else {
             return ctx.failWithMsg(`from 'LibCall.torch.item': unknown dtype of tensor`, source).toSet();
         }
