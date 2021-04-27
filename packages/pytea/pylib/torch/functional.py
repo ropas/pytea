@@ -5,7 +5,7 @@ import numpy as np
 from torch.tensor import Tensor
 
 
-TVI = namedtuple("TorchValId", ["values", "indices"])
+torchValIdx = namedtuple("torchValIdx", ["values", "indices"])
 
 
 def tensor(data, dtype=None, device=None, requires_grad=False, pin_memory=False):
@@ -184,7 +184,7 @@ def topk(input, k, dim=None, largest=True, sorted=True, out=None):
     tensor.dtype = input.dtype
     index = zeros_like(tensor)
     index.dtype = torch.intDefault
-    return TVI(tensor, index)
+    return torchValIdx(tensor, index)
 
 
 def transpose(input, dim0, dim1):
@@ -223,7 +223,7 @@ def max(input, dim=None, keepdim=False, out=None):
         tensor.dtype = dtype
         LibCall.torch.copyOut(tensor, out)
         return tensor
-    else:
+    elif isinstance(dim, int):
         tensor = LibCall.torch.reduce(input, dim, keepdim)
         tensor.dtype = dtype
         indice = LibCall.torch.reduce(input, dim, keepdim)
@@ -231,7 +231,15 @@ def max(input, dim=None, keepdim=False, out=None):
         if out is not None:
             LibCall.torch.copyOut(tensor, out[0])
             LibCall.torch.copyOut(indice, out[1])
-        return tensor, indice
+        return torchValIdx(tensor, indice)
+    else:
+        return torch.maximum(input, dim, out)
+
+
+def maximum(input, other, out=None):
+    tensor = _bop(input, other)
+    LibCall.torch.copyOut(tensor, out)
+    return tensor
 
 
 def mean(input, dim=None, keepdim=False, dtype=None, out=None):

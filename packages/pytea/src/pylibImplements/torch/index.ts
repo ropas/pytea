@@ -930,6 +930,20 @@ export namespace TorchLCImpl {
         const inputShape = inputSize.shape;
         const inputRank = inputSize.rank();
 
+        // check inputRank == 0 -> allows axis to [-1, 0]
+        const rankRange = ctx.getCachedRange(inputRank);
+        if (rankRange?.isConst() && rankRange.start === 0) {
+            return ctx
+                .require(
+                    [ctx.genLte(-1, dim.value, source), ctx.genLte(dim.value, 0, source)],
+                    `from 'LibCall.torch.reduce': dim must be within [0, 1] at scalar tensor `,
+                    source
+                )
+                .flatMap((ctx) => {
+                    return genTensor(ctx, ExpShape.fromConst(0, [], source), source);
+                });
+        }
+
         const axis = absExpIndexByLen(dim.value, inputRank, source, ctx.ctrSet);
         const shape1 = ExpShape.slice(inputShape, 0, axis, source);
         const shape2 = ExpShape.slice(inputShape, ExpNum.bop(NumBopType.Add, axis, 1, source), inputRank, source);

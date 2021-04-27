@@ -4,60 +4,42 @@ import numpy as np
 from .ndarray import ndarray
 from PIL import Image
 
-# Assumption: arrObj is well shaped. (wrong)Array below will be parsed as (2, 3).
+# Assumption: obj is well shaped. (wrong)Array below will be parsed as (2, 3).
 #             [[2, 3, 4],
 #              [5, 6, 7, 8]]
-def array(arrObj, dtype=None, **kwargs):
-    if isinstance(arrObj, torch.Tensor):
-        arr = ndarray(arrObj.shape)
-    if isinstance(arrObj, Image.Image):
+def array(obj, dtype=None, **kwargs):
+    if isinstance(obj, torch.Tensor):
+        arr = ndarray(obj.shape)
+    if isinstance(obj, Image.Image):
         arr = ndarray(())
-        LibCall.numpy.fromImage(arr, arrObj)
+        LibCall.numpy.fromImage(arr, obj)
     else:
-        arr = _parseShape(arrObj, [])
-    arr.dtype = _parseDtype(arrObj)
+        arr = ndarray(LibCall.shape.extractShape(obj))
+    arr.dtype = _parseDtype(obj)
     return arr
 
 
-def _parseShape(arrObj, size):
-    if isinstance(arrObj, ndarray):
-        pre = ndarray(size)
-        return LibCall.shape.shapeConcat(pre, arrObj, ndarray(()))
-    if isinstance(arrObj, float):
-        return ndarray(size, dtype=float)
-    elif isinstance(arrObj, int):
-        return ndarray(size, dtype=int)
-
-    if isinstance(arrObj, tuple) or isinstance(arrObj, list):
-        if len(arrObj) == 0:
-            return ndarray([0])
-        else:
-            size.append(len(arrObj))
-            return _parseShape(arrObj[0], size)
-
-    raise TypeError("invalid array")
-
-
-def _parseDtype(arrObj):
-    if isinstance(arrObj, ndarray):
-        return arrObj.dtype
-    if isinstance(arrObj, torch.Tensor):
-        return np.toNpdtype(arrObj.dtype)
-    if isinstance(arrObj, Image.Image):
+def _parseDtype(obj):
+    if isinstance(obj, ndarray):
+        return obj.dtype
+    if isinstance(obj, torch.Tensor):
+        return np.toNpdtype(obj.dtype)
+    if isinstance(obj, Image.Image):
         # TODO: dtype
         return np.floatDefault
-    if isinstance(arrObj, float):
+    if isinstance(obj, float):
         return np.floatDefault
-    elif isinstance(arrObj, int):
+    elif isinstance(obj, int):
         return np.intDefault
 
-    if isinstance(arrObj, tuple) or isinstance(arrObj, list):
+    if isinstance(obj, tuple) or isinstance(obj, list):
         dtypes = []
-        for elem in arrObj:
+        for elem in obj:
             dtypes.append(_parseDtype(elem))
         return np.maxDtype(*dtypes)
 
-    raise TypeError("invalid array")
+    LibCall.builtins.warn("cannot infer dtype. fallback to float")
+    return np.floatDefault
 
 
 def zeros(shape, dtype=float, order="C"):

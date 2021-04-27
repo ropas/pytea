@@ -323,7 +323,7 @@ export namespace ShapeLCImpl {
         const params = ctx.retVal.params;
 
         function randSize(ctx: Context<unknown>, message: string) {
-            return randShape(ctx, message, source).map((ctx) =>
+            return _randShape(ctx, message, source).map((ctx) =>
                 ctx.setRetVal(SVSize.createSize(ctx, ctx.retVal, source))
             );
         }
@@ -349,7 +349,7 @@ export namespace ShapeLCImpl {
     ): ContextSet<ExpShape> {
         const value = fetchAddr(maySized, ctx.heap);
         if (!value) {
-            return randShape(ctx, `from 'LibCall.shape.extractShape': got undefined value`, source);
+            return _randShape(ctx, `from 'LibCall.shape.extractShape': got undefined value`, source);
         }
 
         switch (value.type) {
@@ -380,14 +380,14 @@ export namespace ShapeLCImpl {
                 }
 
                 // fall back to unknown
-                return randShape(
+                return _randShape(
                     ctx,
                     `from 'LibCall.shape.extractShape': failed to infer size. return temp shape.`,
                     source
                 );
             }
             default:
-                return randShape(
+                return _randShape(
                     ctx,
                     `from 'LibCall.shape.extractShape': extract shape from invalid type. return temp shape.`,
                     source
@@ -395,11 +395,21 @@ export namespace ShapeLCImpl {
         }
     }
 
-    function randShape(ctx: Context<unknown>, msg: string, source: CodeSource | undefined): ContextSet<ExpShape> {
+    function _randShape(ctx: Context<unknown>, msg: string, source: CodeSource | undefined): ContextSet<ExpShape> {
         const rank = ctx.genSymInt('WarnTempRank', source);
         const sym = ctx.genSymShape('WarnTempShape', ExpNum.fromSymbol(rank), source);
         const shape = ExpShape.fromSymbol(sym);
         return ctx.warnWithMsg(msg, source).toSetWith(shape);
+    }
+
+    export function randShape(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
+        const rank = ctx.genSymInt('WarnTempRank', source);
+        const sym = ctx.genSymShape('WarnTempShape', ExpNum.fromSymbol(rank), source);
+        const shape = ExpShape.fromSymbol(sym);
+        return ctx.toSetWith(SVSize.createSize(ctx, shape, source));
     }
 
     export const libCallImpls: { [key: string]: LCImpl } = {
@@ -409,6 +419,7 @@ export namespace ShapeLCImpl {
         tensorGetItem,
         shapeConcat,
         extractShape,
+        randShape,
     };
 }
 
