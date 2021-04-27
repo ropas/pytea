@@ -1218,7 +1218,7 @@ export namespace TorchBackend {
             // short-circuit evaluation.
             if (expr.bopType === TEBopType.And || expr.bopType === TEBopType.Or) {
                 const isAnd = expr.bopType === TEBopType.And;
-                const truthy = BackUtils.isTruthy(ctx, leftAddr, expr.source as ExpressionNode);
+                const truthy = BackUtils.isTruthy(ctx, leftAddr, expr.source);
 
                 if (truthy === true) {
                     return isAnd ? evaluate(ctx.toSet(), expr.right) : ctx.toSet();
@@ -1287,18 +1287,18 @@ export namespace TorchBackend {
                 // numeric bop
                 if (SymOpUtils.isNumeric(leftVal) && SymOpUtils.isNumeric(rightVal)) {
                     if (leftVal.type === SVType.Bool) {
-                        const lvSet = ctrSet.castBoolToInt(leftVal.value, expr.source as ExpressionNode);
+                        const lvSet = ctrSet.castBoolToInt(leftVal.value, expr.source);
                         leftVal = SVInt.create(lvSet[0], expr.left.source);
                         ctrSet = lvSet[1];
                     }
 
                     if (rightVal.type === SVType.Bool) {
-                        const rvSet = ctrSet.castBoolToInt(rightVal.value, expr.source as ExpressionNode);
+                        const rvSet = ctrSet.castBoolToInt(rightVal.value, expr.source);
                         rightVal = SVInt.create(rvSet[0], expr.right.source);
                         ctrSet = rvSet[1];
                     }
 
-                    const retVal = SymOpUtils.binOpNum(leftVal, rightVal, expr.bopType, expr.source as ExpressionNode);
+                    const retVal = SymOpUtils.binOpNum(leftVal, rightVal, expr.bopType, expr.source);
                     return ctx.setCtrSet(ctrSet).setRetVal(retVal).toSet();
                 }
 
@@ -1324,10 +1324,8 @@ export namespace TorchBackend {
                 }
 
                 // object dunder operator
-                const defaultRetVal: ShValue = SVNotImpl.create(
-                    `invalid bop ${TEBinOp.toStringBop(expr.bopType)}`,
-                    expr.source
-                );
+                const errMsg = `invalid binary op ${TEBinOp.toStringBop(expr.bopType)}`;
+                const defaultRetVal: ShValue = SVNotImpl.create(errMsg, expr.source);
                 const [lop, rop] = SymOpUtils.operatorMap[expr.bopType];
 
                 if (leftVal.type === SVType.Object) {
@@ -1343,14 +1341,14 @@ export namespace TorchBackend {
                                         if (ropFun?.type === SVType.Func) {
                                             return functionCall(ctx, ropFun, [leftAddr], expr.source);
                                         }
-                                        return ctx.toSetWith(defaultRetVal);
+                                        return ctx.warnWithMsg(errMsg, expr.source).toSetWith(defaultRetVal);
                                     });
                                 }
                                 return ctx.toSet();
                             });
                         }
 
-                        return ctx.toSetWith(defaultRetVal);
+                        return ctx.warnWithMsg(errMsg, expr.source).toSetWith(defaultRetVal);
                     });
                 }
 
@@ -1414,7 +1412,7 @@ export namespace TorchBackend {
                             break;
                     }
                 }
-                return newCtx.toSetWith(SymOpUtils.unaryOp(newValue, expr.uopType, expr.source as ExpressionNode));
+                return newCtx.toSetWith(SymOpUtils.unaryOp(newValue, expr.uopType, expr.source));
             }
 
             if (expr.uopType === TEUopType.Neg) {
@@ -1423,15 +1421,19 @@ export namespace TorchBackend {
                     return ctx.failWithMsg('bad operand type for unary -', expr.source).toSet();
                 }
 
-                const func = BackUtils.fetchAddr(obj.getAttr('__neg__'), ctx.heap);
-                if (func !== undefined && func.type === SVType.Func) {
-                    return functionCall(ctx, func, [], expr.source);
-                }
-            } else if (expr.uopType === TEUopType.Not) {
+                const defaultRetVal: ShValue = SVNotImpl.create(`__neg__ is not defined`, expr.source);
+
+                return ctx.getAttrDeep(obj, '__neg__', expr.source).flatMap((ctx) => {
+                    const lopFun = BackUtils.fetchAddr(ctx.retVal, ctx.heap);
+                    if (lopFun?.type === SVType.Func) {
+                        return functionCall(ctx, lopFun, [], expr.source);
+                    }
+
+                    return ctx.warnWithMsg(`__neg__ is not defined`, expr.source).toSetWith(defaultRetVal);
+                });
+            } else {
                 return ctx.toSetWith(SVBool.create(value.type === SVType.None, expr.source));
             }
-
-            return ctx.warnWithMsg('unimplemented unary syntax', expr.source).toSet();
         });
     }
 

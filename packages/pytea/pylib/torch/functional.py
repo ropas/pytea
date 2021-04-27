@@ -247,6 +247,20 @@ def sum(input, dim=None, keepdim=False, dtype=None):
     return tensor
 
 
+def det(input):
+    dtype = input.dtype
+    tensor = LibCall.torch.reduce(input, None, False)
+    tensor.dtype = dtype
+    return tensor
+
+
+def logdet(input):
+    dtype = input.dtype
+    tensor = LibCall.torch.reduce(input, None, False)
+    tensor.dtype = dtype
+    return tensor
+
+
 def mul(input, other, out=None):
     result = _bop(input, other)
     LibCall.torch.copyOut(result, out)
@@ -259,6 +273,15 @@ def pow(input, exponent, out=None):
     return result
 
 
+def neg(input, out=None):
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
+
+
+negative = neg
+
+
 def exp(input, out=None):
     result = LibCall.torch.identityShape(input)
     LibCall.torch.copyOut(result, out)
@@ -266,6 +289,30 @@ def exp(input, out=None):
 
 
 def expm1(input, out=None):
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
+
+
+def log(input, out=None):
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
+
+
+def log10(input, out=None):
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
+
+
+def log1p(input, out=None):
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
+
+
+def log2(input, out=None):
     result = LibCall.torch.identityShape(input)
     LibCall.torch.copyOut(result, out)
     return result

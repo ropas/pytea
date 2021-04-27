@@ -74,11 +74,38 @@ class Tensor:
         torch._bop(self, other)
         return self
 
+    def neg(self):
+        return torch.neg(self)
+
+    def neg_(self):
+        return self
+
+    def log(self):
+        return torch.log(self)
+
+    def log_(self):
+        return self
+
+    def log10(self):
+        return torch.log10(self)
+
+    def log10_(self):
+        return self
+
+    def log1p(self):
+        return torch.log1p(self)
+
+    def log1p_(self):
+        return self
+
+    def log2(self):
+        return torch.log2(self)
+
+    def log2(self):
+        return self
+
     def exp(self):
         return torch.exp(self)
-
-    def fill_(self):
-        return self
 
     def exp_(self):
         return self
@@ -89,7 +116,18 @@ class Tensor:
     def expm1_(self):
         return self
 
+    def fill_(self):
+        return self
+
     def normal_(self, *args, **kwargs):
+        return self
+
+    def uniform_(self, _from=0, to=1):
+        # TODO: from is reserved keyword.
+        return self
+
+    def random_(self, _from=0, to=None, generator=None):
+        # TODO: from is reserved keyword.
         return self
 
     def repeat(self, *sizes):
@@ -115,6 +153,12 @@ class Tensor:
 
     def mean(self, dim=None, keepdim=False, dtype=None):
         return torch.mean(self, dim, keepdim, dtype)
+
+    def det(self):
+        return torch.det(self)
+
+    def logdet(self):
+        return torch.logdet(self)
 
     def item(self):
         return LibCall.torch.item(self)
@@ -294,6 +338,9 @@ class Tensor:
                 value,
                 "The expanded size of the assigned value must match the target size.",
             )
+
+    def __neg__(self):
+        return torch.neg(self)
 
     def __add__(self, other):
         return torch._bop(self, other)

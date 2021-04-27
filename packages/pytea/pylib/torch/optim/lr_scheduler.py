@@ -23,3 +23,7 @@ class MultiStepLR(_LRScheduler):
 
 class LambdaLR(_LRScheduler):
     pass
+
+
+class CosineAnnealingLR(_LRScheduler):
+    pass
