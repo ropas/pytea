@@ -384,6 +384,36 @@ class Tensor:
     def __rfloordiv__(self, other):
         return torch._bop(self, other)
 
+    def __lt__(self, other):
+        tensor = torch._bop(self, other)
+        tensor.dtype = torch.bool
+        return tensor
+
+    def __le__(self, other):
+        tensor = torch._bop(self, other)
+        tensor.dtype = torch.bool
+        return tensor
+
+    def __gt__(self, other):
+        tensor = torch._bop(self, other)
+        tensor.dtype = torch.bool
+        return tensor
+
+    def __ge__(self, other):
+        tensor = torch._bop(self, other)
+        tensor.dtype = torch.bool
+        return tensor
+
+    def __eq__(self, other):
+        tensor = torch._bop(self, other)
+        tensor.dtype = torch.bool
+        return tensor
+
+    def __ne__(self, other):
+        tensor = torch._bop(self, other)
+        tensor.dtype = torch.bool
+        return tensor
+
     def __matmul__(self, other):
         tensor = LibCall.torch.matmul(self, other)
         tensor.dtype = self.dtype
