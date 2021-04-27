@@ -5,3 +5,15 @@ def is_available():
 
 def device_count():
     return 1
+
+
+def set_device(device):
+    pass
+
+
+def manual_seed(seed):
+    pass
+
+
+def manual_seed_all(seed):
+    pass

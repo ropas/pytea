@@ -157,6 +157,9 @@ class Tensor:
     def cuda(self, **kwargs):
         return self
 
+    def requires_grad_(self, requires_grad=True):
+        return self
+
     def mm(self, mat2):
         return torch.mm(self, mat2)
 
@@ -208,6 +211,11 @@ class Tensor:
         return self.to(torch.int64)
 
     def detach(self):
+        tensor = LibCall.torch.identityShape(self)
+        tensor.dtype = self.dtype
+        return tensor
+
+    def clone(self):
         tensor = LibCall.torch.identityShape(self)
         tensor.dtype = self.dtype
         return tensor
@@ -277,6 +285,15 @@ class Tensor:
 
         temp = LibCall.shape.tensorGetItem(temp, 0, index)
         return Tensor(temp)
+
+    def __setitem__(self, key, value):
+        if isinstance(value, Tensor):
+            sliced = self[key]
+            assert LibCall.guard.require_broadcastable(
+                sliced,
+                value,
+                "The expanded size of the assigned value must match the target size.",
+            )
 
     def __add__(self, other):
         return torch._bop(self, other)

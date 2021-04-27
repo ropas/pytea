@@ -230,6 +230,31 @@ def _list__add__(self, items):
 list.__add__ = _list__add__
 
 
+def _list_index(self, x, start=None, end=None):
+    if start is not None or end is not None:
+        if start is None:
+            sliced = self[:end]
+            start = 0
+        elif end is None:
+            sliced = self[start:]
+        else:
+            sliced = self[start:end]
+
+        for i, value in enumerate(sliced):
+            if value == x:
+                return i + start
+    else:
+        for i, value in enumerate(self):
+            if value == x:
+                return i
+
+    # TODO: ignore it?
+    raise ValueError("value is not in list")
+
+
+list.index = _list_index
+
+
 def _tuple__add__(self, items):
     ret = ()
     for item in self:
