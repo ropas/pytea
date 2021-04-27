@@ -1,6 +1,6 @@
 import LibCall
 import math
-from ...tensor import Tensor
+import torch
 from PIL import Image
 
 
@@ -54,22 +54,21 @@ class DataLoader:
             step = 1 // (abs(index - li) + 1)
             batch_size = self.batch_size - lb * step
 
-
         ret_list = []
         for item in item_tuple:
             if isinstance(item, list) or isinstance(item, tuple):
                 ret_item = []
                 for list_item in item:
-                    if isinstance(list_item, Tensor) and list_item.dim() > 0:
+                    if isinstance(list_item, torch.Tensor) and list_item.dim() > 0:
                         ret_item.append(LibCall.shape.repeat(list_item, 0, batch_size))
                     else:
-                        ret_item.append(Tensor(batch_size))
+                        ret_item.append(torch.Tensor(batch_size))
                 ret_list.append(ret_item)
             else:
-                if isinstance(item, Tensor) and item.dim() > 0:
+                if isinstance(item, torch.Tensor) and item.dim() > 0:
                     ret_list.append(LibCall.shape.repeat(item, 0, batch_size))
                 else:
-                    ret_list.append(Tensor(batch_size))
+                    ret_list.append(torch.Tensor(batch_size))
 
         if len(ret_list) == 1:
             return ret_list[0]

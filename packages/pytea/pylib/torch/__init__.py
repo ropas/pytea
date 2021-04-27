@@ -1,8 +1,6 @@
 import LibCall
 
-# from .functional import *
 from .tensor import Tensor, FloatTensor, DoubleTensor, LongTensor, IntTensor
-from .functional import *
 
 from . import nn as nn
 from . import optim as optim
@@ -15,6 +13,8 @@ from . import distributed as distributed
 from . import autograd as autograd
 
 from .autograd import no_grad, enable_grad
+
+from .functional import *
 from .dtype import *
 
 
