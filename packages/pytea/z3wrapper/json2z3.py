@@ -626,6 +626,7 @@ class Ctr:
             left = self.encodeExpBool(expBool["left"])
             right = self.encodeExpBool(expBool["right"])
             return Or(left, right)
+
     def getRank(self, expShape):
         if expShape["expType"] != SEType.Shape.value:
             raise Exception("getRank Error: not a ExpShape")
@@ -920,10 +921,13 @@ def run_default(json_path, args):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: ./json2z3.py <json_file>")
-        sys.exit()
+    import argparse
 
-    json_path = str(sys.argv[1])
-    run_default(json_path, dict(silent=False))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("json_path", required=True)
+    parser.add_argument("--silent", action="store_true", default=False)
+
+    args = parser.parse_args()
+
+    run_default(args.json_path, args)
 

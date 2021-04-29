@@ -1087,7 +1087,7 @@ export namespace BuiltinsLCImpl {
         const indice = fetchAddr(indiceAddr, heap);
 
         if (indice?.type !== SVType.Int || typeof indice.value !== 'number') {
-            return ctx.warnWithMsg(`from 'LibCall.builtins.setIndice': attribute is not a constant`, source).toSet();
+            return ctx.warnWithMsg(`from 'LibCall.builtins.setIndice': index is not a constant`, source).toSet();
         }
 
         if (obj?.type !== SVType.Object) {
