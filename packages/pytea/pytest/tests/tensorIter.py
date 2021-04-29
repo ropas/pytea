@@ -1,4 +1,5 @@
 import torch
+from torch.utils.data import DataLoader
 from torchvision import datasets
 import torchvision.transforms as transforms
 from sklearn.model_selection import train_test_split
@@ -15,13 +16,10 @@ train_set, valid_set = train_test_split(
     test_size=0.1,
 )
 
-t = torch.rand(7, 3, 4)
-t0 = 1
-t1 = 1
-arr = []
-"""
-for array in mnist:
-    t0 = array
-    t1 = t0[1]
-    arr.append(array)
-"""
+train_loader = DataLoader(train_set, batch_size=64, shuffle=True, drop_last=True)
+valid_loader = DataLoader(valid_set, batch_size=64, shuffle=True, drop_last=True)
+
+tdata = train_loader[0][0]
+tlabel = train_loader[0][1]
+vdata = valid_loader[0][0]
+vlabel = valid_loader[0][1]
