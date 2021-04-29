@@ -455,3 +455,32 @@ def save(
 
 def manual_seed(seed=0):
     pass
+
+
+def from_numpy(ndarray_):
+    if ndarray_.dtype is np.float64:
+        dtype = torch.float64
+    elif ndarray_.dtype is np.float32:
+        dtype = torch.float32
+    elif ndarray_.dtype is np.float16:
+        dtype = torch.float16
+    elif ndarray_.dtype is np.complex64:
+        dtype = torch.complex64
+    elif ndarray_.dtype is np.complex128:
+        dtype = torch.complex128
+    elif ndarray_.dtype is np.int64:
+        dtype = torch.int64
+    elif ndarray_.dtype is np.int32:
+        dtype = torch.int32
+    elif ndarray_.dtype is np.int16:
+        dtype = torch.int16
+    elif ndarray_.dtype is np.int8:
+        dtype = torch.int8
+    elif ndarray_.dtype is np.uint8:
+        dtype = torch.uint8
+    elif ndarray_.dtype is np.bool:
+        dtype = torch.bool
+
+    shape = LibCall.shape.extractShape(ndarray_)
+    result = torch.Tensor(shape, dtype=dtype)
+    return result
