@@ -150,3 +150,51 @@ class RandomHorizontalFlip(torch.nn.Module):
             return img
         raise TypeError("img should be PIL Image or Tensor")
 
+
+class RandomRotation(torch.nn.Module):
+    def __init__(
+        self,
+        degrees,
+        interpolation=None,
+        expand=False,
+        center=None,
+        fill=0,
+        resample=None,
+    ):
+        pass
+
+    def forward(self, img):
+        # TODO: when expand=True: (C, H, W) -> (C, ?, ?)
+        if isinstance(img, Image.Image) or isinstance(img, Tensor):
+            return img
+        raise TypeError("img should be PIL Image or Tensor")
+
+
+class RandomAffine(torch.nn.Module):
+    def __init__(
+        self,
+        degrees,
+        translate=None,
+        scale=None,
+        shear=None,
+        interpolation=None,
+        fill=0,
+        fillcolor=None,
+        resample=None,
+    ):
+        pass
+
+    def forward(self, img):
+        if isinstance(img, Image.Image) or isinstance(img, Tensor):
+            return img
+        raise TypeError("img should be PIL Image or Tensor")
+
+
+class ColorJitter(torch.nn.Module):
+    def __init__(self, brightness=0, contrast=0, saturation=0, hue=0):
+        pass
+
+    def forward(self, img):
+        if isinstance(img, Image.Image) or isinstance(img, Tensor):
+            return img
+        raise TypeError("img should be PIL Image or Tensor")

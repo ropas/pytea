@@ -125,6 +125,13 @@ def cat(tensors, dim=0, out=None):
     return tensor
 
 
+def stack(tensors, dim=0, out=None):
+    tensor = LibCall.torch.stack(tensors, dim)
+    tensor.dtype = torch.maxDtype(*tensors)
+    LibCall.torch.copyOut(tensor, out)
+    return tensor
+
+
 def squeeze(input, dim=None, out=None):
     dtype = input.dtype
     tensor = LibCall.torch.squeeze(input, dim)
