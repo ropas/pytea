@@ -29,8 +29,9 @@ class DataLoader:
             self._len = datalen // self.batch_size
             self._last_batch = batch_size
         else:
-            self._last_batch = (datalen - 1) % self.batch_size + 1
+            self._last_batch = (datalen - 1) % self.batch_size
             remainder = math.ceil(self._last_batch / self.batch_size)
+            self._last_batch += 1
             self._len = datalen // self.batch_size + remainder
 
     def __len__(self):
