@@ -51,7 +51,7 @@ class Normalize:
         self.inplace = inplace
 
     def __call__(self, tensor):
-        return tensor
+        return F.normalize(tensor, self.mean, self.std)
 
 
 class RandomCrop:

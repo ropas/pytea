@@ -3,10 +3,9 @@ import torch
 import torch.utils.data as data
 import torch.utils.data.dataset as dataset
 
-class DataLabelList():
-    def __init__(
-        self, baseDataset, _len
-    ):
+
+class DataLabelList:
+    def __init__(self, baseDataset, _len):
         self.baseDataset = baseDataset
         self._len = _len
 
@@ -18,6 +17,7 @@ class DataLabelList():
             raise IndexError("Dataset out of bound")
 
         return self.baseDataset[index]
+
 
 # TODO: implement this
 def train_test_split(*arrays, **options):
@@ -35,8 +35,7 @@ def train_test_split(*arrays, **options):
     if test_size is None:
         test_size = 1 - train_size
 
-    # assumes arrays = (data_batch, label_batch)
-    # when arrays = [dataset(like MNIST)]
+    # when arrays = dataset(like MNIST)
     if isinstance(arrays[0], data.Dataset):
         baseDataset = arrays[0]
         dlen = len(baseDataset)  # data length
@@ -48,6 +47,7 @@ def train_test_split(*arrays, **options):
 
         return trainList, testList
 
+    # when arrays = (data_batch, label_batch)
     for array in arrays:
         test_length = int(test_size * len(array))
         train_length = len(array) - test_length
