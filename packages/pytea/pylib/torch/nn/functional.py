@@ -218,3 +218,7 @@ def interpolate(
     recompute_scale_factor=None,
 ):
     return LibCall.torch.interpolate(input, size, scale_factor)
+
+
+def pixel_shuffle(input, upscale_factor):
+    return LibCall.torch.pixel_shuffle(input, upscale_factor)

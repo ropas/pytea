@@ -70,12 +70,18 @@ def zeroes_(tensor):
 
 def eye_(tensor):
     rank = tensor.ndim
-    LibCall.guard.require_eq(rank, 2)
+    LibCall.guard.require_eq(
+        rank, 2, "'torch.nn.functional.eye_' requires rank 2 Tensor."
+    )
     pass
 
 
 def dirac_(tensor, groups=1):
     rank = tensor.ndim
-    LibCall.guard.require_lte(3, rank)
-    LibCall.guard.require_lte(rank, 5)
+    LibCall.guard.require_lte(
+        3, rank, "'torch.nn.functional.dirac_' requires rank {1,2,3} Tensor."
+    )
+    LibCall.guard.require_lte(
+        rank, 5, "'torch.nn.functional.dirac_' requires rank {1,2,3} Tensor."
+    )
     pass
