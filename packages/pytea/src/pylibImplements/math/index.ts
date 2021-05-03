@@ -149,22 +149,31 @@ export namespace MathLCImpl {
         }
     }
 
-    export function log(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
+    export function float_fun(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
-        if (params.length !== 1) {
+        if (params.length !== 2) {
             return ctx
-                .warnWithMsg(`from 'LibCall.math.log': got insufficient number of argument: ${params.length}`, source)
+                .warnWithMsg(
+                    `from 'LibCall.math.float_fun': got insufficient number of argument: ${params.length}`,
+                    source
+                )
                 .toSet();
         }
 
         const heap = ctx.heap;
-        const [numAddr] = params;
+        const [numAddr, nameAddr] = params;
 
         const num = fetchAddr(numAddr, heap);
+        const name = fetchAddr(nameAddr, heap);
 
-        if (!num) {
-            return ctx.failWithMsg(`from 'LibCall.math.log': got undefined value`, source).toSet();
+        if (!num || name?.type !== SVType.String || typeof name.value !== 'string') {
+            return ctx.warnWithMsg(`from 'LibCall.math.float_fun': got undefined value`, source).toSet();
         }
+
+        const funName = name.value;
 
         switch (num.type) {
             case SVType.Int:
@@ -175,35 +184,59 @@ export namespace MathLCImpl {
                     numExp = numRng.start;
                 }
 
+                const oldNum = numExp;
                 if (typeof numExp === 'number') {
-                    if (numExp <= 0) {
+                    switch (funName) {
+                        case 'sqrt':
+                            numExp = Math.sqrt(numExp);
+                            break;
+                        case 'log':
+                            numExp = Math.log(numExp);
+                            break;
+                        case 'log2':
+                            numExp = Math.log2(numExp);
+                            break;
+                        case 'log10':
+                            numExp = Math.log10(numExp);
+                            break;
+                        case 'exp':
+                            numExp = Math.exp(numExp);
+                            break;
+                        case 'expm1':
+                            numExp = Math.expm1(numExp);
+                            break;
+                        default:
+                            return ctx
+                                .warnWithMsg(
+                                    `from 'LibCall.math.float_fun': undefined math function (${funName})`,
+                                    source
+                                )
+                                .toSet();
+                    }
+                    if (Number.isNaN(numExp)) {
                         return ctx
-                            .warnWithMsg(`from 'LibCall.math.log': math domain error. got ${numExp}`, source)
+                            .failWithMsg(
+                                `from 'LibCall.math.float_fun': math domain error (${funName}(${oldNum}))`,
+                                source
+                            )
                             .toSet();
                     }
                     return ctx.toSetWith(SVFloat.create(Math.log(numExp), source));
                 }
 
-                const value = SVFloat.create(ExpNum.fromSymbol(ctx.genSymFloat('WarnMathLog', source)), source);
+                const value = SVFloat.create(ExpNum.fromSymbol(ctx.genSymFloat(`Math_${funName}`, source)), source);
                 return ctx
-                    .warnWithMsg(`from 'LibCall.math.log': got non-constant value. return symbolic float.`, source)
+                    .warnWithMsg(
+                        `from 'LibCall.math.float_fun': got non-constant value. return symbolic float.`,
+                        source
+                    )
                     .toSetWith(value);
             }
-            case SVType.Object:
-                return ctx.getAttrDeep(num, '__abs__', source).flatMap((ctx) => {
-                    const abs = ctx.retVal;
-                    if (abs.type === SVType.Func) {
-                        return TorchBackend.functionCall(ctx, abs, [], source);
-                    }
-                    return ctx
-                        .warnWithMsg(`from 'LibCall.math.abs: object does not have __abs__ method`, source)
-                        .toSet();
-                });
             case SVType.Error:
-                return ctx.warnWithMsg(`from 'LibCall.math.abs: got unknown value`, source).toSet();
+                return ctx.warnWithMsg(`from 'LibCall.math.float_fun: got unknown value`, source).toSet();
             default:
                 return ctx
-                    .failWithMsg(`from 'LibCall.math.abs: invalid type - ${svTypeToString(num.type)}`, source)
+                    .failWithMsg(`from 'LibCall.math.float_fun: invalid type - ${svTypeToString(num.type)}`, source)
                     .toSet();
         }
     }

@@ -15,6 +15,7 @@ import {
     SVSize,
     SVString,
     SVType,
+    svTypeToString,
 } from '../../backend/sharpValues';
 import {
     ExpBool,
@@ -2311,6 +2312,75 @@ export namespace TorchLCImpl {
             .flatMap((ctx) => genTensor(ctx, returnShape, source));
     }
 
+    export function pixel_shuffle(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.pixel_shuffle': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [inputAddr, factorAddr] = params;
+
+        const inputSize = fetchSize(inputAddr, heap);
+        if (typeof inputSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.pixel_shuffle': ${inputSize}`, source);
+        }
+
+        const factor = fetchAddr(factorAddr, heap);
+        if (factor?.type !== SVType.Int) {
+            const svType = factor?.type ?? SVType.Undef;
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.pixel_shuffle': upscale_factor is not an int type. got ${svTypeToString(svType)}`,
+                source
+            );
+        }
+
+        const factorVal = factor.value;
+        const factSquare = ExpNum.bop(NumBopType.Mul, factorVal, factorVal, source);
+        const inputShape = inputSize.shape;
+        const inputRank = inputSize.rank();
+
+        const r3 = ExpNum.bop(NumBopType.Sub, inputRank, 3, source);
+        const channel = ExpNum.index(inputShape, r3, source);
+
+        return ctx
+            .require(
+                [ctx.genLte(3, inputRank, source)],
+                `from 'LibCall.torch.pixel_shuffle': input rank should be greater or equal than 3`,
+                source
+            )
+            .require(
+                [ctx.genEq(ExpNum.bop(NumBopType.Mod, channel, factSquare, source), 0, source)],
+                `from 'LibCall.torch.pixel_shuffle': input's 'channel' dimension to be divisible by the square of upscale_factor`,
+                source
+            )
+            .flatMap((ctx) => {
+                let retShape = inputShape;
+                const r1 = ExpNum.bop(NumBopType.Sub, inputRank, 1, source);
+                const r2 = ExpNum.bop(NumBopType.Sub, inputRank, 2, source);
+
+                const width = ExpNum.index(inputShape, r1, source);
+                const height = ExpNum.index(inputShape, r2, source);
+
+                retShape = ExpShape.setDim(retShape, r1, ExpNum.bop(NumBopType.Mul, width, factorVal, source), source);
+                retShape = ExpShape.setDim(retShape, r2, ExpNum.bop(NumBopType.Mul, height, factorVal, source), source);
+                retShape = ExpShape.setDim(
+                    retShape,
+                    r3,
+                    ExpNum.bop(NumBopType.FloorDiv, channel, factSquare, source),
+                    source
+                );
+
+                return genTensor(ctx, retShape, source);
+            });
+    }
+
     export function embedding(
         ctx: Context<LCBase.ExplicitParams>,
         source: CodeSource | undefined
@@ -2759,6 +2829,7 @@ export namespace TorchLCImpl {
         squeeze,
         diag,
         flatten,
+        pixel_shuffle,
         embedding,
         layer_norm,
         pad,

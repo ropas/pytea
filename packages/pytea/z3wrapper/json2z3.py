@@ -903,7 +903,6 @@ class NullConsole:
 
 
 def run_default(json_path, args):
-    start_time = time.time()
     json_path = Path(json_path)
 
     console = DefaultConsole() if not args.silent else NullConsole()
