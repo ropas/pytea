@@ -9,7 +9,6 @@
 import { List } from 'immutable';
 
 import { ConsoleInterface } from 'pyright-internal/common/console';
-import { ExpressionNode } from 'pyright-internal/parser/parseNodes';
 
 import {
     LibCallType,
@@ -1298,7 +1297,49 @@ export namespace TorchBackend {
                         ctrSet = rvSet[1];
                     }
 
-                    const retVal = SymOpUtils.binOpNum(leftVal, rightVal, expr.bopType, expr.source);
+                    let retVal = SymOpUtils.binOpNum(leftVal, rightVal, expr.bopType, expr.source);
+
+                    if (retVal.type === SVType.Error && expr.bopType === TEBopType.Pow) {
+                        // symbolic pow function is executed seperatedly.
+                        const resultType = SymOpUtils.elementTypeUpperBoundOfTypes(
+                            leftVal.type,
+                            rightVal.type,
+                            SVType.Int
+                        );
+                        const powRange = ctx.getCachedRange(rightVal.value);
+
+                        if (powRange?.isConst() && Number.isInteger(powRange.start)) {
+                            let powVal: ExpNum = ExpNum.fromConst(1, expr.source);
+                            for (let i = 0; i < powRange.start; i++) {
+                                powVal = ExpNum.bop(NumBopType.Mul, powVal, leftVal.value, expr.source);
+                            }
+
+                            if (resultType === SVType.Int) {
+                                retVal = SVInt.create(powVal, expr.source);
+                            } else {
+                                retVal = SVFloat.create(powVal, expr.source);
+                            }
+                        } else {
+                            // return new symbolic value for symbolic exponent
+                            const symNum = ctx.genSymInt('WarnPow', expr.source);
+                            const symExp = ExpNum.fromSymbol(symNum);
+
+                            let symVal;
+                            if (resultType === SVType.Int) {
+                                symVal = SVInt.create(symExp, expr.source);
+                            } else {
+                                symVal = SVFloat.create(symExp, expr.source);
+                            }
+                            return ctx
+                                .warnWithMsg(
+                                    'symbolic pow expression is not supported. returns new symbolic value',
+                                    expr.source
+                                )
+                                .setCtrSet(ctrSet)
+                                .toSetWith(symVal);
+                        }
+                    }
+
                     return ctx.setCtrSet(ctrSet).setRetVal(retVal).toSet();
                 }
 

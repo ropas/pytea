@@ -8,7 +8,7 @@
  */
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import { TEBopType, TEUopType } from '../frontend/torchStatements';
+import { TEBinOp, TEBopType, TEUopType } from '../frontend/torchStatements';
 import { FilePathStore } from '../service/executionPaths';
 import { ConstraintSet } from './constraintSet';
 import { Constraint, ConstraintType } from './constraintType';
@@ -297,13 +297,17 @@ export namespace SymOpUtils {
                 resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Int);
                 resultValue = leftNum * rightNum;
                 break;
-            case TEBopType.FloorDiv:
+            case TEBopType.Pow:
                 resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Int);
-                resultValue = Math.floor(leftNum / rightNum);
+                resultValue = leftNum ** rightNum;
                 break;
             case TEBopType.Mod:
                 resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Int);
                 resultValue = leftNum % rightNum;
+                break;
+            case TEBopType.FloorDiv:
+                resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Int);
+                resultValue = Math.floor(leftNum / rightNum);
                 break;
             case TEBopType.TrueDiv:
                 resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Float);
@@ -375,17 +379,20 @@ export namespace SymOpUtils {
                 resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Int);
                 resultValue = ExpNum.bop(NumBopType.Mul, leftVal, rightVal, source);
                 break;
+            case TEBopType.Pow:
+                resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Int);
+                return SVError.create(`symbolic pow will be executed from _evalBinOp`, SVErrorLevel.Warning, source);
             case TEBopType.FloorDiv:
                 resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Int);
                 resultValue = ExpNum.bop(NumBopType.FloorDiv, leftVal, rightVal, source);
                 break;
-            case TEBopType.Mod:
-                resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Int);
-                resultValue = ExpNum.bop(NumBopType.Mod, leftVal, rightVal, source);
-                break;
             case TEBopType.TrueDiv:
                 resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Float);
                 resultValue = ExpNum.bop(NumBopType.TrueDiv, leftVal, rightVal, source);
+                break;
+            case TEBopType.Mod:
+                resultType = elementTypeUpperBoundOfTypes(left.type, right.type, SVType.Int);
+                resultValue = ExpNum.bop(NumBopType.Mod, leftVal, rightVal, source);
                 break;
             case TEBopType.Lt:
                 resultType = SVType.Bool;
@@ -416,7 +423,11 @@ export namespace SymOpUtils {
             case TEBopType.In:
             case TEBopType.NotIn:
             default:
-                return SVError.create('value is not iterable', SVErrorLevel.Warning, source);
+                return SVError.create(
+                    `invalid operation for numeric values: got (${TEBinOp.toStringBop(bop)})`,
+                    SVErrorLevel.Warning,
+                    source
+                );
         }
 
         if (resultType === SVType.Bool) {
@@ -638,7 +649,7 @@ export namespace SymOpUtils {
         }
     }
 
-    function elementTypeUpperBoundOfTypes(...types: SVType[]): SVType {
+    export function elementTypeUpperBoundOfTypes(...types: SVType[]): SVType {
         const result = SVType.Bool;
         return types.reduce((result, type) => elementTypeUpperBoundOfBinOp(result, type), result);
     }
