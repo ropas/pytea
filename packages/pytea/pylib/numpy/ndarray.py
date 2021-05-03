@@ -137,3 +137,19 @@ class ndarray:
 
     def item(self):
         return LibCall.torch.item(self)
+
+    def astype(self, dtype, order="K", casting="unsafe", subok=True, copy=True):
+        if dtype is float:
+            dtype = np.floatDefault
+        elif dtype is int:
+            dtype = np.intDefault
+        elif dtype is bool:
+            dtype = np.bool
+
+        if copy is True:
+            copied = np.copy(self, order=order, subok=subok)
+            copied.dtype = dtype
+            return copied
+
+        self.dtype = dtype
+        return self

@@ -148,9 +148,64 @@ export namespace TorchvisionLCImpl {
         return leftPath.join(rightPath);
     }
 
+    export function normalize(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 3) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torchvision.normalize': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [tensorAddr, meanLenAddr, stdLenAddr] = params;
+
+        const size = fetchSize(tensorAddr, heap);
+        const meanLen = fetchAddr(meanLenAddr, heap);
+        const stdLen = fetchAddr(stdLenAddr, heap);
+        if (typeof size === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torchvision.normalize': ${size}`, source);
+        }
+        if (meanLen?.type !== SVType.Int) {
+            return ctx
+                .warnWithMsg(`from 'LibCall.torchvision.normalize': incorrect len of mean ${meanLen}`, source)
+                .toSet();
+        }
+        if (stdLen?.type !== SVType.Int) {
+            return ctx
+                .warnWithMsg(`from 'LibCall.torchvision.normalize': incorrect len of std ${stdLen}`, source)
+                .toSet();
+        }
+        const shape = size.shape;
+        const rank = size.rank();
+        const channel = ExpNum.index(shape, 0, source);
+
+        return ctx
+            .require(
+                [ctx.genEq(3, rank, source)],
+                `from 'LibCall.torchvision.normalize: Expected tensor to be a tensor image of size (C, H, W). Got a tensor whose rank is ${rank}.`,
+                source
+            )
+            .require(
+                [ctx.genOr(ctx.genEq(1, meanLen.value, source), ctx.genEq(channel, meanLen.value, source), source)],
+                `from 'LibCall.torchvision.normalize: Lengths of mean must be 1 or equal to channel. Got channel: ${channel}, mean: ${meanLen.value}.`,
+                source
+            )
+            .require(
+                [ctx.genOr(ctx.genEq(1, stdLen.value, source), ctx.genEq(channel, stdLen.value, source), source)],
+                `from 'LibCall.torchvision.normalize: Lengths of std must be 1 or equal to channel. Got channel: ${channel}, std: ${stdLen.value}.`,
+                source
+            )
+            .flatMap((ctx) => genTensor(ctx, shape, source));
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         crop,
         to_pil_image,
+        normalize,
     };
 }
 

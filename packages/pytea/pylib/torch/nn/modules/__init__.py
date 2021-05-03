@@ -6,7 +6,7 @@ from .batchnorm import BatchNorm2d
 from .dropout import Dropout2d, Dropout
 from .distance import CosineSimilarity
 from .linear import Linear
-from .loss import CrossEntropyLoss, MSELoss, BCELoss
+from .loss import CrossEntropyLoss, MSELoss, BCELoss, NLLLoss
 from .padding import ReflectionPad2d
 from .pooling import AdaptiveAvgPool2d, AvgPool2d, MaxPool2d
 from .instancenorm import InstanceNorm2d

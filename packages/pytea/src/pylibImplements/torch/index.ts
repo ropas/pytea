@@ -2042,6 +2042,102 @@ export namespace TorchLCImpl {
             });
     }
 
+    // Assumption: "tensors" is a constantRanked sequence, and each element is available.
+    // TODO: handle empty tensor.
+    export function stack(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.stack': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [tensorsAddr, dimAddr] = params;
+
+        const tensors = fetchAddr(tensorsAddr, heap);
+        const dim_ = fetchAddr(dimAddr, heap);
+
+        if (tensors?.type !== SVType.Object) {
+            if (tensors?.type === SVType.Error) {
+                // propagate error
+                return ctx.warnTensorWithMsg(`from 'LibCall.torch.stack': 'tensors' is not iterable`, source);
+            }
+            return ctx.failWithMsg(`from 'LibCall.torch.stack': 'tensors' is not iterable`, source).toSet();
+        } else if (dim_?.type !== SVType.Int) {
+            if (dim_?.type === SVType.Error) {
+                // propagate error
+                return ctx.warnTensorWithMsg(`from 'LibCall.torch.stack': 'dim' is not an integer`, source);
+            }
+            return ctx.failWithMsg(`from 'LibCall.torch.stack': 'dim' is not an integer`, source).toSet();
+        }
+        if (typeof dim_.value !== 'number') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.stack': dim is unknown`, source);
+        }
+        // negative index handling
+
+        // Assumption: length of "tensors" is constant.
+        const tensorsLen_ = fetchAddr(tensors.getAttr('$length'), heap);
+        if (!(tensorsLen_?.type === SVType.Int && typeof tensorsLen_.value === 'number')) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.stack': length of tensors is unknown, cannot iterate.`,
+                source
+            );
+        }
+        const tensorsLen = tensorsLen_.value;
+
+        const tensor0 = fetchAddr(tensors.getIndice(0), heap);
+        const size0 = fetchSize(tensor0, heap);
+        if (typeof size0 === 'string') {
+            if (tensor0?.type === SVType.Error) {
+                return ctx.warnTensorWithMsg(`from 'LibCall.torch.stack': ${size0}`, source);
+            }
+            return ctx.failWithMsg(`from 'LibCall.torch.stack': ${size0}`, source).toSet();
+        }
+        const size0shape = size0.shape;
+        const size0rank = size0.rank();
+
+        let dim: ExpNum;
+        if (dim_.value < 0) {
+            dim = ExpNum.bop(NumBopType.Add, ExpNum.bop(NumBopType.Add, size0rank, 1, source), dim_.value, source);
+        } else {
+            dim = ExpNum.fromConst(dim_.value, source);
+        }
+
+        const shape0Front = ExpShape.slice(size0shape, 0, dim, source);
+        const shape0Back = ExpShape.slice(size0shape, dim, size0rank, source);
+
+        const ctrs: Constraint[] = [ctx.genLte(0, dim, source), ctx.genLte(dim, size0rank, source)];
+
+        for (let i = 1; i < tensorsLen; i++) {
+            const tensorI = fetchAddr(tensors.getIndice(i), heap);
+            const sizeI = fetchSize(tensorI, heap);
+            if (typeof sizeI === 'string') {
+                if (tensorI?.type === SVType.Error) {
+                    return ctx.warnTensorWithMsg(`from 'LibCall.torch.stack': ${sizeI}`, source);
+                }
+                return ctx.failWithMsg(`from 'LibCall.torch.stack': ${sizeI}`, source).toSet();
+            }
+            const sizeIshape = sizeI.shape;
+            ctrs.push(ctx.genEq(size0shape, sizeIshape, source));
+        }
+
+        const shapeThick = ExpShape.fromConst(1, [tensorsLen], source);
+        const returnShape_ = ExpShape.concat(shape0Front, shapeThick, source);
+        const returnShape = ExpShape.concat(returnShape_, shape0Back, source);
+
+        return ctx
+            .require(
+                ctrs,
+                `from 'LibCall.torch.stack': tensor shapes must all be the same, dim must be within rank`,
+                source
+            )
+            .flatMap((ctx) => {
+                return genTensor(ctx, returnShape, source);
+            });
+    }
+
     export function unsqueeze(
         ctx: Context<LCBase.ExplicitParams>,
         source: CodeSource | undefined
@@ -2807,6 +2903,7 @@ export namespace TorchLCImpl {
         copyOut,
         broadcast,
         cat,
+        stack,
         matmul,
         mm,
         bmm,
