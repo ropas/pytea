@@ -27,7 +27,7 @@ python bin/pytea.py path/to/source.py
 
 ## Brief Explanation of Analysis Result
 
-For a full explanation, see [result-explain.md](doc/result-explain.md)
+For the full explanation, see [result-explain.md](doc/result-explain.md)
 
 PyTea is composed with two analyzer.
 
@@ -60,7 +60,7 @@ The final result of Offline analyzer is divided into sevral cases.
 > python bin/pytea.py --log=1 packages/pytea/pytest/benchmarks/resnet_simclr/resnet_train.py
 ```
 
-![result](img/result1.png)
+![result](img/result1.PNG)
 
 * Error found by Online analysis
 
