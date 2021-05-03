@@ -62,6 +62,13 @@ class Image:
         im._setSize(im._channel, size[0], size[1])
         return im
 
+    def split(self, channel):
+        ret_val = [self.convert("L")]
+        for _ in range(1, self._channel):
+            ret_val.append(self.convert("L"))
+
+        return tuple(ret_val)
+
 
 def new(mode, size, color=0):
     if len(mode) == 1:

@@ -40,7 +40,9 @@ def kaiming_normal_(tensor, a=0, mode="fan_in", nonlinearity="leaky_relu"):
 
 def orthogonal_(tensor, gain=1):
     rank = tensor.ndim
-    LibCall.guard.require_lte(2, rank)
+    LibCall.guard.require_lte(
+        2, rank, "'torch.nn.functional.orthogonal_' requires rank 2 Tensor."
+    )
     pass
 
 
