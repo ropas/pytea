@@ -245,7 +245,7 @@ export namespace MathLCImpl {
         floor,
         ceil,
         abs,
-        log,
+        float_fun,
     };
 }
 
