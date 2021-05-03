@@ -23,3 +23,12 @@ def to_pil_image(pic, mode=None):
         return LibCall.torchvision.to_pil_image(im, pic, mode)
 
     raise TypeError("pic should be Tensor or ndarray")
+
+
+def normalize(tensor, mean, std, inplace=False):
+    if not isinstance(tensor, torch.Tensor):
+        raise TypeError("Input tensor should be a torch tensor.")
+    meanLen = len(mean) if isinstance(mean, list) or isinstance(mean, tuple) else 1
+    stdLen = len(std) if isinstance(std, list) or isinstance(std, tuple) else 1
+    return LibCall.torchvision.normalize(tensor, meanLen, stdLen)
+
