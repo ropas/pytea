@@ -391,6 +391,10 @@ export function reducedToString(
     const obj = fetchAddr(value, heap);
     if (obj) {
         if (obj.type === SVType.Object) {
+            if (obj instanceof SVSize) {
+                return `SVSize(${SymExp.toString(obj.shape)})`;
+            }
+
             const shape = obj.getAttr('shape');
             if (shape instanceof SVSize) {
                 return `tensor: ${SymExp.toString(shape.shape)}`;

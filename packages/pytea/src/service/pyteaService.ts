@@ -7,9 +7,7 @@
  * Main class of PyTea analyzer.
  * Managing imported or will be imported scripts, parsed statements and lsp services.
  */
-import axios from 'axios';
 import chalk from 'chalk';
-import { ChildProcess, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
@@ -35,7 +33,6 @@ import {
     formatCodeSource,
     getStmtsFromDir,
     postJsonRpc,
-    PyZ3RPCRespond,
     PyZ3RPCResult,
     PyZ3RPCResultType,
     reducedToString,

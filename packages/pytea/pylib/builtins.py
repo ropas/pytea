@@ -17,6 +17,15 @@ def super(__self_class__, __self_object__=None):
     return super_proxy
 
 
+def getattr(object, name):
+    # TODO: implement default
+    return LibCall.builtins.getAttr(object, name)
+
+
+def setattr(object, name, value):
+    LibCall.builtins.setAttr(object, name, value)
+
+
 def len(value):
     return LibCall.builtins.len(value)
 

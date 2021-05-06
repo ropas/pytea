@@ -1174,6 +1174,41 @@ export namespace BuiltinsLCImpl {
         return ctx.toSetWith(objAddr);
     }
 
+    // explicit getAttr by value
+    export function getAttr(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.builtins.getAttr': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+        const heap = ctx.heap;
+        const [objAddr, attrAddr] = params;
+
+        const obj = fetchAddr(objAddr, heap);
+        const attr = fetchAddr(attrAddr, heap);
+
+        if (attr?.type !== SVType.String || typeof attr.value !== 'string') {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.getAttr': attribute name is not a constant`, source).toSet();
+        }
+
+        if (obj?.type !== SVType.Object) {
+            return ctx.warnWithMsg(`from 'LibCall.builtins.getAttr': got non-object`, source).toSet();
+        }
+
+        const value = obj.getAttr(attr.value);
+        if (!value) {
+            return ctx
+                .warnWithMsg(`from 'LibCall.builtins.getAttr': ${attr.value} is not in object. return warning.`, source)
+                .toSet();
+        }
+
+        return ctx.toSetWith(value);
+    }
+
     // explicit setAttr by value
     export function setAttr(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         const params = ctx.retVal.params;
@@ -1192,7 +1227,7 @@ export namespace BuiltinsLCImpl {
         const attr = fetchAddr(attrAddr, heap);
 
         if (attr?.type !== SVType.String || typeof attr.value !== 'string') {
-            return ctx.warnWithMsg(`from 'LibCall.builtins.setAttr': attribute is not a constant`, source).toSet();
+            return ctx.warnWithMsg(`from 'LibCall.builtins.setAttr': attribute name is not a constant`, source).toSet();
         }
 
         if (obj?.type !== SVType.Object) {
@@ -1329,6 +1364,7 @@ export namespace BuiltinsLCImpl {
         exit,
         warn,
         clone,
+        getAttr,
         setAttr,
         setIndice,
         setSize,
