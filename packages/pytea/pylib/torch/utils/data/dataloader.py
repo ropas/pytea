@@ -1,7 +1,6 @@
 import LibCall
 import math
 import torch
-from PIL import Image
 
 
 class DataLoader:
@@ -61,13 +60,19 @@ class DataLoader:
                 ret_item = []
                 for list_item in item:
                     if isinstance(list_item, torch.Tensor) and list_item.dim() > 0:
-                        ret_item.append(LibCall.shape.repeat(list_item, 0, batch_size))
+                        ret_item.append(
+                            torch.Tensor(
+                                LibCall.shape.repeat(list_item.shape, 0, batch_size)
+                            )
+                        )
                     else:
                         ret_item.append(torch.Tensor(batch_size))
                 ret_list.append(ret_item)
             else:
                 if isinstance(item, torch.Tensor) and item.dim() > 0:
-                    ret_list.append(LibCall.shape.repeat(item, 0, batch_size))
+                    ret_list.append(
+                        torch.Tensor(LibCall.shape.repeat(item.shape, 0, batch_size))
+                    )
                 else:
                     ret_list.append(torch.Tensor(batch_size))
 

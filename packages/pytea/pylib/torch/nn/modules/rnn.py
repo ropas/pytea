@@ -49,7 +49,7 @@ class RNN(RNNBase):
         if self.batch_first:
             batch = input_shape[0]
             seq_len = input_shape[1]
-            h_0_require = torch.rand(
+            h_0_require = torch.Size(
                 batch, self.num_layers * self.num_directions, self.hidden_size
             )
             output_shape = (batch, seq_len, self.num_directions * self.hidden_size)
@@ -61,7 +61,7 @@ class RNN(RNNBase):
         else:
             batch = input_shape[1]
             seq_len = input_shape[0]
-            h_0_require = torch.rand(
+            h_0_require = torch.Size(
                 self.num_layers * self.num_directions, batch, self.hidden_size
             )
             output_shape = (seq_len, batch, self.num_directions * self.hidden_size)

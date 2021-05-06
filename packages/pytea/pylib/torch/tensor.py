@@ -7,7 +7,7 @@ import numpy
 
 class Size(tuple):
     def __init__(self, args):
-        LibCall.shape.setSize(self, args)
+        LibCall.shape.setShape(self, args)
 
     def __getitem__(self, index):
         if isinstance(index, range):
@@ -18,7 +18,7 @@ class Size(tuple):
 
 class Tensor:
     def __init__(self, *args, dtype=None, **kwargs):
-        LibCall.torch.tensorInit(self, args, Size)
+        self.shape = Size(LibCall.torch.getInitShape(args))
         if dtype is None:
             self.dtype = torch.floatDefault
         else:
@@ -121,9 +121,6 @@ class Tensor:
 
     def log2(self):
         return torch.log2(self)
-
-    def log2(self):
-        return self
 
     def exp(self):
         return torch.exp(self)
@@ -361,8 +358,8 @@ class Tensor:
         if isinstance(value, Tensor):
             sliced = self[key]
             assert LibCall.guard.require_broadcastable(
-                sliced,
-                value,
+                sliced.shape,
+                value.shape,
                 "The expanded size of the assigned value must match the target size.",
             )
 
@@ -446,9 +443,6 @@ class Tensor:
         tensor = LibCall.torch.identityShape(self)
         tensor.dtype = self.dtype
         return tensor
-
-    def __eq__(self, other):
-        return torch._bop(self, other)
 
     def max(self, dim=None, keepdim=False):
         return torch.max(self, dim, keepdim)

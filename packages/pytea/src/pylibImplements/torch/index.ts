@@ -1,24 +1,13 @@
-import { fetchAddr, sanitizeAddr } from '../../backend/backUtils';
+import { fetchAddr, fetchSize, genTensor, genTorchSize, sanitizeAddr } from '../../backend/backUtils';
 import { Constraint } from '../../backend/constraintType';
 import { Context, ContextSet } from '../../backend/context';
-import {
-    absExpIndexByLen,
-    ceilDiv,
-    fetchSize,
-    genTensor,
-    isInstanceOf,
-    reluLen,
-    simplifyNum,
-    simplifyShape,
-} from '../../backend/expUtils';
+import { absExpIndexByLen, ceilDiv, isInstanceOf, reluLen, simplifyNum, simplifyShape } from '../../backend/expUtils';
 import {
     CodeSource,
     ShValue,
-    SVAddr,
     SVBool,
     SVFloat,
     SVInt,
-    SVNone,
     SVNotImpl,
     SVObject,
     SVSize,
@@ -41,47 +30,39 @@ import { LCImpl } from '..';
 import { LCBase } from '../libcall';
 
 export namespace TorchLCImpl {
-    export function tensorInit(
+    // return SVSize from args
+    export function getInitShape(
         ctx: Context<LCBase.ExplicitParams>,
         source: CodeSource | undefined
     ): ContextSet<ShValue> {
         const params = ctx.retVal.params;
-        if (params.length !== 3) {
-            return ctx.warnTensorWithMsg(
-                `from 'LibCall.torch.tensorInit': got insufficient number of argument: ${params.length}`,
-                source
-            );
+        if (params.length !== 1) {
+            return ctx
+                .warnSizeWithMsg(
+                    `from 'LibCall.torch.getShape': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
         }
 
         const heap = ctx.heap;
-        const [selfAddr, argsAddr, sizeClassAddr] = params;
+        const argsAddr = params[0];
 
         // tensorInit is always used in Tensor.__init__ -> force casting
-        const addr = selfAddr as SVAddr;
-        const self = fetchAddr(selfAddr, heap)! as SVObject;
         const args = fetchAddr(argsAddr, heap)! as SVObject;
-        const sizeClass = fetchAddr(sizeClassAddr, heap)! as SVObject;
-
-        function setSize(ctx: Context<unknown>, shape: ExpShape): ContextSet<ShValue> {
-            const tempSize = SVSize.createSize(ctx, shape, source);
-            return TorchBackend.classInit(ctx, sizeClass, [tempSize], source).map((ctx) => {
-                const size = ctx.retVal;
-                const newHeap = heap.setVal(addr, self.setAttr('shape', size));
-                return ctx.setHeap(newHeap).setRetVal(SVNone.create());
-            });
-        }
 
         // if first argument is object that has 'shape'
         const firstArg = fetchAddr(args.getIndice(0), heap);
         if (firstArg?.type === SVType.Object) {
             // if first argument is shaped value, cast it to Tensor
             let mayShaped: ShValue | undefined = firstArg;
+
             if (!mayShaped.shape) {
                 mayShaped = fetchAddr(firstArg.getAttr('shape'), heap);
             }
 
             if (mayShaped?.type === SVType.Object && mayShaped?.shape !== undefined) {
-                return setSize(ctx, mayShaped.shape);
+                return SVSize.createSize(ctx, mayShaped.shape, source).toSet();
             }
 
             // else, check value is list of ... list of number
@@ -110,16 +91,23 @@ export namespace TorchLCImpl {
                 // traversed list and ends with integer or float
                 if (shaped && (obj?.type === SVType.Int || obj?.type === SVType.Float)) {
                     const shape = ExpShape.fromConst(structure.length, structure, source);
-                    return setSize(ctx, shape);
+                    return SVSize.createSize(ctx, shape, source).toSet();
                 }
             }
         }
 
-        // if varargs is list of integer -> first pass to size
-        return sizeInit(ctx, source).map((ctx) => {
-            const size = ctx.retVal;
-            const newHeap = heap.setVal(addr, self.setAttr('shape', size));
-            return ctx.setHeap(newHeap).setRetVal(SVNone.create());
+        // if varargs is list of integer, parseSize
+        return ctx.parseSize(argsAddr, source).map((ctx) => {
+            let shape: ExpShape;
+            let newCtx: Context<any> = ctx;
+            if (typeof ctx.retVal === 'string') {
+                newCtx = ctx.warnWithMsg(ctx.retVal, source).genIntGte('tempRank', 0, source);
+                shape = ExpShape.fromSymbol(newCtx.genSymShape('tempShape', newCtx.retVal, source));
+            } else {
+                shape = ctx.retVal;
+            }
+
+            return SVSize.createSize(newCtx, shape, source);
         });
     }
 
@@ -176,7 +164,7 @@ export namespace TorchLCImpl {
                     `from 'LibCall.shape.tensorGetItem': index out of range`,
                     source
                 )
-                .map((ctx) => {
+                .flatMap((ctx) => {
                     const left = ExpShape.slice(shape, undefined, axisValue, source);
                     const right = ExpShape.slice(
                         shape,
@@ -185,7 +173,8 @@ export namespace TorchLCImpl {
                         source
                     );
                     const result = simplifyShape(ctx.ctrSet, ExpShape.concat(left, right, source));
-                    return ctx.setRetVal(SVSize.createSize(ctx, result, source));
+
+                    return genTorchSize(ctx, result, source);
                 });
         } else if (index.type === SVType.Object) {
             if (slice && isInstanceOf(index, slice, env, heap) === true) {
@@ -235,11 +224,11 @@ export namespace TorchLCImpl {
                 }
                 const newShape = simplifyShape(ctx.ctrSet, ExpShape.setDim(shape, axisValue, newDim, source));
                 if (ctrList.length === 0) {
-                    return ctx.setRetVal(SVSize.createSize(ctx, newShape, source)).toSet();
+                    return genTorchSize(ctx, newShape, source);
                 }
                 return ctx
                     .require(ctrList, 'index out of range', source)
-                    .map((ctx) => ctx.setRetVal(SVSize.createSize(ctx, newShape, source)));
+                    .flatMap((ctx) => genTorchSize(ctx, newShape, source));
             } else if (mayTensorIndex && mayTensorIndex instanceof SVSize) {
                 // TOOD: distinguish dtype of tensor
                 // TODO: Implement other advanced tensor indexing
@@ -2676,7 +2665,7 @@ export namespace TorchLCImpl {
         }
 
         const heap = ctx.heap;
-        const [inputAddr, normAddr, weightAddr, biasAddr] = params;
+        const [inputAddr, normAddr] = params;
 
         const inputSize = fetchSize(inputAddr, heap);
         if (typeof inputSize === 'string') {
@@ -3044,7 +3033,7 @@ export namespace TorchLCImpl {
     }
 
     export const libCallImpls: { [key: string]: LCImpl } = {
-        tensorInit,
+        getInitShape,
         tensorGetItem,
         scalarTensor,
         callTensor,

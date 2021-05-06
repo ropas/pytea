@@ -20,7 +20,7 @@ class CIFAR10(data.Dataset):
 
     def __getitem__(self, index):
         img = Image.Image()
-        img._setSize(3, 32, 32)
+        img._setSize(32, 32, 3)
         target = LibCall.builtins.randInt(0, 9, "CIFAR10_Class")
 
         if self.transform is not None:
@@ -52,7 +52,7 @@ class CIFAR100(data.Dataset):
 
     def __getitem__(self, index):
         img = Image.Image()
-        img._setSize(3, 32, 32)
+        img._setSize(32, 32, 3)
         target = LibCall.builtins.randInt(0, 99, "CIFAR100_Class")
 
         if self.transform is not None:

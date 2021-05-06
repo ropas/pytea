@@ -10,10 +10,10 @@
 import { fetchAddr, trackMro } from './backUtils';
 import { ConstraintSet } from './constraintSet';
 import { Constraint, ConstraintType } from './constraintType';
-import { Context, ContextSet } from './context';
+import { Context } from './context';
 import { Fraction } from './fraction';
 import { ShEnv, ShHeap } from './sharpEnvironments';
-import { CodeSource, ShValue, SVAddr, SVSize, SVType } from './sharpValues';
+import { CodeSource, ShValue, SVAddr, SVType } from './sharpValues';
 import {
     BoolOpType,
     ExpBool,
@@ -31,7 +31,6 @@ import {
     SymbolType,
     SymExp,
 } from './symExpressions';
-import { TorchBackend } from './torchBackend';
 
 // expression with coefficient
 export interface CoExpNum<T extends ExpNum> {
@@ -213,10 +212,6 @@ export function denormalizeExpNum(nexp: NormalExp): ExpNum {
             ? ExpNum.fromConst(ncst.up, undefined)
             : ExpNum.bop(NumBopType.TrueDiv, ExpNum.fromConst(ncst.up, undefined), ncst.down, undefined);
     return left ? ExpNum.bop(NumBopType.Add, left, cstExp, left.source) : cstExp;
-}
-
-export function isSize(value: ShValue | undefined): value is SVSize {
-    return value !== undefined && value instanceof SVSize;
 }
 
 export function simplifyString(ctrSet: ConstraintSet, exp: ExpString): ExpString {
@@ -1109,27 +1104,6 @@ export function isStructuallyEq(left?: SymExp, right?: SymExp): boolean {
                 }
             }
     }
-}
-
-export function genTensor<T>(ctx: Context<T>, shape: ExpShape, source: CodeSource | undefined): ContextSet<ShValue> {
-    shape = simplifyShape(ctx.ctrSet, shape);
-
-    return TorchBackend.libClassInit(ctx, 'torch.Tensor', [SVSize.createSize(ctx, shape, source)], source);
-}
-
-// return either size of tensor in `mayAddr` or return error message
-export function fetchSize(value: ShValue | undefined, heap: ShHeap): SVSize | string {
-    const obj = fetchAddr(value, heap);
-    if (obj?.type !== SVType.Object) {
-        return `value is not sized type. got ${ShValue.toStringType(obj?.type)}`;
-    }
-
-    const size = fetchAddr(obj.getAttr('shape'), heap);
-    if (!isSize(size)) {
-        return `attribute 'shape' is not a Size object`;
-    }
-
-    return size;
 }
 
 // return symbolic length of str

@@ -1,8 +1,8 @@
 import { formatCodeSource } from 'src/service/pyteaUtils';
 
-import { fetchAddr, sanitizeAddr, trackMro } from '../backend/backUtils';
+import { fetchAddr, fetchSize, sanitizeAddr, trackMro } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
-import { fetchSize, isInstanceOf, simplifyNum, strLen } from '../backend/expUtils';
+import { isInstanceOf, simplifyNum, strLen } from '../backend/expUtils';
 import * as ExpUtils from '../backend/expUtils';
 import {
     CodeSource,

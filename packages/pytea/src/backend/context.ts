@@ -11,7 +11,7 @@ import { List, Map, Record, Set } from 'immutable';
 
 import { ParseNode } from 'pyright-internal/parser/parseNodes';
 
-import { fetchAddr } from './backUtils';
+import { fetchAddr, genTensor } from './backUtils';
 import { ConstraintSet } from './constraintSet';
 import {
     Constraint,
@@ -29,7 +29,7 @@ import {
     ctrToStr,
     extractSymbols,
 } from './constraintType';
-import { genTensor, isStructuallyEq, simplifyExp, simplifyShape } from './expUtils';
+import { isStructuallyEq, simplifyExp, simplifyShape } from './expUtils';
 import { NumRange } from './range';
 import { ShEnv, ShHeap } from './sharpEnvironments';
 import {
@@ -112,9 +112,13 @@ interface ContextMethods<T> {
     pushCallStack(stack: [SVFunc | string, ParseNode | undefined]): Context<T>;
     popCallStack(): Context<T>;
 
-    // these two methods does not cut off paths. just log warnings
+    // these methods does not cut off paths. just log warnings
     warn(warning: SVError): Context<SVError>;
     warnWithMsg(message: string, source: CodeSource | undefined): Context<SVError>;
+    warnSize(warning: SVError): Context<SVSize>;
+    warnSizeWithMsg(message: string, source: CodeSource | undefined): Context<SVSize>;
+    warnTensor(warning: SVError): ContextSet<ShValue>;
+    warnTensorWithMsg(message: string, source: CodeSource | undefined): ContextSet<ShValue>;
 
     // these two methods cut off paths
     fail(error: SVError): Context<SVError>;
@@ -325,6 +329,21 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     warnTensorWithMsg(message: string, source: CodeSource | undefined): ContextSet<ShValue> {
         const warning = SVError.create(message, SVErrorLevel.Warning, source);
         return this.warnTensor(warning);
+    }
+
+    // return fully symbolic shape with warning log.
+    warnSize(warning: SVError): Context<SVSize> {
+        const ctx = this.addLogValue(warning);
+        const source = warning.source;
+        const rank = ctx.genSymInt('WarnTempRank', source);
+        const shape = ctx.genSymShape('WarnTempShape', ExpNum.fromSymbol(rank), source);
+        return SVSize.createSize(ctx, ExpShape.fromSymbol(shape), source);
+    }
+
+    // return fully symbolic Size with warning log.
+    warnSizeWithMsg(message: string, source: CodeSource | undefined): Context<SVSize> {
+        const warning = SVError.create(message, SVErrorLevel.Warning, source);
+        return this.warnSize(warning);
     }
 
     // these two methods cut off paths

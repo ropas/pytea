@@ -6,7 +6,7 @@ class ndarray:
     def __init__(
         self, shape, dtype=float, buffer=None, offset=0, strides=None, order=None
     ):
-        LibCall.numpy.ndarrayInit(self, shape)
+        self.shape = LibCall.numpy.genInitShape(self, shape)
         if dtype is float:
             dtype = np.floatDefault
         elif dtype is int:

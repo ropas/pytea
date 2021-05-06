@@ -6,9 +6,8 @@
  *
  * require guard in pylib side
  */
-import { fetchAddr } from '../backend/backUtils';
+import { fetchAddr, isSize } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
-import { fetchSize } from '../backend/expUtils';
 import { CodeSource, ShValue, SVBool, SVType } from '../backend/sharpValues';
 import { LCImpl } from '.';
 import { LCBase } from './libcall';
@@ -186,17 +185,17 @@ export namespace GuardLCImpl {
         const heap = ctx.heap;
         const [leftAddr, rightAddr, messageAddr] = params;
 
-        const left = fetchSize(leftAddr, heap);
-        const right = fetchSize(rightAddr, heap);
+        const left = fetchAddr(leftAddr, heap);
+        const right = fetchAddr(rightAddr, heap);
         const msg = fetchAddr(messageAddr, heap);
 
-        if (typeof left === 'string') {
+        if (!isSize(left)) {
             return ctx
                 .warnWithMsg(`from 'LibCall.guard.require_broadcastable': left is not a Size type`, source)
                 .toSet();
         }
 
-        if (typeof right === 'string') {
+        if (!isSize(right)) {
             return ctx
                 .warnWithMsg(`from 'LibCall.guard.require_broadcastable': right is not a Size type`, source)
                 .toSet();
@@ -230,15 +229,15 @@ export namespace GuardLCImpl {
         const heap = ctx.heap;
         const [leftAddr, rightAddr, messageAddr] = params;
 
-        const left = fetchSize(leftAddr, heap);
-        const right = fetchSize(rightAddr, heap);
+        const left = fetchAddr(leftAddr, heap);
+        const right = fetchAddr(rightAddr, heap);
         const msg = fetchAddr(messageAddr, heap);
 
-        if (typeof left === 'string') {
+        if (!isSize(left)) {
             return ctx.warnWithMsg(`from 'LibCall.guard.require_shape_eq': left is not a Size type`, source).toSet();
         }
 
-        if (typeof right === 'string') {
+        if (!isSize(right)) {
             return ctx.warnWithMsg(`from 'LibCall.guard.require_shape_eq': right is not a Size type`, source).toSet();
         }
 

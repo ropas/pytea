@@ -6,15 +6,6 @@ import numpy as np
 from . import functional as F
 
 
-def _get_image_size(img):
-    if isinstance(img, Image):
-        return img.size
-    elif isinstance(img, Tensor) and img.dim() > 2:
-        return img.shape[-2:][::-1]
-    else:
-        raise TypeError("Unexpected type from torchvision.transforms")
-
-
 class Compose:
     def __init__(self, transforms):
         self.transforms = transforms
@@ -29,7 +20,7 @@ class ToTensor:
     def __call__(self, pic):
         # TODO: add numpy
         if isinstance(pic, Image.Image):
-            return Tensor(pic)
+            return Tensor(pic._channel, pic.height, pic.width)
         elif isinstance(pic, Tensor):
             return pic
         else:
@@ -70,8 +61,9 @@ class RandomCrop:
 
     def __call__(self, img):
         if isinstance(img, Image.Image):
+            # TODO: require le size
             image = Image.Image()
-            image._setSize(img._getChannel(), self.size[0], self.size[1])
+            image._setSize(self.size[1], self.size[0], img._channel)
             return image
         else:
             return LibCall.torchvision.crop(img, self.size[0], self.size[1])
@@ -93,7 +85,7 @@ class RandomResizedCrop:
     def __call__(self, img):
         if isinstance(img, Image.Image):
             image = Image.Image()
-            image._setSize(img._channel, self.size[0], self.size[1])
+            image._setSize(self.size[1], self.size[0], img._channel)
             return image
         else:
             return LibCall.torchvision.crop(img, self.size[0], self.size[1])
@@ -109,7 +101,7 @@ class CenterCrop:
     def __call__(self, img):
         if isinstance(img, Image.Image):
             image = Image.Image()
-            image._setSize(img._channel, self.size[0], self.size[1])
+            image._setSize(self.size[1], self.size[0], img._channel)
             return image
         else:
             return LibCall.torchvision.crop(img, self.size[0], self.size[1])
@@ -127,7 +119,7 @@ class Resize:
     def __call__(self, img):
         if isinstance(img, Image.Image):
             image = Image.Image()
-            image._setSize(img._channel, self.size[0], self.size[1])
+            image._setSize(self.size[1], self.size[0], img._channel)
             return image
         else:
             return LibCall.torchvision.crop(img, self.size[0], self.size[1])

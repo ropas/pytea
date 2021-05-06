@@ -456,6 +456,12 @@ export class SVObject extends Record(svObjectProps) implements SVObjectProps {
 
         return map;
     }
+
+    clone(heap: ShHeap, source: CodeSource | undefined): [SVObject, ShHeap] {
+        const [addr, newHeap] = heap.malloc(source);
+        const obj = this.set('addr', addr).set('id', getNextSVId()).set('source', source);
+        return [obj, newHeap.setVal(addr, obj)];
+    }
 }
 
 // tuple-like torch.Size implementation
@@ -463,7 +469,7 @@ export class SVSize extends SVObject {
     shape!: ExpShape;
 
     static createSize(ctx: Context<unknown>, shape: ExpShape, source: CodeSource | undefined): Context<SVSize> {
-        const sizeMro = fetchAddr(
+        const tupleMro = fetchAddr(
             (fetchAddr(ctx.env.getId('tuple'), ctx.heap) as SVObject).getAttr('__mro__'),
             ctx.heap
         )!;
@@ -475,13 +481,13 @@ export class SVSize extends SVObject {
             addr: addr,
             shape,
             source,
-            attrs: Map({ __mro__: sizeMro, $length: SVInt.create(ExpShape.getRank(shape), shape.source) }),
+            attrs: Map({ __mro__: tupleMro, $length: SVInt.create(ExpShape.getRank(shape), shape.source) }),
         });
 
         return ctx.setHeap(heap.setVal(addr, value)).setRetVal(value);
     }
 
-    // set size to object
+    // make SVObject to SVSize
     static toSize(obj: SVObject, shape: ExpShape): SVSize {
         const value: SVSize = new SVSize({
             id: obj.id,

@@ -27,7 +27,7 @@ class MNIST(data.Dataset):
 
     def __getitem__(self, index):
         img = Image.Image()
-        img._setSize(1, 28, 28)
+        img._setSize(28, 28, 1)
         target = LibCall.builtins.randInt(0, 9, "MNIST_Class")
 
         if self.transform is not None:

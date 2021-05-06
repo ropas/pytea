@@ -1,12 +1,10 @@
-import { fetchAddr, sanitizeAddr } from '../../backend/backUtils';
+import { fetchAddr, fetchSize, sanitizeAddr } from '../../backend/backUtils';
 import { ConstraintSet } from '../../backend/constraintSet';
 import { Constraint } from '../../backend/constraintType';
 import { Context, ContextSet } from '../../backend/context';
 import {
     absExpIndexByLen,
-    fetchSize,
     isInstanceOf,
-    isSize,
     reluLen,
     simplifyBool,
     simplifyNum,
@@ -15,7 +13,6 @@ import {
 import {
     CodeSource,
     ShValue,
-    SVAddr,
     SVError,
     SVErrorLevel,
     SVNone,
@@ -29,6 +26,38 @@ import { LCImpl } from '..';
 import { LCBase } from '../libcall';
 
 export namespace NumpyLCImpl {
+    function genNdarray<T>(ctx: Context<T>, shape: ExpShape, source: CodeSource | undefined): ContextSet<ShValue> {
+        const newShape = simplifyShape(ctx.ctrSet, shape);
+        const size = SVSize.createSize(ctx, newShape, source);
+
+        return TorchBackend.libClassInit(ctx, 'numpy.ndarray', [size.retVal], source);
+    }
+
+    // return tuple of ExpNums from SVObject.
+    function getExpNumTuple(obj: SVObject, ctrSet: ConstraintSet): (number | ExpNum)[] | string {
+        const length = obj.getAttr('$length');
+        if (length === undefined || !(length.type === SVType.Int)) {
+            return `attribute '$length' is not an int`;
+        }
+
+        let len = typeof length.value === 'number' ? length.value : simplifyNum(ctrSet, length.value);
+        if (typeof len !== 'number' && !(len.opType === NumOpType.Const)) {
+            return `length is not const`;
+        }
+
+        len = typeof len === 'number' ? len : len.value;
+        const intTuple: (number | ExpNum)[] = [];
+        for (let i = 0; i < len; i++) {
+            const elem = obj.getIndice(i);
+            if (elem === undefined || elem.type !== SVType.Int) {
+                return `an element of tuple is not an int`;
+            }
+            const num = elem.value;
+            intTuple.push(num);
+        }
+        return intTuple;
+    }
+
     export function warnNdarrayWithMsg(
         ctx: Context<unknown>,
         message: string,
@@ -41,17 +70,14 @@ export namespace NumpyLCImpl {
         return genNdarray(newCtx, ExpShape.fromSymbol(shape), source);
     }
 
-    export function ndarrayInit(
+    export function genInitShape(
         ctx: Context<LCBase.ExplicitParams>,
         source: CodeSource | undefined
     ): ContextSet<ShValue> {
-        // A replica of torch.tensorInit() in torch/index.ts
-        // internally, numpy.ndarray shares structure with torch.Tensor.
-
         const params = ctx.retVal.params;
         if (params.length !== 2) {
             return ctx
-                .warnWithMsg(
+                .warnSizeWithMsg(
                     `from 'LibCall.numpy.ndarrayInit': got insufficient number of argument: ${params.length}`,
                     source
                 )
@@ -61,28 +87,10 @@ export namespace NumpyLCImpl {
         const heap = ctx.heap;
         const [selfAddr, shapeAddr] = params;
 
-        // TODO: use dtype
-
         // ndarrayInit is always used in ndarray.__init__ -> force casting
-        const addr = selfAddr as SVAddr;
         const self = fetchAddr(selfAddr, heap)! as SVObject;
-        const shapeSV = fetchAddr(shapeAddr as SVAddr, heap)! as SVObject;
 
-        // if args is object that has 'shape'
-        if (shapeSV?.type === SVType.Object) {
-            let size: ShValue | undefined = shapeSV;
-            if (size.shape === undefined) {
-                size = fetchAddr(shapeSV.getAttr('shape'), heap);
-            }
-
-            if (size && size.type === SVType.Object && size?.shape !== undefined) {
-                const newHeap = heap.setVal(addr, self.setAttr('shape', size));
-                return ctx.setHeap(newHeap).setRetVal(SVNone.create()).toSet();
-            }
-        }
-
-        // if args is list of integer
-        return ctx.parseSize(shapeSV, source).map((ctx) => {
+        return ctx.parseSize(shapeAddr, source).map((ctx) => {
             let shape: ExpShape;
             let newCtx: Context<any> = ctx;
             if (typeof ctx.retVal === 'string') {
@@ -92,10 +100,10 @@ export namespace NumpyLCImpl {
                 shape = ctx.retVal;
             }
 
-            const size = SVSize.createSize(ctx, shape, source);
-            const newHeap = heap.setVal(addr, self.setAttr('shape', size));
+            const ctx2 = SVSize.createSize(newCtx, shape, source);
+            const newHeap = ctx2.heap.setVal(self.addr, self.setAttr('shape', ctx2.retVal));
 
-            return newCtx.setHeap(newHeap);
+            return ctx2.setHeap(newHeap);
         });
     }
 
@@ -161,7 +169,8 @@ export namespace NumpyLCImpl {
                         source
                     );
                     const result = simplifyShape(ctx.ctrSet, ExpShape.concat(left, right, source));
-                    return ctx.setRetVal(SVSize.createSize(ctx, result, source));
+
+                    return SVSize.createSize(ctx, result, source);
                 });
         } else if (index.type === SVType.Object) {
             if (slice && isInstanceOf(index, slice, env, heap) === true) {
@@ -211,11 +220,11 @@ export namespace NumpyLCImpl {
                 }
                 const newShape = simplifyShape(ctx.ctrSet, ExpShape.setDim(shape, axisValue, newDim, source));
                 if (ctrList.length === 0) {
-                    return ctx.setRetVal(SVSize.createSize(ctx, newShape, source)).toSet();
+                    return SVSize.createSize(ctx, newShape, source).toSet();
                 }
                 return ctx
                     .require(ctrList, 'index out of range', source)
-                    .map((ctx) => ctx.setRetVal(SVSize.createSize(ctx, newShape, source)));
+                    .map((ctx) => SVSize.createSize(ctx, newShape, source));
             } else if (mayTensorIndex && mayTensorIndex instanceof SVSize) {
                 // TOOD: distinguish dtype of tensor
                 // TODO: Implement other advanced tensor indexing
@@ -414,53 +423,6 @@ export namespace NumpyLCImpl {
 
                 return leftPath.join(rightPath);
             });
-    }
-
-    // get `(arrAddr: ndarray, imgAddr: PIL Image)`, set shape of `arr` to SVSize with shape of `img`
-    export function fromImage(
-        ctx: Context<LCBase.ExplicitParams>,
-        source: CodeSource | undefined
-    ): ContextSet<ShValue> {
-        const params = ctx.retVal.params;
-        if (params.length !== 2) {
-            return ctx
-                .warnWithMsg(
-                    `from 'LibCall.numpy.fromImage': got insufficient number of argument: ${params.length}`,
-                    source
-                )
-                .toSet();
-        }
-        const heap = ctx.heap;
-        const [arrAddr, imgAddr] = params;
-        const arrObj = fetchAddr(arrAddr, heap);
-        const arrSize = fetchSize(arrAddr, heap);
-        const imgSize = fetchAddr(imgAddr, heap);
-
-        if (arrAddr.type !== SVType.Addr || arrObj?.type !== SVType.Object) {
-            return ctx
-                .warnWithMsg(
-                    `from 'LibCall.numpy.fromImage': not an object type:\n\t${arrAddr.toString()} -> ${arrObj?.toString()}`,
-                    source
-                )
-                .toSet();
-        } else if (typeof arrSize === 'string') {
-            return ctx.warnWithMsg(`from 'LibCall.numpy.fromImage': ${arrSize}`, source).toSet();
-        } else if (imgAddr.type !== SVType.Addr || !isSize(imgSize)) {
-            return ctx
-                .warnWithMsg(
-                    `from 'LibCall.numpy.fromImage': not a size type:\n\t${imgAddr.toString()} -> ${imgSize?.toString()}`,
-                    source
-                )
-                .toSet();
-        }
-        const channel = ExpShape.fromConst(1, [ExpNum.index(imgSize.shape, 0, source)], source);
-        const widthHeight = ExpShape.slice(imgSize.shape, 1, 3, source);
-        const newShape = ExpShape.concat(widthHeight, channel, source);
-        const newSize = SVSize.toSize(ctx, arrSize, newShape);
-        const newArr = arrObj.setAttr('shape', newSize);
-
-        const newHeap = heap.setVal(arrAddr, newArr);
-        return ctx.setHeap(newHeap).toSetWith(newArr);
     }
 
     // Assumption: "tensors" is a constantRanked sequence, and each element is available.
@@ -774,37 +736,6 @@ export namespace NumpyLCImpl {
         return genNdarray(ctx, returnShape, source);
     }
 
-    function genNdarray<T>(ctx: Context<T>, shape: ExpShape, source: CodeSource | undefined): ContextSet<ShValue> {
-        const newShape = simplifyShape(ctx.ctrSet, shape);
-
-        return TorchBackend.libClassInit(ctx, 'numpy.ndarray', [SVSize.createSize(ctx, newShape, source)], source);
-    }
-
-    // return tuple of ExpNums from SVObject.
-    function getExpNumTuple(obj: SVObject, ctrSet: ConstraintSet): (number | ExpNum)[] | string {
-        const length = obj.getAttr('$length');
-        if (length === undefined || !(length.type === SVType.Int)) {
-            return `attribute '$length' is not an int`;
-        }
-
-        let len = typeof length.value === 'number' ? length.value : simplifyNum(ctrSet, length.value);
-        if (typeof len !== 'number' && !(len.opType === NumOpType.Const)) {
-            return `length is not const`;
-        }
-
-        len = typeof len === 'number' ? len : len.value;
-        const intTuple: (number | ExpNum)[] = [];
-        for (let i = 0; i < len; i++) {
-            const elem = obj.getIndice(i);
-            if (elem === undefined || elem.type !== SVType.Int) {
-                return `an element of tuple is not an int`;
-            }
-            const num = elem.value;
-            intTuple.push(num);
-        }
-        return intTuple;
-    }
-
     /* Integer array indexing.
      * https://numpy.org/doc/stable/reference/arrays.indexing.html#advanced-indexing
      * assumption: each element of index arrays has no boundary error
@@ -914,12 +845,11 @@ export namespace NumpyLCImpl {
     }
 
     export const libCallImpls: { [key: string]: LCImpl } = {
-        ndarrayInit,
+        genInitShape,
         ndarrayGetItem,
         identityShape,
         broadcast,
         matmul,
-        fromImage,
         concatenate,
         copyOut,
         reduce,

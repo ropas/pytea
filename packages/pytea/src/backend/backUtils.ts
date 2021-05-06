@@ -13,7 +13,7 @@ import { FilePathStore } from '../service/executionPaths';
 import { ConstraintSet } from './constraintSet';
 import { Constraint, ConstraintType } from './constraintType';
 import { Context, ContextSet } from './context';
-import { simplifyBool } from './expUtils';
+import { simplifyBool, simplifyShape } from './expUtils';
 import { ShEnv, ShHeap } from './sharpEnvironments';
 import {
     CodeSource,
@@ -28,10 +28,12 @@ import {
     SVNumber,
     SVNumeric,
     SVNumericType,
+    SVSize,
     SVString,
     SVType,
 } from './sharpValues';
-import { BoolOpType, ExpBool, ExpNum, ExpString, NumBopType, NumUopType } from './symExpressions';
+import { BoolOpType, ExpBool, ExpNum, ExpShape, ExpString, NumBopType, NumUopType } from './symExpressions';
+import { TorchBackend } from './torchBackend';
 
 /**
  * Normalize index based on PyShon semantics Shat supports negative index.
@@ -673,4 +675,37 @@ export namespace SymOpUtils {
         [TEBopType.In]: ['__contains__', '__contains__'],
         [TEBopType.NotIn]: ['__contains__', '__contains__'], // front will map 'A not in B' to 'not (A in B)'
     };
+}
+
+export function genTorchSize<T>(ctx: Context<T>, shape: ExpShape, source: CodeSource | undefined): ContextSet<ShValue> {
+    shape = simplifyShape(ctx.ctrSet, shape);
+    const size = SVSize.createSize(ctx, shape, source);
+
+    return TorchBackend.libClassInit(ctx, 'torch.Size', [size.retVal], source);
+}
+
+export function genTensor<T>(ctx: Context<T>, shape: ExpShape, source: CodeSource | undefined): ContextSet<ShValue> {
+    shape = simplifyShape(ctx.ctrSet, shape);
+    const size = SVSize.createSize(ctx, shape, source);
+
+    return TorchBackend.libClassInit(ctx, 'torch.Tensor', [size.retVal], source);
+}
+
+export function isSize(value: ShValue | undefined): value is SVSize {
+    return value !== undefined && value instanceof SVSize;
+}
+
+// return either size of tensor in `mayAddr` or return error message
+export function fetchSize(value: ShValue | undefined, heap: ShHeap): SVSize | string {
+    const obj = fetchAddr(value, heap);
+    if (obj?.type !== SVType.Object) {
+        return `value is not sized type. got ${ShValue.toStringType(obj?.type)}`;
+    }
+
+    const size = fetchAddr(obj.getAttr('shape'), heap);
+    if (!isSize(size)) {
+        return `attribute 'shape' is not a Size object`;
+    }
+
+    return size;
 }

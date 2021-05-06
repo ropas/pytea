@@ -11,8 +11,7 @@ def array(obj, dtype=None, **kwargs):
     if isinstance(obj, torch.Tensor):
         arr = ndarray(obj.shape)
     if isinstance(obj, Image.Image):
-        arr = ndarray(())
-        LibCall.numpy.fromImage(arr, obj)
+        arr = ndarray((obj.height, obj.width, obj._channel))
     else:
         arr = ndarray(LibCall.shape.extractShape(obj))
     arr.dtype = _parseDtype(obj)
@@ -25,8 +24,7 @@ def _parseDtype(obj):
     if isinstance(obj, torch.Tensor):
         return np.toNpdtype(obj.dtype)
     if isinstance(obj, Image.Image):
-        # TODO: dtype
-        return np.floatDefault
+        return np.uint8
     if isinstance(obj, float):
         return np.floatDefault
     elif isinstance(obj, int):

@@ -14,7 +14,6 @@ import { libCallMap as guardMap } from './guard';
 import { LCBase, libCallMap as baseMap } from './libcall';
 import { libCallMap as mathMap } from './math';
 import { libCallMap as numpyMap } from './numpy';
-import { libCallMap as PILMap } from './PIL';
 import { libCallMap as shapeMap } from './shape';
 import { libCallMap as torchMap } from './torch';
 import { libCallMap as torchvisionMap } from './torchvision';
@@ -36,7 +35,6 @@ export const libCallMap: Map<string, LCImpl> = new Map([
     ...baseMap,
     ...registLibCall(mathMap, 'math'),
     ...registLibCall(numpyMap, 'numpy'),
-    ...registLibCall(PILMap, 'PIL'),
     ...registLibCall(torchMap, 'torch'),
     ...registLibCall(torchvisionMap, 'torchvision'),
     ...registLibCall(shapeMap, 'shape'),
