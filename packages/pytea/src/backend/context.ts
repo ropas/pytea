@@ -45,6 +45,7 @@ import {
     SVInt,
     SVNone,
     SVObject,
+    SVSize,
     SVString,
     SVType,
 } from './sharpValues';
@@ -627,6 +628,10 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         const sizeObj = fetchAddr(iterable, this.heap);
         if (sizeObj?.type !== SVType.Object) {
             return this.toSetWith('value is not iterable; cannot parse to size.');
+        }
+
+        if (sizeObj instanceof SVSize) {
+            return this.toSetWith(sizeObj.shape);
         }
 
         const rankValue = fetchAddr(sizeObj.getAttr('$length'), this.heap);

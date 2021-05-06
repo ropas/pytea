@@ -1,8 +1,17 @@
-import { fetchAddr } from '../../backend/backUtils';
+import { fetchAddr, sanitizeAddr } from '../../backend/backUtils';
 import { ConstraintSet } from '../../backend/constraintSet';
 import { Constraint } from '../../backend/constraintType';
 import { Context, ContextSet } from '../../backend/context';
-import { absExpIndexByLen, fetchSize, isSize, simplifyBool, simplifyNum, simplifyShape } from '../../backend/expUtils';
+import {
+    absExpIndexByLen,
+    fetchSize,
+    isInstanceOf,
+    isSize,
+    reluLen,
+    simplifyBool,
+    simplifyNum,
+    simplifyShape,
+} from '../../backend/expUtils';
 import {
     CodeSource,
     ShValue,
@@ -14,7 +23,7 @@ import {
     SVSize,
     SVType,
 } from '../../backend/sharpValues';
-import { BoolOpType, ExpBool, ExpNum, ExpShape, NumBopType, NumOpType } from '../../backend/symExpressions';
+import { BoolOpType, ExpBool, ExpNum, ExpShape, NumBopType, NumOpType, NumUopType } from '../../backend/symExpressions';
 import { TorchBackend } from '../../backend/torchBackend';
 import { LCImpl } from '..';
 import { LCBase } from '../libcall';
@@ -88,6 +97,154 @@ export namespace NumpyLCImpl {
 
             return newCtx.setHeap(newHeap);
         });
+    }
+
+    // implementation slice of np.ndarray.__getitem__
+    // axis range is already checked from ndarray.__getitem__
+    // params: [inputShape, axis, index]
+    export function ndarrayGetItem(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 3) {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.shape.tensorGetItem': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const { env, heap } = ctx;
+        const [sizeAddr, axisAddr, indexAddr] = params;
+
+        const size = fetchAddr(sizeAddr, heap);
+        const axis = fetchAddr(axisAddr, heap);
+        const index = fetchAddr(indexAddr, heap);
+        const mayTensorIndex = fetchSize(indexAddr, heap);
+
+        if (!(size && size instanceof SVSize)) {
+            return ctx.warnWithMsg(`from 'LibCall.shape.tensorGetItem': input is not a Size type`, source).toSet();
+        }
+        if (!(axis && axis.type === SVType.Int && typeof axis.value === 'number')) {
+            return ctx.warnWithMsg(`from 'LibCall.shape.tensorGetItem': axis is not a number`, source).toSet();
+        }
+        if (!index) {
+            return ctx.warnWithMsg(`from 'LibCall.shape.tensorGetItem': index is undefined`, source).toSet();
+        }
+
+        const slice = sanitizeAddr(ctx.env.getId('slice'), heap);
+        const shape = size.shape;
+        const axisValue = axis.value;
+
+        if (index.type === SVType.Int) {
+            // index is contant int
+            const indexNum = index.value;
+            const indexDim = ExpNum.index(shape, axisValue, source);
+
+            return ctx
+                .require(
+                    [
+                        ctx.genLte(ExpNum.bop(NumBopType.Sub, 0, indexDim, source), indexNum, source),
+                        ctx.genLte(indexNum, ExpNum.bop(NumBopType.Sub, indexDim, 1, source), source),
+                    ],
+                    `from 'LibCall.shape.tensorGetItem': index out of range`,
+                    source
+                )
+                .map((ctx) => {
+                    const left = ExpShape.slice(shape, undefined, axisValue, source);
+                    const right = ExpShape.slice(
+                        shape,
+                        ExpNum.bop(NumBopType.Add, axisValue, 1, source),
+                        undefined,
+                        source
+                    );
+                    const result = simplifyShape(ctx.ctrSet, ExpShape.concat(left, right, source));
+                    return ctx.setRetVal(SVSize.createSize(ctx, result, source));
+                });
+        } else if (index.type === SVType.Object) {
+            if (slice && isInstanceOf(index, slice, env, heap) === true) {
+                const start = fetchAddr(index.getAttr('start'), heap);
+                const end = fetchAddr(index.getAttr('stop'), heap);
+                const step = fetchAddr(index.getAttr('step'), heap);
+
+                const currDim = ExpNum.index(shape, axisValue, source);
+                let hasError = false;
+                let startN, endN, stepN: ExpNum | number | undefined;
+
+                if (start?.type === SVType.Int) startN = start.value;
+                else if (!(start?.type === SVType.None)) hasError = true;
+                if (end?.type === SVType.Int) endN = end.value;
+                else if (!(end?.type === SVType.None)) hasError = true;
+                if (step?.type === SVType.Int) stepN = step.value;
+                else if (!(step?.type === SVType.None)) hasError = true;
+
+                if (hasError) {
+                    return ctx
+                        .warnWithMsg(
+                            `from 'LibCall.shape.tensorGetItem: slice value is not an integer or None.`,
+                            source
+                        )
+                        .toSet();
+                }
+
+                const ctrList: Constraint[] = [];
+                if (startN !== undefined) {
+                    startN = absExpIndexByLen(startN, currDim, source, ctx.ctrSet);
+                    ctrList.push(ctx.genLte(0, startN, source));
+                } else {
+                    startN = 0;
+                }
+                if (endN !== undefined) {
+                    endN = absExpIndexByLen(endN, currDim, source, ctx.ctrSet);
+                    ctrList.push(ctx.genLte(0, endN, source));
+                } else {
+                    endN = currDim;
+                }
+
+                // return ceil((endN - startN) // stepN)
+                let newDim = reluLen(startN, endN, source, ctx.ctrSet);
+                if (stepN === undefined) stepN = 1;
+                if (typeof stepN !== 'number' || stepN !== 1) {
+                    newDim = ExpNum.uop(NumUopType.Ceil, ExpNum.bop(NumBopType.TrueDiv, newDim, stepN, source), source);
+                }
+                const newShape = simplifyShape(ctx.ctrSet, ExpShape.setDim(shape, axisValue, newDim, source));
+                if (ctrList.length === 0) {
+                    return ctx.setRetVal(SVSize.createSize(ctx, newShape, source)).toSet();
+                }
+                return ctx
+                    .require(ctrList, 'index out of range', source)
+                    .map((ctx) => ctx.setRetVal(SVSize.createSize(ctx, newShape, source)));
+            } else if (mayTensorIndex && mayTensorIndex instanceof SVSize) {
+                // TOOD: distinguish dtype of tensor
+                // TODO: Implement other advanced tensor indexing
+                //       https://numpy.org/doc/stable/reference/arrays.indexing.html
+
+                // mask indexing
+                const sizeNumel = ExpNum.numel(shape, source);
+                const mask = mayTensorIndex;
+                const maskCtx = ctx.genIntGte('maskIndex', 0, source);
+                const maskNum = maskCtx.retVal;
+
+                return maskCtx
+                    .require(
+                        [maskCtx.genLte(maskNum, sizeNumel, source), maskCtx.genEq(shape, mask.shape, source)],
+                        `from 'LibCall.tensor.getItem: Shape of mask must match.`,
+                        source
+                    )
+                    .flatMap((ctx) => {
+                        return genNdarray(ctx, ExpShape.fromConst(1, [maskNum], source), source);
+                    });
+            }
+        }
+
+        return ctx
+            .warnWithMsg(
+                `from 'LibCall.tensor.getItem: only indexing by integer, slice or bool tensor is supported currently.`,
+                source
+            )
+            .toSet();
     }
 
     // A replica of torch.identityShape() in torch/index.ts
@@ -299,7 +456,7 @@ export namespace NumpyLCImpl {
         const channel = ExpShape.fromConst(1, [ExpNum.index(imgSize.shape, 0, source)], source);
         const widthHeight = ExpShape.slice(imgSize.shape, 1, 3, source);
         const newShape = ExpShape.concat(widthHeight, channel, source);
-        const newSize = SVSize.fromObject(ctx, arrSize, newShape);
+        const newSize = SVSize.toSize(ctx, arrSize, newShape);
         const newArr = arrObj.setAttr('shape', newSize);
 
         const newHeap = heap.setVal(arrAddr, newArr);
@@ -758,6 +915,7 @@ export namespace NumpyLCImpl {
 
     export const libCallImpls: { [key: string]: LCImpl } = {
         ndarrayInit,
+        ndarrayGetItem,
         identityShape,
         broadcast,
         matmul,

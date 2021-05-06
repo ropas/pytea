@@ -183,7 +183,6 @@ export function matmul(
   const heap = ctx.heap;
 
   // LibCall 타입은 LibCall.torch.matmul(*args, **kwargs)와 같이 *이 붙은 parameter를 활용할 수 없다. 반드시 f(args, kwargs)와 같이 그대로 넣어줘야 한다.
-  // 예를 들어 tensorInit LibCall은 [value, args, kwargs]를 받는데, 이 때 args, kwargs는 각각 tuple, dictionary 타입으로 해석된다
   const [leftAddr, rightAddr] = params;
 
   // params가 받은 값은 pointer 값인 SVAddr 타입일 수 있다. 이를 heap을 따라 추적하여 SVSize value를 찾아내는 fetchSize 함수를 사용하여 size를 알아낸다.

@@ -5,9 +5,20 @@ import torch
 import numpy
 
 
+class Size(tuple):
+    def __init__(self, args):
+        LibCall.shape.setSize(self, args)
+
+    def __getitem__(self, index):
+        if isinstance(index, range):
+            return LibCall.shape.slice(self, index.start, index.stop)
+        else:
+            return LibCall.shape.index(self, index)
+
+
 class Tensor:
     def __init__(self, *args, dtype=None, **kwargs):
-        LibCall.torch.tensorInit(self, args, kwargs)
+        LibCall.torch.tensorInit(self, args, Size)
         if dtype is None:
             self.dtype = torch.floatDefault
         else:
@@ -335,7 +346,7 @@ class Tensor:
             if idx_len > len(self.shape):
                 raise IndexError("too many indices for tensor")
             for axis in range(idx_len - 1, -1, -1):
-                temp = LibCall.shape.tensorGetItem(temp, axis, index[axis])
+                temp = LibCall.torch.tensorGetItem(temp, axis, index[axis])
             return Tensor(temp)
 
         if len(temp) <= 0:
@@ -343,7 +354,7 @@ class Tensor:
                 "invalid index of a 0-dim tensor. Use tensor.item() to convert a 0-dim tensor to a Python number"
             )
 
-        temp = LibCall.shape.tensorGetItem(temp, 0, index)
+        temp = LibCall.torch.tensorGetItem(temp, 0, index)
         return Tensor(temp)
 
     def __setitem__(self, key, value):

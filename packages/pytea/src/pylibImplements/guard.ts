@@ -169,8 +169,6 @@ export namespace GuardLCImpl {
         return ctx.require(ctx.genNeq(a.value, b.value, source), msg.value, source).return(SVBool.create(true, source));
     }
 
-    // shapeConcat(T[1, 2, 3], T[4, 5, 6], obj):
-    //     set size of 'obj' to be T[1, 2, 3, 4, 5, 6].
     export function require_broadcastable(
         ctx: Context<LCBase.ExplicitParams>,
         source: CodeSource | undefined
@@ -179,7 +177,7 @@ export namespace GuardLCImpl {
         if (params.length !== 3) {
             return ctx
                 .warnWithMsg(
-                    `from 'LibCall.shape.require_broadcastable': got insufficient number of argument: ${params.length}`,
+                    `from 'LibCall.guard.require_broadcastable': got insufficient number of argument: ${params.length}`,
                     source
                 )
                 .toSetWith(SVBool.create(true, source));
@@ -194,13 +192,13 @@ export namespace GuardLCImpl {
 
         if (typeof left === 'string') {
             return ctx
-                .warnWithMsg(`from 'LibCall.shape.require_broadcastable': left is not a Size type`, source)
+                .warnWithMsg(`from 'LibCall.guard.require_broadcastable': left is not a Size type`, source)
                 .toSet();
         }
 
         if (typeof right === 'string') {
             return ctx
-                .warnWithMsg(`from 'LibCall.shape.require_broadcastable': right is not a Size type`, source)
+                .warnWithMsg(`from 'LibCall.guard.require_broadcastable': right is not a Size type`, source)
                 .toSet();
         }
 
@@ -215,12 +213,53 @@ export namespace GuardLCImpl {
             .return(SVBool.create(true, source));
     }
 
+    export function require_shape_eq(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 3) {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.guard.require_shape_eq': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSetWith(SVBool.create(true, source));
+        }
+
+        const heap = ctx.heap;
+        const [leftAddr, rightAddr, messageAddr] = params;
+
+        const left = fetchSize(leftAddr, heap);
+        const right = fetchSize(rightAddr, heap);
+        const msg = fetchAddr(messageAddr, heap);
+
+        if (typeof left === 'string') {
+            return ctx.warnWithMsg(`from 'LibCall.guard.require_shape_eq': left is not a Size type`, source).toSet();
+        }
+
+        if (typeof right === 'string') {
+            return ctx.warnWithMsg(`from 'LibCall.guard.require_shape_eq': right is not a Size type`, source).toSet();
+        }
+
+        if (!(msg?.type === SVType.String && typeof msg.value === 'string')) {
+            return ctx
+                .warnWithMsg(`from 'LibCall.guard.require_shape_eq: message is not a constant string`, source)
+                .toSetWith(SVBool.create(true, source));
+        }
+
+        return ctx
+            .require(ctx.genEq(left.shape, right.shape, source), msg.value, source)
+            .return(SVBool.create(true, source));
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         require_lt,
         require_lte,
         require_eq,
         require_neq,
         require_broadcastable,
+        require_shape_eq,
     };
 }
 

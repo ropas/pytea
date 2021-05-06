@@ -93,7 +93,7 @@ export namespace PILLCImpl {
                 ExpShape.concat(ExpShape.fromConst(1, [1], source), shape, source)
             );
 
-            const newImage = SVSize.fromObject(ctx, image, newShape);
+            const newImage = SVSize.toSize(ctx, image, newShape);
             return ctx.setHeap(ctx.heap.setVal(imageAddr, newImage)).toSetWith(newImage);
         });
 
@@ -120,7 +120,7 @@ export namespace PILLCImpl {
                     source
                 )
                 .map((ctx) => {
-                    const newImage = SVSize.fromObject(ctx, image, newShape);
+                    const newImage = SVSize.toSize(ctx, image, newShape);
                     return ctx.setHeap(ctx.heap.setVal(imageAddr, newImage)).setRetVal(newImage);
                 });
         });

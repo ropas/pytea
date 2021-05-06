@@ -16,7 +16,6 @@ import {
     SVNone,
     SVNotImpl,
     SVObject,
-    SVSize,
     SVString,
     SVType,
 } from '../backend/sharpValues';
@@ -1018,41 +1017,6 @@ export namespace BuiltinsLCImpl {
         return symCtx.toSetWith(SVFloat.create(num, source));
     }
 
-    // get `(objectAddr, size)`, set object to SVSize with shape `size`
-    export function setSize(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
-        const params = ctx.retVal.params;
-        if (params.length !== 2) {
-            return ctx
-                .warnWithMsg(
-                    `from 'LibCall.builtins.setSize': got insufficient number of argument: ${params.length}`,
-                    source
-                )
-                .toSet();
-        }
-        const heap = ctx.heap;
-        const [objAddr, sizeAddr] = params;
-        const obj = fetchAddr(objAddr, heap);
-
-        if (objAddr.type !== SVType.Addr || obj?.type !== SVType.Object) {
-            return ctx
-                .warnWithMsg(
-                    `from 'LibCall.builtins.setSize': not an object type:\n\t${objAddr.toString()} -> ${obj?.toString()}`,
-                    source
-                )
-                .toSet();
-        }
-
-        return ctx.parseSize(sizeAddr, source).map((ctx) => {
-            const size = ctx.retVal;
-            if (typeof size === 'string') {
-                return ctx.warnWithMsg(size, source) as Context<ShValue>;
-            }
-
-            const sizeObj = SVSize.fromObject(ctx, obj, size);
-            return ctx.setHeap(ctx.heap.setVal(objAddr, sizeObj)).setRetVal(sizeObj);
-        });
-    }
-
     export function exit(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
         return ctx.failWithMsg('explicit process exit function call', source).toSet();
     }
@@ -1367,7 +1331,6 @@ export namespace BuiltinsLCImpl {
         getAttr,
         setAttr,
         setIndice,
-        setSize,
         getItemByIndex,
         callable,
         box,

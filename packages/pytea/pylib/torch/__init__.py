@@ -1,6 +1,6 @@
 import LibCall
 
-from .tensor import Tensor, FloatTensor, DoubleTensor, LongTensor, IntTensor
+from .tensor import Tensor, Size, FloatTensor, DoubleTensor, LongTensor, IntTensor
 
 from . import nn as nn
 from . import optim as optim

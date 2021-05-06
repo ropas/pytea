@@ -44,7 +44,7 @@ class ndarray:
             if idx_len > len(self.shape):
                 raise IndexError("too many indices for tensor")
             for axis in range(idx_len - 1, -1, -1):
-                temp = LibCall.shape.tensorGetItem(temp, axis, index[axis])
+                temp = LibCall.numpy.ndarrayGetItem(temp, axis, index[axis])
             arr = ndarray(temp)
             arr.dtype = dtype
             return arr
@@ -68,7 +68,7 @@ class ndarray:
                 "invalid index of a 0-dim tensor. Use tensor.item() to convert a 0-dim tensor to a Python number"
             )
 
-        temp = LibCall.shape.tensorGetItem(temp, 0, index)
+        temp = LibCall.numpy.ndarrayGetItem(temp, 0, index)
         arr = ndarray(temp)
         arr.dtype = dtype
         return arr

@@ -462,37 +462,36 @@ export class SVObject extends Record(svObjectProps) implements SVObjectProps {
 export class SVSize extends SVObject {
     shape!: ExpShape;
 
-    static createSize(ctx: Context<any>, shape: ExpShape, source: CodeSource | undefined): SVSize {
+    static createSize(ctx: Context<unknown>, shape: ExpShape, source: CodeSource | undefined): Context<SVSize> {
         const sizeMro = fetchAddr(
             (fetchAddr(ctx.env.getId('tuple'), ctx.heap) as SVObject).getAttr('__mro__'),
             ctx.heap
         )!;
 
+        const [addr, heap] = ctx.heap.malloc(source);
+
         const value: SVSize = new SVSize({
             id: getNextSVId(),
+            addr: addr,
             shape,
             source,
             attrs: Map({ __mro__: sizeMro, $length: SVInt.create(ExpShape.getRank(shape), shape.source) }),
         });
-        return value;
+
+        return ctx.setHeap(heap.setVal(addr, value)).setRetVal(value);
     }
 
-    // maybe used as fromTuple
-    static fromObject(ctx: Context<any>, obj: SVObject, shape: ExpShape): SVSize {
-        // const sizeMro = fetchAddr(
-        //     (fetchAddr(ctx.env.getId('tuple'), ctx.heap) as SVObject).getAttr('__mro__'),
-        //     ctx.heap
-        // )!;
+    // set size to object
+    static toSize(obj: SVObject, shape: ExpShape): SVSize {
         const value: SVSize = new SVSize({
             id: obj.id,
-            attrs: obj.attrs
-                //    .set('__mro__', sizeMro)
-                .set('$length', SVInt.create(ExpShape.getRank(shape), shape.source)),
+            attrs: obj.attrs.set('$length', SVInt.create(ExpShape.getRank(shape), shape.source)),
             indices: obj.indices,
             keyValues: obj.keyValues,
             addr: obj.addr,
             shape,
         });
+
         return value;
     }
 

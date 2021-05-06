@@ -12,5 +12,6 @@ from .pooling import AdaptiveAvgPool2d, AvgPool2d, MaxPool2d
 from .instancenorm import InstanceNorm2d
 from .layernorm import LayerNorm
 from .pixelshuffle import PixelShuffle
+from .rnn import RNNBase, RNN, LSTM, GRU
 from .embedding import Embedding
 

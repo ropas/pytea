@@ -118,7 +118,7 @@ export namespace TorchvisionLCImpl {
                 ExpShape.concat(ExpShape.fromConst(1, [1], source), shape, source)
             );
 
-            const newImage = SVSize.fromObject(ctx, image, newShape);
+            const newImage = SVSize.toSize(ctx, image, newShape);
             return ctx.setHeap(ctx.heap.setVal(imageAddr, newImage)).toSetWith(newImage);
         });
 
@@ -140,7 +140,7 @@ export namespace TorchvisionLCImpl {
                     source
                 )
                 .map((ctx) => {
-                    const newImage = SVSize.fromObject(ctx, image, shape);
+                    const newImage = SVSize.toSize(ctx, image, shape);
                     return ctx.setHeap(ctx.heap.setVal(imageAddr, newImage)).setRetVal(newImage);
                 });
         });

@@ -62,7 +62,7 @@ class builtins:
 
 class TorchLibCallImpl:
     @staticmethod
-    def tensorInit(self, args, kwargs):
+    def tensorInit(self, args, SizeClass):
         pass
 
     @staticmethod

@@ -15,7 +15,7 @@ class Image:
         self.width = width
         self.height = height
         self.size = (width, height)
-        LibCall.builtins.setSize(self, (channel, width, height))
+        LibCall.shape.setSize(self, (channel, width, height))
 
     def _getChannel(self):
         return LibCall.PIL.getChannel(self)
