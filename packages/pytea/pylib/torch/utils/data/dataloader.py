@@ -33,6 +33,8 @@ class DataLoader:
             self._last_batch += 1
             self._len = datalen // self.batch_size + remainder
 
+        self._curr_idx = 0
+
     def __len__(self):
         # box constant value to prevent constant iteration by for-loop
         # to prevent boxing, set 'boxDataLoader' option to false in 'pyteaconfig.json'
@@ -80,3 +82,12 @@ class DataLoader:
             return ret_list[0]
         else:
             return ret_list
+
+    def __iter__(self):
+        # TODO: precise iteration
+        return self
+
+    def __next__(self):
+        item = self[self._curr_idx]
+        self._curr_idx += 1
+        return item

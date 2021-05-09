@@ -538,6 +538,10 @@ def iter(value):
     return value.__iter__()
 
 
+def next(value):
+    return value.__next__()
+
+
 def callable(value):
     return LibCall.builtins.callable(value)
 
