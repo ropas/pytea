@@ -12,7 +12,7 @@ from .pooling import AdaptiveAvgPool2d, AvgPool2d, MaxPool2d
 from .instancenorm import InstanceNorm2d
 from .normalization import LayerNorm
 from .pixelshuffle import PixelShuffle
-from .rnn import RNNBase, RNN, LSTM, GRU
+from .rnn import RNNBase, RNN, LSTM, GRU, RNNCellBase, RNNCell, LSTMCell, GRUCell
 from .transformer import (
     TransformerEncoder,
     TransformerDecoder,

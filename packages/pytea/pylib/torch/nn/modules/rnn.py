@@ -177,3 +177,90 @@ class GRU(RNNBase):
 
         return (output, h_n)
 
+
+class RNNCellBase(Module):
+    def __init__(self, input_size, hidden_size, bias, num_chunks):
+        super(RNNCellBase, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.bias = bias
+        self.weight_ih = torch.Tensor(num_chunks * hidden_size, input_size)
+        self.weight_hh = torch.Tensor(num_chunks * hidden_size, hidden_size)
+        if bias:
+            self.bias_ih = torch.Tensor(num_chunks * hidden_size)
+            self.bias_hh = torch.Tensor(num_chunks * hidden_size)
+        else:
+            self.register_parameter("bias_ih", None)
+            self.register_parameter("bias_hh", None)
+        self.reset_parameters()
+
+    def check_forward_input(self, input) -> None:
+        assert LibCall.guard.require_eq(
+            input.shape[1], self.input_size, "input has inconsistent input_size"
+        )
+
+    def check_forward_hidden(self, input, hx, hidden_label=""):
+        assert LibCall.guard.require_eq(
+            input.shape[0],
+            hx.shape[0],
+            "Input batch size doesn't match hidden batch size",
+        )
+        assert LibCall.guard.require_eq(
+            hx.shape[1], self.hidden_size, "hidden has inconsistent hidden_size"
+        )
+
+    def reset_parameters(self):
+        pass
+
+
+class RNNCell(RNNCellBase):
+    def __init__(
+        self,
+        input_size: int,
+        hidden_size: int,
+        bias: bool = True,
+        nonlinearity: str = "tanh",
+    ) -> None:
+        super(RNNCell, self).__init__(input_size, hidden_size, bias, num_chunks=1)
+        self.nonlinearity = nonlinearity
+
+    def forward(self, input, hx=None):
+        self.check_forward_input(input)
+        if hx is not None:
+            self.check_forward_hidden(input, hx)
+            return LibCall.torch.identityShape(hx)
+        else:
+            return torch.rand(input.size(0), self.hidden_size, dtype=input.dtype)
+
+
+class LSTMCell(RNNCellBase):
+    def __init__(self, input_size, hidden_size, bias=True):
+        super(LSTMCell, self).__init__(input_size, hidden_size, bias, num_chunks=4)
+
+    def forward(self, input, hx=None):
+        self.check_forward_input(input)
+        if hx is not None:
+            self.check_forward_hidden(input, hx[0])
+            self.check_forward_hidden(input, hx[1])
+            return (
+                LibCall.torch.identityShape(hx[0]),
+                LibCall.torch.identityShape(hx[1]),
+            )
+        else:
+            return (
+                torch.zeros(input.size(0), self.hidden_size, dtype=input.dtype),
+                torch.zeros(input.size(0), self.hidden_size, dtype=input.dtype),
+            )
+
+
+class GRUCell(RNNCellBase):
+    def __init__(self, input_size: int, hidden_size: int, bias: bool = True) -> None:
+        super(GRUCell, self).__init__(input_size, hidden_size, bias, num_chunks=3)
+
+    def forward(self, input, hx=None):
+        self.check_forward_input(input)
+        if hx is not None:
+            self.check_forward_hidden(input, hx)
+            return LibCall.torch.identityShape(hx)
+        else:
+            return torch.rand(input.size(0), self.hidden_size, dtype=input.dtype)
