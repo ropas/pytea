@@ -73,15 +73,9 @@ let _failId = 0;
 function getFailedId(): number {
     return ++_failId;
 }
-const LOG_IGNORE = ['tensor.py', 'functional.py', 'builtins.py', 'linear.py', 'module.py'];
+const LOG_IGNORE = /pylib.*(tensor|functional|builtins|linear|module|loss|math).py$/;
 function checkIgnorePath(path: string) {
-    for (const p of LOG_IGNORE) {
-        if (path.endsWith(p)) {
-            return true;
-        }
-    }
-
-    return false;
+    return LOG_IGNORE.test(path);
 }
 
 interface ContextProps<T> {
