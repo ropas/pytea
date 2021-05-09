@@ -64,3 +64,16 @@ class Module:
     def apply(self, fn):
         # TODO: recursively add apply fn in children
         return self
+
+    def float(self):
+        # TODO: make float recursively
+        return self
+
+    def double(self):
+        return self
+
+    def half(self):
+        return self
+
+    def bfloat16(self):
+        return self

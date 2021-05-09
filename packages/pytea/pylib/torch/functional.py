@@ -441,6 +441,43 @@ def arange(start, end=None, step=1, out=None, **kwargs):
     return tensor
 
 
+class _TORCH_SPLIT(tuple):
+    def __init__(self, tensor, split, dim):
+        self.tensor = tensor
+        self.split = split
+        self.dim = dim
+        self.datalen = tensor.shape[dim]
+
+        if isinstance(split, int):
+            self.is_int = True
+            self.len = (self.datalen - 1) // self.split + 1
+            self.temp = LibCall.torch.narrow(tensor, dim, 0, split)
+        else:
+            LibCall.guard.require_eq(
+                sum(split), self.datalen, "sum of split exceeds dimension size"
+            )
+            self.is_int = False
+            self.len = len(split)
+
+    def __getitem__(self, index):
+        if self.is_int:
+            if index == self.len - 1:
+                return LibCall.torch.narrow(
+                    self.tensor, self.dim, 0, (self.datalen - 1) % self.split + 1
+                )
+            else:
+                return LibCall.torch.identityShape(self.temp)
+        else:
+            return LibCall.torch.narrow(self.tensor, self.dim, 0, self.split[index])
+
+    def __len__(self):
+        return self.len
+
+
+def split(tensor, split_size_or_sections, dim=0):
+    return _TORCH_SPLIT(tensor, split_size_or_sections, dim)
+
+
 def full(size, fill_value, out=None, dtype=None, **kwargs):
     if dtype is None:
         dtype = torch.floatDefault

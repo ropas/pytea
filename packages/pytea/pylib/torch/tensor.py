@@ -388,6 +388,9 @@ class Tensor:
     def contiguous(self):
         return self
 
+    def split(self, split_size, dim=0):
+        return torch.split(self, split_size, dim)
+
     def __len__(self):
         if len(self.shape) == 0:
             raise TypeError("len() of a 0-d tensor")
