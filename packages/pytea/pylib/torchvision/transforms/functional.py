@@ -23,8 +23,8 @@ def to_pil_image(pic, mode=None):
     """
     shape = pic.shape
     rank = len(shape)
-    assert LibCall.guard.require_lte(2, rank)
-    assert LibCall.guard.require_lte(rank, 3)
+    assert LibCall.guard.require_lte(2, rank, "input rank should be 2 or 3")
+    assert LibCall.guard.require_lte(rank, 3, "input rank should be 2 or 3")
 
     channel = 1
 
