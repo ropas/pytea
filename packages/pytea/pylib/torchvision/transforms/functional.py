@@ -47,6 +47,8 @@ def to_pil_image(pic, mode=None):
         else:
             im = Image.new(mode, (shape[2], shape[1]))
 
+        return im
+
     raise TypeError("pic should be Tensor or ndarray")
 
 
