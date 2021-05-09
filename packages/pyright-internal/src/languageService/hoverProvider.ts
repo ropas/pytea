@@ -11,17 +11,10 @@
 
 import { CancellationToken, Hover, MarkupKind } from 'vscode-languageserver';
 
-import { Declaration, DeclarationBase, DeclarationType, FunctionDeclaration } from '../analyzer/declaration';
+import { Declaration, DeclarationType } from '../analyzer/declaration';
 import { convertDocStringToMarkdown, convertDocStringToPlainText } from '../analyzer/docStringConversion';
 import * as ParseTreeUtils from '../analyzer/parseTreeUtils';
 import { SourceMapper } from '../analyzer/sourceMapper';
-import {
-    getClassDocString,
-    getFunctionDocStringFromDeclaration,
-    getFunctionDocStringFromType,
-    getModuleDocString,
-    getOverloadedFunctionDocStrings,
-} from '../analyzer/typeDocStringUtils';
 import { TypeEvaluator } from '../analyzer/typeEvaluator';
 import {
     getTypeAliasInfo,
@@ -42,6 +35,7 @@ import { Position, Range } from '../common/textRange';
 import { TextRange } from '../common/textRange';
 import { NameNode, ParseNode, ParseNodeType } from '../parser/parseNodes';
 import { ParseResults } from '../parser/parser';
+import { getDocumentationPartsForTypeAndDecl, getOverloadedFunctionTooltip } from './tooltipUtils';
 
 export interface HoverTextPart {
     python?: boolean;
@@ -94,11 +88,7 @@ export class HoverProvider {
                 // the first declaration, it will show up as a module rather than
                 // the imported symbol type.
                 let primaryDeclaration = declarations[0];
-                if (
-                    primaryDeclaration.type === DeclarationType.Alias &&
-                    declarations.length > 1 &&
-                    declarations[1].type !== DeclarationType.Alias
-                ) {
+                if (primaryDeclaration.type === DeclarationType.Alias && declarations.length > 1) {
                     primaryDeclaration = declarations[1];
                 }
 
@@ -231,7 +221,13 @@ export class HoverProvider {
                     label = declaredType && isProperty(declaredType) ? 'property' : 'method';
                 }
 
-                this._addResultsPart(parts, `(${label}) ` + node.value + this._getTypeText(node, evaluator), true);
+                const type = evaluator.getType(node);
+                if (type && isOverloadedFunction(type)) {
+                    this._addResultsPart(parts, `(${label})\n${getOverloadedFunctionTooltip(type, evaluator)}`, true);
+                } else {
+                    this._addResultsPart(parts, `(${label}) ` + node.value + this._getTypeText(node, evaluator), true);
+                }
+
                 this._addDocumentationPart(format, sourceMapper, parts, node, evaluator, resolvedDecl);
                 break;
             }
@@ -309,9 +305,16 @@ export class HoverProvider {
         const classText = `${node.value}(${functionParts[0].join(', ')})`;
 
         this._addResultsPart(parts, '(class) ' + classText, true);
-        const addedDoc = this._addDocumentationPartForType(format, sourceMapper, parts, initMethodType, declaration);
+        const addedDoc = this._addDocumentationPartForType(
+            format,
+            sourceMapper,
+            parts,
+            initMethodType,
+            declaration,
+            evaluator
+        );
         if (!addedDoc) {
-            this._addDocumentationPartForType(format, sourceMapper, parts, classType, declaration);
+            this._addDocumentationPartForType(format, sourceMapper, parts, classType, declaration, evaluator);
         }
         return true;
     }
@@ -327,11 +330,11 @@ export class HoverProvider {
         parts: HoverTextPart[],
         node: NameNode,
         evaluator: TypeEvaluator,
-        resolvedDecl: DeclarationBase | undefined
+        resolvedDecl: Declaration | undefined
     ) {
         const type = evaluator.getType(node);
         if (type) {
-            this._addDocumentationPartForType(format, sourceMapper, parts, type, resolvedDecl);
+            this._addDocumentationPartForType(format, sourceMapper, parts, type, resolvedDecl, evaluator);
         }
     }
 
@@ -340,23 +343,10 @@ export class HoverProvider {
         sourceMapper: SourceMapper,
         parts: HoverTextPart[],
         type: Type,
-        resolvedDecl: DeclarationBase | undefined
+        resolvedDecl: Declaration | undefined,
+        evaluator: TypeEvaluator
     ): boolean {
-        const docStrings: (string | undefined)[] = [];
-
-        if (isModule(type)) {
-            docStrings.push(getModuleDocString(type, resolvedDecl, sourceMapper));
-        } else if (isClass(type)) {
-            docStrings.push(getClassDocString(type, resolvedDecl, sourceMapper));
-        } else if (isFunction(type)) {
-            docStrings.push(getFunctionDocStringFromType(type, sourceMapper));
-        } else if (isOverloadedFunction(type)) {
-            docStrings.push(...getOverloadedFunctionDocStrings(type, resolvedDecl, sourceMapper));
-        } else if (resolvedDecl?.type === DeclarationType.Function) {
-            // @property functions
-            docStrings.push(getFunctionDocStringFromDeclaration(resolvedDecl as FunctionDeclaration, sourceMapper));
-        }
-
+        const docStrings = getDocumentationPartsForTypeAndDecl(sourceMapper, type, resolvedDecl, evaluator);
         let addedDoc = false;
         for (const docString of docStrings) {
             if (docString) {
@@ -371,7 +361,13 @@ export class HoverProvider {
     private static _addDocumentationResultsPart(format: MarkupKind, parts: HoverTextPart[], docString?: string) {
         if (docString) {
             if (format === MarkupKind.Markdown) {
-                this._addResultsPart(parts, convertDocStringToMarkdown(docString));
+                const markDown = convertDocStringToMarkdown(docString);
+
+                if (parts.length > 0 && markDown.length > 0) {
+                    parts.push({ text: '---\n' });
+                }
+
+                this._addResultsPart(parts, markDown);
             } else if (format === MarkupKind.PlainText) {
                 this._addResultsPart(parts, convertDocStringToPlainText(docString));
             } else {
@@ -406,7 +402,8 @@ export function convertHoverResults(format: MarkupKind, hoverResults: HoverResul
             }
             return part.text;
         })
-        .join('');
+        .join('')
+        .trimEnd();
 
     return {
         contents: {

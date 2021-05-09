@@ -28,7 +28,7 @@ def load_der_public_key(
     data: bytes, backend: Optional[DERSerializationBackend] = ...
 ) -> Any: ...  # actually Union[RSAPublicKey, DSAPublicKey, DHPublicKey, EllipticCurvePublicKey]
 def load_ssh_public_key(
-    data: bytes, backend: Union[RSABackend, DSABackend, EllipticCurveBackend, None]
+    data: bytes, backend: Union[RSABackend, DSABackend, EllipticCurveBackend, None] = ...
 ) -> Any: ...  # actually Union[RSAPublicKey, DSAPublicKey, DHPublicKey, EllipticCurvePublicKey, Ed25519PublicKey]
 
 class Encoding(Enum):
@@ -37,11 +37,13 @@ class Encoding(Enum):
     OpenSSH: str
     Raw: str
     X962: str
+    SMIME: str
 
 class PrivateFormat(Enum):
     PKCS8: str
     TraditionalOpenSSL: str
     Raw: str
+    OpenSSH: str
 
 class PublicFormat(Enum):
     SubjectPublicKeyInfo: str

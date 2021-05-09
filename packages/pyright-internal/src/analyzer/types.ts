@@ -64,6 +64,10 @@ export const enum TypeFlags {
 
     // This type refers to something that has been instantiated.
     Instance = 1 << 1,
+
+    // This type refers to a type that is wrapped an "Annotated"
+    // (PEP 593) annotation.
+    Annotated = 1 << 2,
 }
 
 export type UnionableType =
@@ -81,9 +85,10 @@ export type UnionableType =
 export type Type = UnionableType | NeverType | UnionType;
 
 export type TypeVarScopeId = string;
+export const WildcardTypeVarScopeId = '*';
 
 export class EnumLiteral {
-    constructor(public className: string, public itemName: string) {}
+    constructor(public className: string, public itemName: string, public itemType: Type) {}
 }
 
 export type LiteralValue = number | boolean | string | EnumLiteral;
@@ -116,6 +121,10 @@ export namespace TypeBase {
         return (type.flags & TypeFlags.Instance) !== 0;
     }
 
+    export function isAnnotated(type: TypeBase) {
+        return (type.flags & TypeFlags.Annotated) !== 0;
+    }
+
     export function cloneForTypeAlias(
         type: Type,
         name: string,
@@ -134,6 +143,12 @@ export namespace TypeBase {
             typeVarScopeId,
         };
 
+        return typeClone;
+    }
+
+    export function cloneForAnnotated(type: Type) {
+        const typeClone = { ...type };
+        typeClone.flags |= TypeFlags.Annotated;
         return typeClone;
     }
 }
@@ -182,16 +197,19 @@ export interface ModuleType extends TypeBase {
 
     // The period-delimited import name of this module.
     moduleName: string;
+
+    filePath: string;
 }
 
 export namespace ModuleType {
-    export function create(moduleName: string, symbolTable?: SymbolTable) {
+    export function create(moduleName: string, filePath: string, symbolTable?: SymbolTable) {
         const newModuleType: ModuleType = {
             category: TypeCategory.Module,
             fields: symbolTable || new Map<string, Symbol>(),
             loaderFields: new Map<string, Symbol>(),
             flags: TypeFlags.Instantiable | TypeFlags.Instantiable,
             moduleName,
+            filePath,
         };
         return newModuleType;
     }
@@ -211,6 +229,7 @@ export namespace ModuleType {
 
 export interface DataClassEntry {
     name: string;
+    alias?: string;
     hasDefault?: boolean;
     defaultValueExpression?: ExpressionNode;
     includeInInit: boolean;
@@ -309,12 +328,24 @@ export const enum ClassTypeFlags {
     // The class has a metaclass of EnumMet or derives from
     // a class that has this metaclass.
     EnumClass = 1 << 20,
+
+    // For dataclasses, should __init__ method always be generated
+    // with keyword-only parameters?
+    DataClassKeywordOnlyParams = 1 << 21,
+}
+
+export interface DataClassBehaviors {
+    keywordOnlyParams: boolean;
+    generateEq: boolean;
+    generateOrder: boolean;
+    fieldDescriptorNames: string[];
 }
 
 interface ClassDetails {
     name: string;
     fullName: string;
     moduleName: string;
+    filePath: string;
     flags: ClassTypeFlags;
     typeSourceId: TypeSourceId;
     baseClasses: Type[];
@@ -326,7 +357,11 @@ interface ClassDetails {
     typeVarScopeId?: TypeVarScopeId;
     docString?: string;
     dataClassEntries?: DataClassEntry[];
+    dataClassBehaviors?: DataClassBehaviors;
     typedDictEntries?: Map<string, TypedDictEntry>;
+
+    // Transforms to apply if this class is used as a metaclass.
+    metaclassDataClassTransform?: DataClassBehaviors;
 }
 
 export interface ClassType extends TypeBase {
@@ -338,6 +373,12 @@ export interface ClassType extends TypeBase {
     // specialized will have type arguments that correspond to
     // some or all of the type parameters.
     typeArguments?: Type[];
+
+    // If a generic container class (like a list or dict) is known
+    // to contain no elements, its type arguments may be "Unknown".
+    // This value allows us to elide the Unknown when it's safe to
+    // do so.
+    isEmptyContainer?: boolean;
 
     // For tuples, the class definition calls for a single type parameter but
     // the spec allows the programmer to provide variadic type arguments.
@@ -364,6 +405,11 @@ export interface ClassType extends TypeBase {
     // (e.g. Tuple, List, Dict). This field holds the alias
     // name.
     aliasName?: string;
+
+    // Used for "narrowing" of typed dicts where some entries
+    // that are not required have been confirmed to be present
+    // through the use of a guard expression.
+    typedDictNarrowedEntries?: Map<string, TypedDictEntry>;
 }
 
 export namespace ClassType {
@@ -371,6 +417,7 @@ export namespace ClassType {
         name: string,
         fullName: string,
         moduleName: string,
+        filePath: string,
         flags: ClassTypeFlags,
         typeSourceId: TypeSourceId,
         declaredMetaclass: ClassType | UnknownType | undefined,
@@ -383,6 +430,7 @@ export namespace ClassType {
                 name,
                 fullName,
                 moduleName,
+                filePath,
                 flags,
                 typeSourceId,
                 baseClasses: [],
@@ -405,7 +453,8 @@ export namespace ClassType {
         typeArguments: Type[] | undefined,
         isTypeArgumentExplicit: boolean,
         skipAbstractClassTest = false,
-        tupleTypeArguments?: Type[]
+        tupleTypeArguments?: Type[],
+        isEmptyContainer?: boolean
     ): ClassType {
         const newClassType = { ...classType };
 
@@ -420,6 +469,10 @@ export namespace ClassType {
             ? tupleTypeArguments.map((t) => (isNever(t) ? UnknownType.create() : t))
             : undefined;
 
+        if (isEmptyContainer !== undefined) {
+            newClassType.isEmptyContainer = isEmptyContainer;
+        }
+
         return newClassType;
     }
 
@@ -432,6 +485,22 @@ export namespace ClassType {
     export function cloneForTypingAlias(classType: ClassType, aliasName: string): ClassType {
         const newClassType = { ...classType };
         newClassType.aliasName = aliasName;
+        return newClassType;
+    }
+
+    export function cloneForNarrowedTypedDictEntries(
+        classType: ClassType,
+        narrowedEntries?: Map<string, TypedDictEntry>
+    ) {
+        const newClassType = { ...classType };
+        newClassType.typedDictNarrowedEntries = narrowedEntries;
+        return newClassType;
+    }
+
+    export function cloneWithNewTypeParameters(classType: ClassType, typeParams: TypeVarType[]): ClassType {
+        const newClassType = { ...classType };
+        newClassType.details = { ...newClassType.details };
+        newClassType.details.typeParameters = typeParams;
         return newClassType;
     }
 
@@ -508,6 +577,10 @@ export namespace ClassType {
 
     export function isSynthesizedDataclassOrder(classType: ClassType) {
         return !!(classType.details.flags & ClassTypeFlags.SynthesizedDataClassOrder);
+    }
+
+    export function isDataClassKeywordOnlyParams(classType: ClassType) {
+        return !!(classType.details.flags & ClassTypeFlags.DataClassKeywordOnlyParams);
     }
 
     export function isTypedDictClass(classType: ClassType) {
@@ -613,7 +686,14 @@ export namespace ClassType {
 
         // Make sure the base classes match.
         for (let i = 0; i < class1Details.baseClasses.length; i++) {
-            if (!isTypeSame(class1Details.baseClasses[i], class2Details.baseClasses[i], recursionCount + 1)) {
+            if (
+                !isTypeSame(
+                    class1Details.baseClasses[i],
+                    class2Details.baseClasses[i],
+                    /* ignorePseudoGeneric */ true,
+                    recursionCount + 1
+                )
+            ) {
                 return false;
             }
         }
@@ -622,14 +702,26 @@ export namespace ClassType {
             if (
                 !class1Details.declaredMetaclass ||
                 !class2Details.declaredMetaclass ||
-                !isTypeSame(class1Details.declaredMetaclass, class2Details.declaredMetaclass, recursionCount + 1)
+                !isTypeSame(
+                    class1Details.declaredMetaclass,
+                    class2Details.declaredMetaclass,
+                    /* ignorePseudoGeneric */ true,
+                    recursionCount + 1
+                )
             ) {
                 return false;
             }
         }
 
         for (let i = 0; i < class1Details.typeParameters.length; i++) {
-            if (!isTypeSame(class1Details.typeParameters[i], class2Details.typeParameters[i], recursionCount + 1)) {
+            if (
+                !isTypeSame(
+                    class1Details.typeParameters[i],
+                    class2Details.typeParameters[i],
+                    /* ignorePseudoGeneric */ true,
+                    recursionCount + 1
+                )
+            ) {
                 return false;
             }
         }
@@ -773,6 +865,10 @@ export const enum FunctionTypeFlags {
     // Any collection of parameters will match this function. This is used
     // for Callable[..., x].
     SkipParamCompatibilityCheck = 1 << 15,
+
+    // This function represents the value bound to a ParamSpec, so its return
+    // type is not meaningful.
+    ParamSpecValue = 1 << 16,
 }
 
 interface FunctionDetails {
@@ -786,6 +882,10 @@ interface FunctionDetails {
     typeVarScopeId?: TypeVarScopeId;
     builtInName?: string;
     docString?: string;
+
+    // Transforms to apply if this function is used
+    // as a decorator.
+    decoratorDataClassBehaviors?: DataClassBehaviors;
 
     // Parameter specification used only for Callable types created
     // with a ParamSpec representing the parameters.
@@ -828,6 +928,15 @@ export interface ParamSpecEntry {
     name?: string;
     hasDefault: boolean;
     type: Type;
+}
+
+export interface ParamSpecValue {
+    parameters?: ParamSpecEntry[];
+
+    // If the param spec is assigned to another param spec,
+    // this will contain that type, and the params array will
+    // be empty.
+    paramSpec?: TypeVarType;
 }
 
 export namespace FunctionType {
@@ -980,7 +1089,56 @@ export namespace FunctionType {
     }
 
     // Creates a new function based on the parameters of another function.
-    export function cloneForParamSpec(type: FunctionType, paramTypes: ParamSpecEntry[] | undefined) {
+    export function cloneForParamSpec(type: FunctionType, paramTypes: ParamSpecValue | undefined) {
+        const newFunction = create(
+            type.details.name,
+            type.details.fullName,
+            type.details.moduleName,
+            type.details.flags,
+            type.flags,
+            type.details.docString
+        );
+
+        newFunction.specializedTypes = type.specializedTypes;
+
+        // Make a shallow clone of the details.
+        newFunction.details = { ...type.details };
+
+        // The clone should no longer have a parameter specification
+        // since we're replacing it.
+        delete newFunction.details.paramSpec;
+
+        if (paramTypes) {
+            if (paramTypes.parameters) {
+                newFunction.details.parameters = [
+                    ...type.details.parameters,
+                    ...paramTypes.parameters.map((specEntry) => {
+                        return {
+                            category: specEntry.category,
+                            name: specEntry.name,
+                            hasDefault: specEntry.hasDefault,
+                            isNameSynthesized: false,
+                            hasDeclaredType: true,
+                            type: specEntry.type,
+                        };
+                    }),
+                ];
+
+                // Update the specialized parameter types as well.
+                if (newFunction.specializedTypes) {
+                    paramTypes.parameters.forEach((paramInfo) => {
+                        newFunction.specializedTypes!.parameterTypes.push(paramInfo.type);
+                    });
+                }
+            } else if (paramTypes.paramSpec) {
+                newFunction.details.paramSpec = paramTypes.paramSpec;
+            }
+        }
+
+        return newFunction;
+    }
+
+    export function cloneForParamSpecApplication(type: FunctionType, paramTypes: ParamSpecValue) {
         const newFunction = create(
             type.details.name,
             type.details.fullName,
@@ -993,24 +1151,25 @@ export namespace FunctionType {
         // Make a shallow clone of the details.
         newFunction.details = { ...type.details };
 
-        // The clone should no longer have a parameter specification
-        // since we're replacing it.
-        delete newFunction.details.paramSpec;
+        if (paramTypes.parameters) {
+            // Remove the last two parameters, which are the *args and **kwargs.
+            newFunction.details.parameters = newFunction.details.parameters.slice(
+                0,
+                newFunction.details.parameters.length - 2
+            );
 
-        if (paramTypes) {
-            newFunction.details.parameters = [
-                ...type.details.parameters,
-                ...paramTypes.map((specEntry) => {
-                    return {
-                        category: specEntry.category,
-                        name: specEntry.name,
-                        hasDefault: specEntry.hasDefault,
-                        isNameSynthesized: false,
-                        hasDeclaredType: true,
-                        type: specEntry.type,
-                    };
-                }),
-            ];
+            paramTypes.parameters.forEach((specEntry) => {
+                newFunction.details.parameters.push({
+                    category: specEntry.category,
+                    name: specEntry.name,
+                    hasDefault: specEntry.hasDefault,
+                    isNameSynthesized: false,
+                    hasDeclaredType: true,
+                    type: specEntry.type,
+                });
+            });
+        } else if (paramTypes.paramSpec) {
+            newFunction.details.paramSpec = paramTypes.paramSpec;
         }
 
         return newFunction;
@@ -1103,6 +1262,10 @@ export namespace FunctionType {
 
     export function shouldSkipParamCompatibilityCheck(type: FunctionType) {
         return (type.details.flags & FunctionTypeFlags.SkipParamCompatibilityCheck) !== 0;
+    }
+
+    export function isParamSpecValue(type: FunctionType) {
+        return (type.details.flags & FunctionTypeFlags.ParamSpecValue) !== 0;
     }
 
     export function getEffectiveParameterType(type: FunctionType, index: number): Type {
@@ -1381,7 +1544,11 @@ export namespace UnionType {
             }
         }
 
-        return unionType.subtypes.find((t) => isTypeSame(t, subtype, recursionCount + 1)) !== undefined;
+        return (
+            unionType.subtypes.find((t) =>
+                isTypeSame(t, subtype, /* ignorePseudoGeneric */ false, recursionCount + 1)
+            ) !== undefined
+        );
     }
 }
 
@@ -1475,6 +1642,27 @@ export namespace TypeVarType {
         assert(type.details.isVariadic);
         const newInstance: TypeVarType = { ...type };
         newInstance.isVariadicUnpacked = false;
+        return newInstance;
+    }
+
+    // Creates a "simplified" version of the TypeVar with invariance
+    // and no bound or constraints. ParamSpecs and variadics are left unmodified.
+    export function cloneAsInvariant(type: TypeVarType) {
+        if (type.details.isParamSpec || type.details.isVariadic) {
+            return type;
+        }
+
+        if (type.details.variance === Variance.Invariant) {
+            if (type.details.boundType === undefined && type.details.constraints.length === 0) {
+                return type;
+            }
+        }
+
+        const newInstance: TypeVarType = { ...type };
+        newInstance.details = { ...newInstance.details };
+        newInstance.details.variance = Variance.Invariant;
+        newInstance.details.boundType = undefined;
+        newInstance.details.constraints = [];
         return newInstance;
     }
 
@@ -1620,7 +1808,10 @@ export function getTypeAliasInfo(type: Type) {
     return undefined;
 }
 
-export function isTypeSame(type1: Type, type2: Type, recursionCount = 0): boolean {
+// Determines whether two types are the same. If ignorePseudoGeneric is true,
+// type arguments for "pseudo-generic" classes (non-generic classes whose init
+// methods are not annotated and are therefore treated as generic) are ignored.
+export function isTypeSame(type1: Type, type2: Type, ignorePseudoGeneric = false, recursionCount = 0): boolean {
     if (type1.category !== type2.category) {
         return false;
     }
@@ -1638,29 +1829,41 @@ export function isTypeSame(type1: Type, type2: Type, recursionCount = 0): boolea
                 return false;
             }
 
-            // Make sure the type args match.
-            const type1TypeArgs = type1.typeArguments || [];
-            const type2TypeArgs = classType2.typeArguments || [];
-            const typeArgCount = Math.max(type1TypeArgs.length, type2TypeArgs.length);
+            if (!ignorePseudoGeneric || !ClassType.isPseudoGenericClass(type1)) {
+                // Make sure the type args match.
+                if (type1.tupleTypeArguments && classType2.tupleTypeArguments) {
+                    const type1TupleTypeArgs = type1.tupleTypeArguments || [];
+                    const type2TupleTypeArgs = classType2.tupleTypeArguments || [];
+                    if (type1TupleTypeArgs.length !== type2TupleTypeArgs.length) {
+                        return false;
+                    }
 
-            for (let i = 0; i < typeArgCount; i++) {
-                // Assume that missing type args are "Any".
-                const typeArg1 = i < type1TypeArgs.length ? type1TypeArgs[i] : AnyType.create();
-                const typeArg2 = i < type2TypeArgs.length ? type2TypeArgs[i] : AnyType.create();
+                    for (let i = 0; i < type1TupleTypeArgs.length; i++) {
+                        if (
+                            !isTypeSame(
+                                type1TupleTypeArgs[i],
+                                type2TupleTypeArgs[i],
+                                ignorePseudoGeneric,
+                                recursionCount + 1
+                            )
+                        ) {
+                            return false;
+                        }
+                    }
+                } else {
+                    const type1TypeArgs = type1.typeArguments || [];
+                    const type2TypeArgs = classType2.typeArguments || [];
+                    const typeArgCount = Math.max(type1TypeArgs.length, type2TypeArgs.length);
 
-                if (!isTypeSame(typeArg1, typeArg2, recursionCount + 1)) {
-                    return false;
-                }
-            }
+                    for (let i = 0; i < typeArgCount; i++) {
+                        // Assume that missing type args are "Any".
+                        const typeArg1 = i < type1TypeArgs.length ? type1TypeArgs[i] : AnyType.create();
+                        const typeArg2 = i < type2TypeArgs.length ? type2TypeArgs[i] : AnyType.create();
 
-            const type1TupleTypeArgs = type1.tupleTypeArguments || [];
-            const type2TupleTypeArgs = classType2.tupleTypeArguments || [];
-            if (type1TupleTypeArgs.length !== type2TupleTypeArgs.length) {
-                return false;
-            }
-            for (let i = 0; i < type1TupleTypeArgs.length; i++) {
-                if (!isTypeSame(type1TupleTypeArgs[i], type2TupleTypeArgs[i], recursionCount + 1)) {
-                    return false;
+                        if (!isTypeSame(typeArg1, typeArg2, ignorePseudoGeneric, recursionCount + 1)) {
+                            return false;
+                        }
+                    }
                 }
             }
 
@@ -1674,7 +1877,7 @@ export function isTypeSame(type1: Type, type2: Type, recursionCount = 0): boolea
         case TypeCategory.Object: {
             const objType2 = type2 as ObjectType;
 
-            return isTypeSame(type1.classType, objType2.classType, recursionCount + 1);
+            return isTypeSame(type1.classType, objType2.classType, ignorePseudoGeneric, recursionCount + 1);
         }
 
         case TypeCategory.Function: {
@@ -1702,7 +1905,7 @@ export function isTypeSame(type1: Type, type2: Type, recursionCount = 0): boolea
 
                 const param1Type = FunctionType.getEffectiveParameterType(type1, i);
                 const param2Type = FunctionType.getEffectiveParameterType(functionType2, i);
-                if (!isTypeSame(param1Type, param2Type, recursionCount + 1)) {
+                if (!isTypeSame(param1Type, param2Type, ignorePseudoGeneric, recursionCount + 1)) {
                     return false;
                 }
             }
@@ -1717,7 +1920,11 @@ export function isTypeSame(type1: Type, type2: Type, recursionCount = 0): boolea
                 return2Type = functionType2.specializedTypes.returnType;
             }
             if (return1Type || return2Type) {
-                if (!return1Type || !return2Type || !isTypeSame(return1Type, return2Type, recursionCount + 1)) {
+                if (
+                    !return1Type ||
+                    !return2Type ||
+                    !isTypeSame(return1Type, return2Type, ignorePseudoGeneric, recursionCount + 1)
+                ) {
                     return false;
                 }
             }
@@ -1739,7 +1946,9 @@ export function isTypeSame(type1: Type, type2: Type, recursionCount = 0): boolea
             // We assume here that overloaded functions always appear
             // in the same order from one analysis pass to another.
             for (let i = 0; i < type1.overloads.length; i++) {
-                if (!isTypeSame(type1.overloads[i], functionType2.overloads[i], recursionCount + 1)) {
+                if (
+                    !isTypeSame(type1.overloads[i], functionType2.overloads[i], ignorePseudoGeneric, recursionCount + 1)
+                ) {
                     return false;
                 }
             }
@@ -1778,24 +1987,26 @@ export function isTypeSame(type1: Type, type2: Type, recursionCount = 0): boolea
                 return true;
             }
 
-            if (type1.details.name !== type2TypeVar.details.name) {
+            if (
+                type1.details.name !== type2TypeVar.details.name ||
+                type1.details.isParamSpec !== type2TypeVar.details.isParamSpec ||
+                type1.details.isVariadic !== type2TypeVar.details.isVariadic ||
+                type1.details.isSynthesized !== type2TypeVar.details.isSynthesized ||
+                type1.details.variance !== type2TypeVar.details.variance
+            ) {
                 return false;
             }
 
             const boundType1 = type1.details.boundType;
             const boundType2 = type2TypeVar.details.boundType;
             if (boundType1) {
-                if (!boundType2 || !isTypeSame(boundType1, boundType2, recursionCount + 1)) {
+                if (!boundType2 || !isTypeSame(boundType1, boundType2, ignorePseudoGeneric, recursionCount + 1)) {
                     return false;
                 }
             } else {
                 if (boundType2) {
                     return false;
                 }
-            }
-
-            if (type1.details.variance !== type2TypeVar.details.variance) {
-                return false;
             }
 
             const constraints1 = type1.details.constraints;
@@ -1805,7 +2016,7 @@ export function isTypeSame(type1: Type, type2: Type, recursionCount = 0): boolea
             }
 
             for (let i = 0; i < constraints1.length; i++) {
-                if (!isTypeSame(constraints1[i], constraints2[i], recursionCount + 1)) {
+                if (!isTypeSame(constraints1[i], constraints2[i], ignorePseudoGeneric, recursionCount + 1)) {
                     return false;
                 }
             }
@@ -1957,7 +2168,7 @@ export function combineConstrainedTypes(subtypes: ConstrainedSubtype[], maxSubty
         }
     }
 
-    // Sort all of the literal types to the end.
+    // Sort all of the literal and empty types to the end.
     expandedTypes = expandedTypes.sort((constrainedType1, constrainedType2) => {
         const type1 = constrainedType1.type;
         const type2 = constrainedType2.type;
@@ -1972,6 +2183,13 @@ export function combineConstrainedTypes(subtypes: ConstrainedSubtype[], maxSubty
         ) {
             return -1;
         }
+
+        if (isObject(type1) && type1.classType.isEmptyContainer) {
+            return 1;
+        } else if (isObject(type2) && type2.classType.isEmptyContainer) {
+            return -1;
+        }
+
         return 0;
     });
 
@@ -2087,7 +2305,7 @@ function _addTypeIfUnique(unionType: UnionType, typeToAdd: UnionableType, constr
 
             // If we're adding Literal[False] or Literal[True] to its
             // opposite, combine them into a non-literal 'bool' type.
-            if (ClassType.isBuiltIn(type.classType, 'bool')) {
+            if (ClassType.isBuiltIn(type.classType, 'bool') && ClassType.isBuiltIn(typeToAdd.classType, 'bool')) {
                 if (
                     typeToAdd.classType.literalValue !== undefined &&
                     !typeToAdd.classType.literalValue === type.classType.literalValue
@@ -2095,6 +2313,14 @@ function _addTypeIfUnique(unionType: UnionType, typeToAdd: UnionableType, constr
                     unionType.subtypes[i] = ObjectType.create(ClassType.cloneWithLiteral(type.classType, undefined));
                     return;
                 }
+            }
+        }
+
+        // If the typeToAdd is an empty container and there's already
+        // non-empty container of the same type, don't add the empty container.
+        if (isObject(typeToAdd) && typeToAdd.classType.isEmptyContainer) {
+            if (isObject(type) && ClassType.isSameGenericClass(type.classType, typeToAdd.classType)) {
+                return;
             }
         }
     }

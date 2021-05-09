@@ -35,7 +35,7 @@ import { timingStats } from '../common/timing';
 import { ModuleSymbolMap } from '../languageService/autoImporter';
 import { AbbreviationMap, CompletionOptions, CompletionResults } from '../languageService/completionProvider';
 import { CompletionItemData, CompletionProvider } from '../languageService/completionProvider';
-import { DefinitionProvider } from '../languageService/definitionProvider';
+import { DefinitionFilter, DefinitionProvider } from '../languageService/definitionProvider';
 import { DocumentHighlightProvider } from '../languageService/documentHighlightProvider';
 import { DocumentSymbolProvider, IndexOptions, IndexResults } from '../languageService/documentSymbolProvider';
 import { HoverProvider, HoverResults } from '../languageService/hoverProvider';
@@ -46,9 +46,10 @@ import { Localizer } from '../localization/localize';
 import { ModuleNode } from '../parser/parseNodes';
 import { ModuleImport, ParseOptions, Parser, ParseResults } from '../parser/parser';
 import { Token } from '../parser/tokenizerTypes';
+import { PyrightFileSystem } from '../pyrightFileSystem';
 import { AnalyzerFileInfo, ImportLookup } from './analyzerFileInfo';
 import * as AnalyzerNodeInfo from './analyzerNodeInfo';
-import { Binder, BinderResults } from './binder';
+import { Binder } from './binder';
 import { Checker } from './checker';
 import { CircularDependency } from './circularDependency';
 import * as CommentUtils from './commentUtils';
@@ -133,7 +134,6 @@ export class SourceFile {
 
     private _parseResults?: ParseResults;
     private _moduleSymbolTable?: SymbolTable;
-    private _binderResults?: BinderResults;
     private _cachedIndexResults?: IndexResults;
 
     // Reentrancy check for binding.
@@ -225,6 +225,10 @@ export class SourceFile {
 
     isStubFile() {
         return this._isStubFile;
+    }
+
+    isThirdPartyPyTypedPresent() {
+        return this._isThirdPartyPyTypedPresent;
     }
 
     // Returns a list of cached diagnostics from the latest analysis job.
@@ -328,10 +332,6 @@ export class SourceFile {
         return this._moduleSymbolTable;
     }
 
-    getModuleDocString(): string | undefined {
-        return this._binderResults ? this._binderResults.moduleDocString : undefined;
-    }
-
     // Indicates whether the contents of the file have changed since
     // the last analysis was performed.
     didContentsChangeOnDisk(): boolean {
@@ -374,7 +374,6 @@ export class SourceFile {
         this._parseResults = undefined;
         this._moduleSymbolTable = undefined;
         this._isBindingNeeded = true;
-        this._binderResults = undefined;
     }
 
     markDirty(): void {
@@ -383,7 +382,6 @@ export class SourceFile {
         this._isBindingNeeded = true;
         this._indexingNeeded = true;
         this._moduleSymbolTable = undefined;
-        this._binderResults = undefined;
         this._cachedIndexResults = undefined;
     }
 
@@ -402,7 +400,6 @@ export class SourceFile {
                 this._isBindingNeeded = true;
                 this._indexingNeeded = true;
                 this._moduleSymbolTable = undefined;
-                this._binderResults = undefined;
                 this._cachedIndexResults = undefined;
             }
         }
@@ -502,7 +499,7 @@ export class SourceFile {
     // (or at least cancel) prior to calling again. It returns true if a parse
     // was required and false if the parse information was up to date already.
     parse(configOptions: ConfigOptions, importResolver: ImportResolver, content?: string): boolean {
-        return this._logTracker.log(`parsing: ${this._filePath}`, (logState) => {
+        return this._logTracker.log(`parsing: ${this._getPathForLogging(this._filePath)}`, (logState) => {
             // If the file is already parsed, we can skip.
             if (!this.isParseRequired()) {
                 logState.suppress();
@@ -542,6 +539,7 @@ export class SourceFile {
                 parseOptions.isStubFile = true;
             }
             parseOptions.pythonVersion = execEnvironment.pythonVersion;
+            parseOptions.skipFunctionAndClassBody = configOptions.indexGenerationMode ?? false;
 
             try {
                 // Parse the token stream, building the abstract syntax tree.
@@ -630,7 +628,7 @@ export class SourceFile {
     }
 
     index(options: IndexOptions, token: CancellationToken): IndexResults | undefined {
-        return this._logTracker.log(`indexing: ${this._filePath}`, (ls) => {
+        return this._logTracker.log(`indexing: ${this._getPathForLogging(this._filePath)}`, (ls) => {
             // If we have no completed analysis job, there's nothing to do.
             if (!this._parseResults || !this.isIndexingRequired()) {
                 ls.suppress();
@@ -638,7 +636,13 @@ export class SourceFile {
             }
 
             this._indexingNeeded = false;
-            const symbols = DocumentSymbolProvider.indexSymbols(this._parseResults, options, token);
+            const symbols = DocumentSymbolProvider.indexSymbols(
+                AnalyzerNodeInfo.getFileInfo(this._parseResults.parseTree)!,
+                this._parseResults,
+                options,
+                token
+            );
+
             ls.add(`found ${symbols.length}`);
 
             const name = stripFileExtension(getFileName(this._filePath));
@@ -650,6 +654,7 @@ export class SourceFile {
     getDefinitionsForPosition(
         sourceMapper: SourceMapper,
         position: Position,
+        filter: DefinitionFilter,
         evaluator: TypeEvaluator,
         token: CancellationToken
     ): DocumentRange[] | undefined {
@@ -662,6 +667,7 @@ export class SourceFile {
             sourceMapper,
             this._parseResults,
             position,
+            filter,
             evaluator,
             token
         );
@@ -718,6 +724,7 @@ export class SourceFile {
         }
 
         DocumentSymbolProvider.addHierarchicalSymbolsForDocument(
+            this._parseResults ? AnalyzerNodeInfo.getFileInfo(this._parseResults.parseTree) : undefined,
             this.getCachedIndexResults(),
             this._parseResults,
             symbolList,
@@ -732,6 +739,7 @@ export class SourceFile {
         }
 
         return DocumentSymbolProvider.getSymbolsForDocument(
+            this._parseResults ? AnalyzerNodeInfo.getFileInfo(this._parseResults.parseTree) : undefined,
             this.getCachedIndexResults(),
             this._parseResults,
             this._filePath,
@@ -771,7 +779,7 @@ export class SourceFile {
 
     getSignatureHelpForPosition(
         position: Position,
-        importLookup: ImportLookup,
+        sourceMapper: SourceMapper,
         evaluator: TypeEvaluator,
         format: MarkupKind,
         token: CancellationToken
@@ -784,6 +792,7 @@ export class SourceFile {
         return SignatureHelpProvider.getSignatureHelpForPosition(
             this._parseResults,
             position,
+            sourceMapper,
             evaluator,
             format,
             token
@@ -846,6 +855,9 @@ export class SourceFile {
         evaluator: TypeEvaluator,
         options: CompletionOptions,
         sourceMapper: SourceMapper,
+        nameMap: AbbreviationMap | undefined,
+        libraryMap: Map<string, IndexResults> | undefined,
+        moduleSymbolsCallback: () => ModuleSymbolMap,
         completionItem: CompletionItem,
         token: CancellationToken
     ) {
@@ -867,7 +879,11 @@ export class SourceFile {
             evaluator,
             options,
             sourceMapper,
-            undefined,
+            {
+                nameMap,
+                libraryMap,
+                getModuleSymbolsMap: moduleSymbolsCallback,
+            },
             token
         );
 
@@ -895,7 +911,7 @@ export class SourceFile {
         assert(!this._isBindingInProgress);
         assert(this._parseResults !== undefined);
 
-        return this._logTracker.log(`binding: ${this._filePath}`, () => {
+        return this._logTracker.log(`binding: ${this._getPathForLogging(this._filePath)}`, () => {
             try {
                 // Perform name binding.
                 timingStats.bindTime.timeOperation(() => {
@@ -909,9 +925,9 @@ export class SourceFile {
                     );
                     AnalyzerNodeInfo.setFileInfo(this._parseResults!.parseTree, fileInfo);
 
-                    const binder = new Binder(fileInfo);
+                    const binder = new Binder(fileInfo, configOptions.indexGenerationMode);
                     this._isBindingInProgress = true;
-                    this._binderResults = binder.bindModule(this._parseResults!.parseTree);
+                    binder.bindModule(this._parseResults!.parseTree);
 
                     // If we're in "test mode" (used for unit testing), run an additional
                     // "test walker" over the parse tree to validate its internal consistency.
@@ -962,7 +978,7 @@ export class SourceFile {
         assert(this.isCheckingRequired());
         assert(this._parseResults !== undefined);
 
-        return this._logTracker.log(`checking: ${this._filePath}`, () => {
+        return this._logTracker.log(`checking: ${this._getPathForLogging(this._filePath)}`, () => {
             try {
                 timingStats.typeCheckerTime.timeOperation(() => {
                     const checker = new Checker(this._parseResults!.parseTree, evaluator);
@@ -1138,5 +1154,13 @@ export class SourceFile {
             typeshedModulePath,
             collectionsModulePath,
         };
+    }
+
+    private _getPathForLogging(filepath: string) {
+        if (!(this.fileSystem instanceof PyrightFileSystem) || !this.fileSystem.isMappedFilePath(filepath)) {
+            return filepath;
+        }
+
+        return '[virtual] ' + filepath;
     }
 }

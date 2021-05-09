@@ -1,5 +1,5 @@
 from distutils.version import Version
-from typing import Any, Callable, Dict, List, Optional, Protocol, Text, Tuple, Type, TypeVar, Union, overload
+from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol, Text, Tuple, Type, TypeVar, Union, overload
 
 from click.core import Argument, Command, Context, Group, Option, Parameter, _ConvertibleType
 
@@ -28,6 +28,7 @@ def command(
     short_help: Optional[str] = ...,
     options_metavar: str = ...,
     add_help_option: bool = ...,
+    no_args_is_help: bool = ...,
     hidden: bool = ...,
     deprecated: bool = ...,
 ) -> Callable[[Callable[..., Any]], Command]: ...
@@ -70,7 +71,7 @@ def argument(
     expose_value: bool = ...,
     is_eager: bool = ...,
     envvar: Optional[Union[str, List[str]]] = ...,
-    autocompletion: Optional[Callable[[Any, List[str], str], List[Union[str, Tuple[str, str]]]]] = ...,
+    autocompletion: Optional[Callable[[Context, List[str], str], Iterable[Union[str, Tuple[str, str]]]]] = ...,
 ) -> _IdentityFunction: ...
 @overload
 def option(

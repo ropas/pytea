@@ -6,6 +6,8 @@
  * Python doc string to markdown/plain text format conversion.
  */
 
+import { cleanAndSplitDocString } from './docStringUtils';
+
 // Converts a docstring to markdown format.
 //
 // This does various things, including removing common indention, escaping
@@ -25,7 +27,7 @@ export function convertDocStringToMarkdown(docString: string): string {
 //  first strip any common leading indention (like inspect.cleandoc),
 //  then remove duplicate empty/whitespace lines.
 export function convertDocStringToPlainText(docString: string): string {
-    const lines = _splitDocString(docString);
+    const lines = cleanAndSplitDocString(docString);
     const output: string[] = [];
 
     for (const line of lines) {
@@ -47,7 +49,6 @@ interface RegExpReplacement {
 
 // Regular expressions for one match
 const LeadingSpaceCountRegExp = /\S|$/;
-const CrLfRegExp = /\r?\n/;
 const NonWhitespaceRegExp = /\S/;
 const TildaHeaderRegExp = /^\s*~~~+$/;
 const PlusHeaderRegExp = /^\s*\+\+\++$/;
@@ -72,10 +73,10 @@ const PotentialHeaders: RegExpReplacement[] = [
 // Regular expressions for replace all
 const WhitespaceRegExp = /\s/g;
 const DoubleTickRegExp = /``/g;
-const TabRegExp = /\t/g;
 const TildeRegExp = /~/g;
 const PlusRegExp = /\+/g;
 const UnescapedMarkdownCharsRegExp = /(?<!\\)([_*~[\]])/g;
+const linkRegExp = /(\[.*\]\(.*\))/g;
 
 const HtmlEscapes: RegExpReplacement[] = [
     { exp: /</g, replacement: '&lt;' },
@@ -112,7 +113,7 @@ class DocStringConverter {
 
     constructor(input: string) {
         this._state = this._parseText;
-        this._lines = _splitDocString(input);
+        this._lines = cleanAndSplitDocString(input);
     }
 
     convert(): string {
@@ -236,7 +237,7 @@ class DocStringConverter {
 
         const line = this.formatPlainTextIndent(this._currentLine());
 
-        this._appendTextLine(this._escapeHtml(line));
+        this._appendTextLine(line);
         this._eatLine();
     }
 
@@ -303,6 +304,8 @@ class DocStringConverter {
                 continue;
             }
 
+            part = this._escapeHtml(part);
+
             if (i === 0) {
                 // Only one part, and not inside code, so check header cases.
                 if (parts.length === 1) {
@@ -355,9 +358,15 @@ class DocStringConverter {
             // TODO: Strip footnote/citation references.
 
             // Escape _, *, and ~, but ignore things like ":param \*\*kwargs:".
-            part = part.replace(UnescapedMarkdownCharsRegExp, '\\$1');
-
-            this._append(part);
+            const subparts = part.split(linkRegExp);
+            subparts.forEach((item) => {
+                // Don't escape links
+                if (linkRegExp.test(item)) {
+                    this._append(item);
+                } else {
+                    this._append(item.replace(UnescapedMarkdownCharsRegExp, '\\$1'));
+                }
+            });
         }
 
         // Go straight to the builder so that _appendLine doesn't think
@@ -542,7 +551,7 @@ class DocStringConverter {
         // Handle epyDocs
         if (line.startsWith('@')) {
             this._appendLine();
-            this._appendTextLine(this._escapeHtml(line));
+            this._appendTextLine(line);
             this._eatLine();
             return true;
         }
@@ -563,7 +572,7 @@ class DocStringConverter {
 
             // force indent for fields
             line = this._convertIndent(line);
-            this._appendTextLine(this._escapeHtml(line));
+            this._appendTextLine(line);
             this._eatLine();
             return true;
         }
@@ -632,7 +641,7 @@ class DocStringConverter {
         // Remove leading spaces so that multiline items get appear in a single block
         if (isMultiLineItem) {
             const line = this._currentLine().trimStart();
-            this._appendTextLine(this._escapeHtml(line));
+            this._appendTextLine(line);
             this._eatLine();
         }
     }
@@ -705,41 +714,6 @@ class DocStringConverter {
 
         this._appendLine(line);
     }
-}
-
-function _splitDocString(docstring: string): string[] {
-    // As done by inspect.cleandoc.
-    docstring = docstring.replace(TabRegExp, ' '.repeat(8));
-
-    let lines = docstring.split(CrLfRegExp).map((v) => v.trimRight());
-    if (lines.length > 0) {
-        let first: string | undefined = lines[0].trimLeft();
-        if (first === '') {
-            first = undefined;
-        } else {
-            lines.splice(0, 1);
-        }
-
-        lines = _stripLeadingWhitespace(lines);
-
-        if (first !== undefined) {
-            lines.splice(0, 0, first);
-        }
-    }
-
-    return lines;
-}
-
-function _stripLeadingWhitespace(lines: string[], trim?: number): string[] {
-    const amount = trim === undefined ? _largestTrim(lines) : trim;
-    return lines.map((line) => (amount > line.length ? '' : line.substr(amount)));
-}
-
-function _largestTrim(lines: string[]): number {
-    const nonEmptyLines = lines.filter((s) => !_isUndefinedOrWhitespace(s));
-    const counts = nonEmptyLines.map(_countLeadingSpaces);
-    const largest = counts.length > 0 ? Math.min(...counts) : 0;
-    return largest;
 }
 
 function _countLeadingSpaces(s: string): number {
