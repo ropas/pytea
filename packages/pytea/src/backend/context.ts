@@ -73,7 +73,7 @@ let _failId = 0;
 function getFailedId(): number {
     return ++_failId;
 }
-const LOG_IGNORE = ['tensor.py', 'builtins.py', 'functional.py'];
+const LOG_IGNORE = ['tensor.py', 'functional.py', 'builtins.py', 'linear.py', 'module.py'];
 function checkIgnorePath(path: string) {
     for (const p of LOG_IGNORE) {
         if (path.endsWith(p)) {
@@ -467,6 +467,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         source: CodeSource | undefined,
         partialDims?: Map<number, ExpNum>
     ): ContextSet<ExpShapeConst> {
+        source = this._replaceBuiltinSource(source);
         if (rank < 0)
             return (this.failWithMsg(
                 `from 'genRankedShape': got negative rank ${rank}`,
@@ -517,6 +518,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         source: CodeSource | undefined,
         partialDims?: Map<number, ExpNum>
     ): ContextSet<ExpShape> {
+        source = this._replaceBuiltinSource(source);
         if (typeof rank === 'number') {
             return this.genConstRankedShape(rank, source, partialDims);
         }
@@ -573,6 +575,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
 
     // constraint generator
     genBool(pred: ExpBool | boolean, source: CodeSource | undefined): Constraint {
+        source = this._replaceBuiltinSource(source);
         return this.ctrSet.genEquality(
             ConstraintType.Equal,
             SymExp.fromConst(pred),
@@ -586,6 +589,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         right: SymExp | number | string | boolean,
         source: CodeSource | undefined
     ): CtrEq {
+        source = this._replaceBuiltinSource(source);
         return this.ctrSet.genEquality(
             ConstraintType.Equal,
             SymExp.fromConst(left),
@@ -599,6 +603,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         right: SymExp | number | string | boolean,
         source: CodeSource | undefined
     ): CtrNeq {
+        source = this._replaceBuiltinSource(source);
         return this.ctrSet.genEquality(
             ConstraintType.NotEqual,
             SymExp.fromConst(left),
@@ -608,6 +613,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     }
 
     genLt(left: ExpNum | number, right: ExpNum | number, source: CodeSource | undefined): CtrLt {
+        source = this._replaceBuiltinSource(source);
         return this.ctrSet.genNumCompare(
             ConstraintType.LessThan,
             SymExp.fromConst(left) as ExpNum,
@@ -617,6 +623,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     }
 
     genLte(left: ExpNum | number, right: ExpNum | number, source: CodeSource | undefined): CtrLte {
+        source = this._replaceBuiltinSource(source);
         return this.ctrSet.genNumCompare(
             ConstraintType.LessThanOrEqual,
             SymExp.fromConst(left) as ExpNum,
@@ -626,18 +633,22 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     }
 
     genAnd(left: Constraint, right: Constraint, source: CodeSource | undefined): CtrAnd {
+        source = this._replaceBuiltinSource(source);
         return this.ctrSet.genAnd(left, right, source);
     }
 
     genOr(left: Constraint, right: Constraint, source: CodeSource | undefined): CtrOr {
+        source = this._replaceBuiltinSource(source);
         return this.ctrSet.genOr(left, right, source);
     }
 
     genNot(constraint: Constraint, source: CodeSource | undefined): CtrNot {
+        source = this._replaceBuiltinSource(source);
         return this.ctrSet.genNot(constraint, source);
     }
 
     genBroadcastable(left: ExpShape, right: ExpShape, source: CodeSource | undefined): CtrBroad {
+        source = this._replaceBuiltinSource(source);
         return this.ctrSet.genBroad(left, right, source);
     }
 
@@ -647,10 +658,12 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         constraint: Constraint,
         source: CodeSource | undefined
     ): CtrForall {
+        source = this._replaceBuiltinSource(source);
         return this.ctrSet.genForall(symbol, range, constraint, source);
     }
 
     genFail(reason: string, source: CodeSource | undefined): CtrFail {
+        source = this._replaceBuiltinSource(source);
         return this.ctrSet.genFail(reason, source);
     }
 
@@ -745,6 +758,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     }
 
     require(ctr: Constraint | Constraint[], failMsg: string, source: CodeSource | undefined): ContextSet<T | SVError> {
+        source = this._replaceBuiltinSource(source);
         if (Array.isArray(ctr)) {
             return this.toSet().require(ctr, failMsg, source);
         } else {
