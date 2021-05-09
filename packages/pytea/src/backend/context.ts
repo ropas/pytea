@@ -9,7 +9,8 @@
  */
 import { List, Map, Record, Set } from 'immutable';
 
-import { ParseNode } from 'pyright-internal/parser/parseNodes';
+import { getFileInfo } from 'pyright-internal/analyzer/analyzerNodeInfo';
+import { ParseNode, ParseNodeType } from 'pyright-internal/parser/parseNodes';
 
 import { fetchAddr, genTensor } from './backUtils';
 import { ConstraintSet } from './constraintSet';
@@ -71,6 +72,16 @@ export type CtxStmt = ContextSet<ShValue | ShContFlag>;
 let _failId = 0;
 function getFailedId(): number {
     return ++_failId;
+}
+const LOG_IGNORE = ['tensor.py', 'builtins.py', 'functional.py'];
+function checkIgnorePath(path: string) {
+    for (const p of LOG_IGNORE) {
+        if (path.endsWith(p)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 interface ContextProps<T> {
@@ -313,6 +324,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         return this.setRetVal(warning).addLogValue(warning);
     }
     warnWithMsg(message: string, source: CodeSource | undefined): Context<SVError> {
+        source = this._replaceBuiltinSource(source);
         const warning = SVError.create(message, SVErrorLevel.Warning, source);
         return this.setRetVal(warning).addLogValue(warning);
     }
@@ -339,7 +351,6 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         const shape = ctx.genSymShape('WarnTempShape', ExpNum.fromSymbol(rank), source);
         return SVSize.createSize(ctx, ExpShape.fromSymbol(shape), source);
     }
-
     // return fully symbolic Size with warning log.
     warnSizeWithMsg(message: string, source: CodeSource | undefined): Context<SVSize> {
         const warning = SVError.create(message, SVErrorLevel.Warning, source);
@@ -351,10 +362,12 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         return this.set('failed', error).set('failId', getFailedId()).addLogValue(error).setRetVal(error);
     }
     failWithMsg(message: string, source: CodeSource | undefined): Context<SVError> {
+        source = this._replaceBuiltinSource(source);
         return this.fail(SVError.create(message, SVErrorLevel.Error, source));
     }
 
     addLog(message: string, source: CodeSource | undefined): Context<T> {
+        source = this._replaceBuiltinSource(source);
         return this.set('logs', this.logs.push(SVError.create(message, SVErrorLevel.Log, source)));
     }
 
@@ -664,7 +677,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
     // shape operations
     shBroadcast(left: ExpShape, right: ExpShape, source: CodeSource | undefined): ContextSet<ExpShape> {
         return this.require([this.genBroadcastable(left, right, source)], 'shape is not broadcastable', source).return(
-            ExpShape.broadcast(left, right, source)
+            simplifyShape(this.ctrSet, ExpShape.broadcast(left, right, source))
         );
     }
 
@@ -705,7 +718,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
                 const rightRDim = ExpNum.index(right, ExpNum.bop(NumBopType.Sub, rightRank, 1, source), source);
 
                 const matmulShape = ExpShape.fromConst(2, [leftLDim, rightRDim], source);
-                return ctx.setRetVal(ExpShape.concat(broadShape, matmulShape, source));
+                return ctx.setRetVal(simplifyShape(this.ctrSet, ExpShape.concat(broadShape, matmulShape, source)));
             });
     }
 
@@ -716,7 +729,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         source: CodeSource | undefined
     ): ContextSet<ExpShape> {
         const rank = ExpShape.getRank(shape);
-        const axisCtr = this.genAnd(this.genLte(0, axis, source), this.genLt(axis, rank, source), source);
+        const axisCtr = this.genAnd(this.genLte(0, axis, source), this.genLte(axis, rank, source), source);
         const countCtr = this.genLte(0, count, source);
 
         return this.require([axisCtr, countCtr], 'shRepeat constraint failed', source).map((ctx) => {
@@ -727,7 +740,7 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
                 rightShape,
                 source
             );
-            return ctx.setRetVal(repeated);
+            return ctx.setRetVal(simplifyShape(this.ctrSet, repeated));
         });
     }
 
@@ -770,6 +783,35 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
             return true;
         }
         return false;
+    }
+
+    // replace builtin.py source by call stack
+    private _replaceBuiltinSource(source: CodeSource | undefined): CodeSource | undefined {
+        if (source && !('fileId' in source)) {
+            let moduleNode = source;
+            while (moduleNode.nodeType !== ParseNodeType.Module) {
+                moduleNode = moduleNode.parent!;
+            }
+
+            const fileInfo = getFileInfo(moduleNode)!;
+            if (checkIgnorePath(fileInfo.filePath)) {
+                for (let i = this.callStack.count() - 1; i >= 0; i--) {
+                    const node = this.callStack.get(i)![1];
+                    if (node && !('fileId' in node)) {
+                        moduleNode = node;
+                        while (moduleNode.nodeType !== ParseNodeType.Module) {
+                            moduleNode = moduleNode.parent!;
+                        }
+                        const fileInfo = getFileInfo(moduleNode)!;
+                        if (!checkIgnorePath(fileInfo.filePath)) {
+                            return node;
+                        }
+                    }
+                }
+            }
+        }
+
+        return source;
     }
 }
 

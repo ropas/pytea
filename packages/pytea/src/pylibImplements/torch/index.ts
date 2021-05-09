@@ -2490,9 +2490,6 @@ export namespace TorchLCImpl {
         const heap = ctx.heap;
         const [inputAddr, startDimAddr, endDimAddr] = params;
 
-        // TODO: use kwargs info.
-        // TODO: handle negative indexing
-
         const inputSize = fetchSize(inputAddr, heap);
         if (typeof inputSize === 'string') {
             return ctx.warnTensorWithMsg(`from 'LibCall.torch.flatten': ${inputSize}`, source);
@@ -2504,14 +2501,14 @@ export namespace TorchLCImpl {
         if (startDim === undefined) {
             startDim = SVInt.create(ExpNum.fromConst(0, source), source);
         } else if (startDim.type !== SVType.Int) {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.flatten': ${startDim}`, source);
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.flatten': start is not an integer`, source);
         }
 
         let endDim = fetchAddr(endDimAddr, heap);
         if (endDim === undefined) {
             endDim = SVInt.create(ExpNum.bop(NumBopType.Sub, inputRank, 1, source), source);
         } else if (endDim.type !== SVType.Int) {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.flatten': ${endDim}`, source);
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.flatten': end is not an integer`, source);
         } else if (endDim.value === -1 || endDim.value === ExpNum.fromConst(-1, source)) {
             endDim = SVInt.create(ExpNum.bop(NumBopType.Sub, inputRank, 1, source), source);
         }
@@ -2544,6 +2541,55 @@ export namespace TorchLCImpl {
                 source
             )
             .flatMap((ctx) => genTensor(ctx, returnShape, source));
+    }
+
+    export function narrow(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length < 1) {
+            return ctx.warnTensorWithMsg(
+                `from 'LibCall.torch.narrow': got insufficient number of argument: ${params.length}`,
+                source
+            );
+        }
+
+        const heap = ctx.heap;
+        const [inputAddr, dimAddr, startAddr, lengthAddr] = params;
+
+        const inputSize = fetchSize(inputAddr, heap);
+        if (typeof inputSize === 'string') {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.narrow': ${inputSize}`, source);
+        }
+        const inputShape = inputSize.shape;
+        const inputRank = inputSize.rank();
+
+        const dim = fetchAddr(dimAddr, heap);
+        const start = fetchAddr(startAddr, heap);
+        const length = fetchAddr(lengthAddr, heap);
+
+        if (dim?.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.narrow': dim is not an integer`, source);
+        }
+        if (start?.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.narrow': start is not an integer`, source);
+        }
+        if (length?.type !== SVType.Int) {
+            return ctx.warnTensorWithMsg(`from 'LibCall.torch.narrow': length is not an integer`, source);
+        }
+
+        const endVal = ExpNum.bop(NumBopType.Add, start.value, length.value, source);
+        const axisDim = ExpNum.index(inputShape, dim.value, source);
+        return ctx
+            .require(
+                [ctx.genLte(0, dim.value, source), ctx.genLt(dim.value, inputRank, source)],
+                `from 'LibCall.torch.narrow': 'dim' range error`,
+                source
+            )
+            .require(
+                [ctx.genLte(0, start.value, source), ctx.genLte(endVal, axisDim, source)],
+                `from 'LibCall.torch.narrow': narrowing range error`,
+                source
+            )
+            .flatMap((ctx) => genTensor(ctx, ExpShape.setDim(inputShape, dim.value, length.value, source), source));
     }
 
     export function pixel_shuffle(
@@ -2613,42 +2659,6 @@ export namespace TorchLCImpl {
 
                 return genTensor(ctx, retShape, source);
             });
-    }
-
-    export function embedding(
-        ctx: Context<LCBase.ExplicitParams>,
-        source: CodeSource | undefined
-    ): ContextSet<ShValue> {
-        const params = ctx.retVal.params;
-        if (params.length < 2) {
-            return ctx.warnTensorWithMsg(
-                `from 'LibCall.torch.embedding': got insufficient number of argument: ${params.length}`,
-                source
-            );
-        }
-
-        const heap = ctx.heap;
-        const [inputAddr, weightAddr] = params;
-
-        const inputSize = fetchSize(inputAddr, heap);
-        if (typeof inputSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.embedding': ${inputSize}`, source);
-        }
-        const inputShape = inputSize.shape;
-
-        const weightSize = fetchSize(weightAddr, heap);
-        if (typeof weightSize === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.embedding': ${weightSize}`, source);
-        }
-        const weightShape = weightSize.shape;
-        const weightRank = weightSize.rank();
-
-        const weightLastShape = ExpShape.slice(weightShape, 1, undefined, source);
-        const returnShape = ExpShape.concat(inputShape, weightLastShape, source);
-
-        return ctx
-            .require([ctx.genEq(2, weightRank, source)], `from 'LibCall.torch.embedding': weight rank is not 2`, source)
-            .flatMap((ctx) => genTensor(ctx, returnShape, source));
     }
 
     // TODO: `broadcastable` is not the sufficient condition for this code
@@ -3065,8 +3075,8 @@ export namespace TorchLCImpl {
         squeeze,
         diag,
         flatten,
+        narrow,
         pixel_shuffle,
-        embedding,
         layer_norm,
         pad,
         adaptive,

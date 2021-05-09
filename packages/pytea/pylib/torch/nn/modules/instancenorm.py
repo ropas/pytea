@@ -1,6 +1,6 @@
 import LibCall
 from .module import Module
-from .. import functional as F
+from ...tensor import Tensor
 
 
 class _InstanceNorm(Module):

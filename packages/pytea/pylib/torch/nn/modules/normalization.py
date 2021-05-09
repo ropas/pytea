@@ -17,4 +17,6 @@ class LayerNorm(Module):
         self.bias = Tensor(*normalized_shape)
 
     def forward(self, input):
-        return F.layer_norm(input, self.normalized_shape, self.weight, self.bias, self.eps)
+        return F.layer_norm(
+            input, self.normalized_shape, self.weight, self.bias, self.eps
+        )

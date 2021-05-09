@@ -31,26 +31,25 @@ class RNNBase(Module):
         else:
             self.num_directions = 1
 
+    def flatten_parameters(self):
+        return
+
 
 class RNN(RNNBase):
     def __init__(self, *args, **kwargs):
         super(RNN, self).__init__("RNN_TANH", *args, **kwargs)
 
-    def forward(self, value):
+    def forward(self, input, hx=None):
         # TODO: resolve packed sequence
-        input, h_0 = value
 
         assert LibCall.guard.require_eq(input.ndim, 3, "input rank is not 3")
-        assert LibCall.guard.require_eq(h_0.ndim, 3, "h_0 rank is not 3")
-
         input_shape = input.shape
-        h_0_shape = h_0.shape
 
         if self.batch_first:
             batch = input_shape[0]
             seq_len = input_shape[1]
             h_0_require = torch.Size(
-                batch, self.num_layers * self.num_directions, self.hidden_size
+                (batch, self.num_layers * self.num_directions, self.hidden_size)
             )
             output_shape = (batch, seq_len, self.num_directions * self.hidden_size)
             h_n_shape = (
@@ -62,7 +61,7 @@ class RNN(RNNBase):
             batch = input_shape[1]
             seq_len = input_shape[0]
             h_0_require = torch.Size(
-                self.num_layers * self.num_directions, batch, self.hidden_size
+                (self.num_layers * self.num_directions, batch, self.hidden_size)
             )
             output_shape = (seq_len, batch, self.num_directions * self.hidden_size)
             h_n_shape = (
@@ -71,9 +70,10 @@ class RNN(RNNBase):
                 self.hidden_size,
             )
 
-        assert LibCall.guard.require_shape_eq(
-            h_0_shape, h_0_require, "h_0 shape mismatch"
-        )
+        if hx is not None:
+            assert LibCall.guard.require_shape_eq(
+                hx.shape, h_0_require, "h_0 shape mismatch"
+            )
 
         output = torch.rand(*output_shape)
         h_n = torch.rand(*h_n_shape)
@@ -85,21 +85,17 @@ class LSTM(RNNBase):
     def __init__(self, *args, **kwargs):
         super(LSTM, self).__init__("LSTM", *args, **kwargs)
 
-    def forward(self, value):
+    def forward(self, input, hx=None):
         # TODO: resolve packed sequence
-        input, h_0 = value
 
         assert LibCall.guard.require_eq(input.ndim, 3, "input rank is not 3")
-        assert LibCall.guard.require_eq(h_0.ndim, 3, "h_0 rank is not 3")
-
         input_shape = input.shape
-        h_0_shape = h_0.shape
 
         if self.batch_first:
             batch = input_shape[0]
             seq_len = input_shape[1]
-            h_0_require = torch.rand(
-                batch, self.num_layers * self.num_directions, self.hidden_size
+            h_0_require = torch.Size(
+                (batch, self.num_layers * self.num_directions, self.hidden_size)
             )
             output_shape = (batch, seq_len, self.num_directions * self.hidden_size)
             h_n_shape = (
@@ -110,8 +106,8 @@ class LSTM(RNNBase):
         else:
             batch = input_shape[1]
             seq_len = input_shape[0]
-            h_0_require = torch.rand(
-                self.num_layers * self.num_directions, batch, self.hidden_size
+            h_0_require = torch.Size(
+                (self.num_layers * self.num_directions, batch, self.hidden_size)
             )
             output_shape = (seq_len, batch, self.num_directions * self.hidden_size)
             h_n_shape = (
@@ -120,35 +116,37 @@ class LSTM(RNNBase):
                 self.hidden_size,
             )
 
-        assert LibCall.guard.require_shape_eq(
-            h_0_shape, h_0_require, "h_0 shape mismatch"
-        )
+        if hx is not None:
+            h_0, c_0 = hx
+            assert LibCall.guard.require_shape_eq(
+                h_0.shape, h_0_require, "h_0 shape mismatch"
+            )
+            assert LibCall.guard.require_shape_eq(
+                c_0.shape, h_0_require, "c_0 shape mismatch"
+            )
 
         output = torch.rand(*output_shape)
         h_n = torch.rand(*h_n_shape)
+        c_n = torch.rand(*h_n_shape)
 
-        return (output, h_n)
+        return (output, (h_n, c_n))
 
 
 class GRU(RNNBase):
     def __init__(self, *args, **kwargs):
         super(GRU, self).__init__("GRU", *args, **kwargs)
 
-    def forward(self, value):
+    def forward(self, input, hx=None):
         # TODO: resolve packed sequence
-        input, h_0 = value
 
         assert LibCall.guard.require_eq(input.ndim, 3, "input rank is not 3")
-        assert LibCall.guard.require_eq(h_0.ndim, 3, "h_0 rank is not 3")
-
         input_shape = input.shape
-        h_0_shape = h_0.shape
 
         if self.batch_first:
             batch = input_shape[0]
             seq_len = input_shape[1]
-            h_0_require = torch.rand(
-                batch, self.num_layers * self.num_directions, self.hidden_size
+            h_0_require = torch.Size(
+                (batch, self.num_layers * self.num_directions, self.hidden_size)
             )
             output_shape = (batch, seq_len, self.num_directions * self.hidden_size)
             h_n_shape = (
@@ -159,8 +157,8 @@ class GRU(RNNBase):
         else:
             batch = input_shape[1]
             seq_len = input_shape[0]
-            h_0_require = torch.rand(
-                self.num_layers * self.num_directions, batch, self.hidden_size
+            h_0_require = torch.Size(
+                (self.num_layers * self.num_directions, batch, self.hidden_size)
             )
             output_shape = (seq_len, batch, self.num_directions * self.hidden_size)
             h_n_shape = (
@@ -169,9 +167,10 @@ class GRU(RNNBase):
                 self.hidden_size,
             )
 
-        assert LibCall.guard.require_shape_eq(
-            h_0_shape, h_0_require, "h_0 shape mismatch"
-        )
+        if hx is not None:
+            assert LibCall.guard.require_shape_eq(
+                hx.shape, h_0_require, "h_0 shape mismatch"
+            )
 
         output = torch.rand(*output_shape)
         h_n = torch.rand(*h_n_shape)

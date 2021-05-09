@@ -189,20 +189,6 @@ def sigmoid(input, out=None):
     return result
 
 
-def embedding(
-    input,
-    weight,
-    offsets=None,
-    max_norm=None,
-    norm_type=2,
-    scale_grad_by_freq=False,
-    mode="mean",
-    sparse=False,
-    per_sample_weights=None,
-):
-    return LibCall.torch.embedding(input, weight)
-
-
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     # TODO: implement weight and bias
     norm_tensor = Tensor(*normalized_shape)

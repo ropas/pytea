@@ -501,7 +501,12 @@ export namespace BuiltinsLCImpl {
         }
 
         if (isNewKey) {
-            const len = dict.getAttr('$length') as SVInt;
+            const len = dict.getAttr('$length');
+            if (len?.type !== SVType.Int) {
+                return ctx
+                    .warnWithMsg(`from 'LibCall.builtins.dict_setitem': dict length is not an integer type`, source)
+                    .toSet();
+            }
             const newLen = simplifyNum(ctx.ctrSet, ExpNum.bop(NumBopType.Add, len.value, 1, source));
             dict = dict.setAttr('$length', SVInt.create(newLen, source));
         }

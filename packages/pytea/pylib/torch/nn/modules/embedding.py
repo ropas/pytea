@@ -1,11 +1,21 @@
 import LibCall
 from .module import Module
 from .. import functional as F
-from ...tensor import Tensor
+from ...tensor import Tensor, Size
 
 
 class Embedding(Module):
-    def __init__(self, num_embeddings, embedding_dim, padding_idx=None, max_norm=None, norm_type=2.0, scale_grad_by_freq=False, sparse=False, _weight=None):
+    def __init__(
+        self,
+        num_embeddings,
+        embedding_dim,
+        padding_idx=None,
+        max_norm=None,
+        norm_type=2.0,
+        scale_grad_by_freq=False,
+        sparse=False,
+        _weight=None,
+    ):
         super(Embedding, self).__init__()
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
@@ -21,4 +31,5 @@ class Embedding(Module):
             self.weight = Tensor(num_embeddings, embedding_dim)
 
     def forward(self, input):
-        return F.embedding(input, self.weight, self.padding_idx, self.max_norm, self.norm_type, self.scale_grad_by_freq, self.sparse)
+        shape = LibCall.shape.repeat(input.shape, input.ndim, self.embedding_dim)
+        return Tensor(Size(shape))

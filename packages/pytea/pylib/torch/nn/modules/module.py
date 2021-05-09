@@ -48,9 +48,11 @@ class Module:
     def zero_grad(self, set_to_none=False):
         return None
 
-    def register_buffer(self, name, tensor):
-        # TODO: this is not workly currently.. fix this
-        LibCall.builtins.dict_setitem(self, name, tensor)
+    def register_buffer(self, name, tensor, persistent=True):
+        setattr(self, name, tensor)
+
+    def register_parameter(self, name, param):
+        setattr(self, name, param)
 
     def state_dict(self, destination=None, prefix=None, keep_vars=None):
         # TODO: make key-value pair

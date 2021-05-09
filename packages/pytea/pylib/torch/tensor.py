@@ -128,6 +128,30 @@ class Tensor:
     def exp_(self):
         return self
 
+    def sin(self):
+        return torch.sin(self)
+
+    def sin_(self):
+        return self
+
+    def cos(self):
+        return torch.cos(self)
+
+    def cos_(self):
+        return self
+
+    def tan(self):
+        return torch.tan(self)
+
+    def tan_(self):
+        return self
+
+    def tanh(self):
+        return torch.tanh(self)
+
+    def tanh_(self):
+        return self
+
     def expm1(self):
         return torch.exp(self)
 
@@ -136,6 +160,17 @@ class Tensor:
 
     def fill_(self):
         return self
+
+    def new_zeros(self, *size, dtype=None, device=None, requires_grad=None):
+        first = size[0]
+        if isinstance(first, tuple):
+            tensor = torch.Tensor(torch.Size(first))
+        else:
+            tensor = torch.Tensor(torch.Size(size))
+        if dtype is None:
+            dtype = self.dtype
+        tensor.dtype = dtype
+        return tensor
 
     def bernoulli(self, generator=None):
         return torch.bernoulli(self)
@@ -294,7 +329,12 @@ class Tensor:
         return tensor
 
     def flatten(self, start_dim=0, end_dim=-1):
-        tensor = LibCall.torch.flatten(self, start_dim, end_dim)
+        tensor = torch.flatten(self, start_dim, end_dim)
+        tensor.dtype = self.dtype
+        return tensor
+
+    def narrow(self, dim, start, length):
+        tensor = torch.narrow(self, dim, start, length)
         tensor.dtype = self.dtype
         return tensor
 
@@ -307,6 +347,24 @@ class Tensor:
         tensor = LibCall.torch.expand_as(self, other)
         tensor.dtype = self.dtype
         return tensor
+
+    def masked_fill(self, mask, value):
+        assert LibCall.guard.require_broadcastable(
+            self.shape,
+            mask.shape,
+            "from 'torch.Tensor.masked_fill': mask is not braodcastable",
+        )
+        tensor = LibCall.torch.identityShape(self)
+        tensor.dtype = self.dtype
+        return tensor
+
+    def masked_fill_(self, mask, value):
+        assert LibCall.guard.require_broadcastable(
+            self.shape,
+            mask.shape,
+            "from 'torch.Tensor.masked_fill_': mask is not braodcastable",
+        )
+        return self
 
     def device(self):
         return "cuda"

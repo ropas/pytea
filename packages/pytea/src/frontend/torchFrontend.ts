@@ -1106,11 +1106,15 @@ export class TorchIRFrontend {
 
     visitTry(node: TryNode): ThStmt {
         // TODO: implement except clause
-        if (node.elseSuite) {
-            return TSSeq.create(this.visitStmtNode(node.trySuite), this.visitStmtNode(node.elseSuite), node);
+        if (node.finallySuite) {
+            return TSSeq.create(
+                this.visitArray(node.trySuite.statements),
+                this.visitArray(node.finallySuite.statements),
+                node
+            );
         }
 
-        return this.visitStmtNode(node.trySuite);
+        return this.visitArray(node.trySuite.statements);
     }
 
     visitFunction(node: FunctionNode): [string, string[], ThStmt] {

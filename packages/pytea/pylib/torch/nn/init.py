@@ -66,7 +66,7 @@ def ones_(tensor):
     pass
 
 
-def zeroes_(tensor):
+def zeros_(tensor):
     pass
 
 

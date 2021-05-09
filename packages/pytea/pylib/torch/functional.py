@@ -2,7 +2,7 @@ import LibCall
 import torch
 from collections import namedtuple
 import numpy as np
-from torch.tensor import Tensor
+from torch.tensor import Tensor, Size
 
 
 torchValIdx = namedtuple("torchValIdx", ["values", "indices"])
@@ -346,44 +346,40 @@ def log2(input, out=None):
     return result
 
 
+def cos(input, out=None):
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
+
+
+def sin(input, out=None):
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
+
+
+def tan(input, out=None):
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
+
+
 def bernoulli(input, generator=None, out=None):
     result = LibCall.torch.identityShape(input)
     LibCall.torch.copyOut(result, out)
     return result
 
 
-def _bop(tensor, other):
-    if isinstance(other, Tensor):
-        dtype = torch.maxDtype(tensor, other)
-        tensor = LibCall.torch.broadcast(tensor, other)
-        tensor.dtype = dtype
-        return tensor
-    elif isinstance(other, np.ndarray):
-        return LibCall.torch.broadcast(tensor, other)
-    elif isinstance(other, int):
-        dtype = tensor.dtype
-        tensor = LibCall.torch.identityShape(tensor)
-        tensor.dtype = dtype
-        return tensor
-    elif isinstance(other, float):
-        if (
-            tensor.dtype is torch.float64
-            or tensor.dtype is torch.float32
-            or tensor.dtype is torch.float16
-        ):
-            dtype = tensor.dtype
-        else:
-            dtype = torch.floatDefault
-        tensor = LibCall.torch.identityShape(tensor)
-        tensor.dtype = dtype
-        return tensor
-    else:
-        return NotImplemented
-
-
 def flatten(input, start_dim=0, end_dim=-1):
     dtype = input.dtype
     tensor = LibCall.torch.flatten(input, start_dim, end_dim)
+    tensor.dtype = dtype
+    return tensor
+
+
+def narrow(input, dim, start, length):
+    dtype = input.dtype
+    tensor = LibCall.torch.narrow(input, dim, start, length)
     tensor.dtype = dtype
     return tensor
 
@@ -423,6 +419,12 @@ def softmax(input, dim=None, dtype=None):
     tensor = LibCall.torch.identityShape(input)
     tensor.dtype = dtype
     return tensor
+
+
+def triu(input, diagonal=0, out=None):
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
 
 
 def arange(start, end=None, step=1, out=None, **kwargs):
@@ -484,3 +486,32 @@ def from_numpy(ndarray_):
     shape = LibCall.shape.extractShape(ndarray_)
     result = torch.Tensor(shape, dtype=dtype)
     return result
+
+
+def _bop(tensor, other):
+    if isinstance(other, Tensor):
+        dtype = torch.maxDtype(tensor, other)
+        tensor = LibCall.torch.broadcast(tensor, other)
+        tensor.dtype = dtype
+        return tensor
+    elif isinstance(other, np.ndarray):
+        return LibCall.torch.broadcast(tensor, other)
+    elif isinstance(other, int):
+        dtype = tensor.dtype
+        tensor = LibCall.torch.identityShape(tensor)
+        tensor.dtype = dtype
+        return tensor
+    elif isinstance(other, float):
+        if (
+            tensor.dtype is torch.float64
+            or tensor.dtype is torch.float32
+            or tensor.dtype is torch.float16
+        ):
+            dtype = tensor.dtype
+        else:
+            dtype = torch.floatDefault
+        tensor = LibCall.torch.identityShape(tensor)
+        tensor.dtype = dtype
+        return tensor
+    else:
+        return NotImplemented
