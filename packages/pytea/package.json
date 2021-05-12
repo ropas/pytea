@@ -1,11 +1,11 @@
 {
     "name": "pytea",
     "displayName": "pytea",
-    "description": "PyTEA: PyTorch Tensor Error Analyzer",
+    "description": "PyTea: PyTorch Tensor Error Analyzer",
     "version": "0.1.0",
     "license": "MIT",
     "author": {
-        "name": "Ho Young Jhoo"
+        "name": "SNU SFLab / ROPAS"
     },
     "publisher": "Seoul National University",
     "engines": {
@@ -13,7 +13,7 @@
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/MerHS/pytea",
+        "url": "https://github.com/ropas/pytea",
         "directory": "packages/pytea"
     },
     "scripts": {

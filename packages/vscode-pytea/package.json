@@ -1,14 +1,14 @@
 {
     "name": "vscode-pytea",
-    "displayName": "Pytea",
-    "description": "Pytea: PyTorch Tensor Error Analyzer",
+    "displayName": "vscode-pytea",
+    "description": "vscode-pytea: PyTea extension for VSCode",
     "version": "0.1.0",
     "private": true,
     "license": "MIT",
     "author": {
-        "name": "Seoul National University"
+        "name": "Ho Young Jhoo"
     },
-    "publisher": "snu-ropas-sf",
+    "publisher": "Seoul National University",
     "repository": {
         "type": "git",
         "url": "https://github.com/ropas/pytea"
