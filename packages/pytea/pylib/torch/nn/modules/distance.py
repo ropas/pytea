@@ -9,4 +9,4 @@ class CosineSimilarity(Module):
         self.eps = eps
 
     def forward(self, x1, x2):
-        return F.cosine_similarity(x1, x2, self.dim, self.eps)
+        return LibCall.torch.reduce(x1 * x2, self.dim, False)

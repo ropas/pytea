@@ -61,9 +61,13 @@ def randint(*args, **kwargs):
     if "dtype" in kwargs:
         dtype = kwargs["dtype"]
 
-    size = args[1]
-    if len(args) > 2:
-        size = args[2]
+    if "size" in kwargs:
+        size = kwargs["size"]
+    else:
+        size_len = len(args) - 1
+        assert isinstance(args[size_len], tuple), "torch.randint received invalid size."
+        size = args[size_len]
+
     tensor = Tensor(*size, dtype=dtype)
     return tensor
 

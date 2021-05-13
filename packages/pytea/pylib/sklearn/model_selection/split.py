@@ -1,7 +1,6 @@
 import LibCall
 import torch
 import torch.utils.data as data
-import torch.utils.data.dataset as dataset
 
 
 class DataLabelList:
@@ -19,7 +18,7 @@ class DataLabelList:
         return self.baseDataset[index]
 
 
-# TODO: implement this
+# TODO: implement this for general array-like values
 def train_test_split(*arrays, **options):
     ret_arrays = []
 
@@ -52,10 +51,10 @@ def train_test_split(*arrays, **options):
         test_length = int(test_size * len(array))
         train_length = len(array) - test_length
 
-        train = LibCall.shape.repeat(array, 0, train_length)
-        train = LibCall.torch.reduce(train, 1, False)
-        test = LibCall.shape.repeat(array, 0, test_length)
-        test = LibCall.torch.reduce(test, 1, False)
+        train = LibCall.shape.repeat(array.shape, 0, train_length)
+        train = LibCall.torch.reduce(torch.Tensor(train), 1, False)
+        test = LibCall.shape.repeat(array.shape, 0, test_length)
+        test = LibCall.torch.reduce(torch.Tensor(test), 1, False)
 
         ret_arrays.append(train)
         ret_arrays.append(test)

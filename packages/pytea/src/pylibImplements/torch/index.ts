@@ -1908,110 +1908,6 @@ export namespace TorchLCImpl {
             .flatMap((ctx) => genTensor(ctx, inputShape, source));
     }
 
-    // ctr = [ -x1.rank <= dim < x1.rank, -x2.rank <= dim < x2.rank]
-    // if (dim < 0)
-    //     ctr += [broadcastable(x1, x2)]
-    // else
-    //     ctr += [x1.rank == x2.rank && broadcastable(x1, x2)]
-    export function cosine_similarity(
-        ctx: Context<LCBase.ExplicitParams>,
-        source: CodeSource | undefined
-    ): ContextSet<ShValue> {
-        const params = ctx.retVal.params;
-        if (params.length < 3) {
-            return ctx.warnTensorWithMsg(
-                `from 'LibCall.torch.cosine_similarity': got insufficient number of argument: ${params.length}`,
-                source
-            );
-        }
-
-        const heap = ctx.heap;
-        const [x1Addr, x2Addr, dimAddr] = params;
-
-        const x1Size = fetchSize(x1Addr, heap);
-        const x2Size = fetchSize(x2Addr, heap);
-        const dimVal = fetchAddr(dimAddr, heap);
-
-        if (typeof x1Size === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.cosine_similarity': ${x1Size}`, source);
-        }
-        if (typeof x2Size === 'string') {
-            return ctx.warnTensorWithMsg(`from 'LibCall.torch.cosine_similarity': ${x2Size}`, source);
-        }
-        if (dimVal?.type !== SVType.Int) {
-            return ctx.warnTensorWithMsg(
-                `from 'LibCall.torch.cosine_similarity': dim must be an int ${dimVal}`,
-                source
-            );
-        }
-        const x1Shape = x1Size.shape;
-        const x2Shape = x2Size.shape;
-        const x1Rank = x1Size.rank();
-        const x2Rank = x2Size.rank();
-
-        // Assume dim is always constant
-        let dim: ExpNum;
-        if (typeof dimVal.value === 'number') {
-            dim = ExpNum.fromConst(dimVal.value, source);
-        } else {
-            dim = simplifyNum(ctx.ctrSet, dimVal.value);
-            if (dim.opType !== NumOpType.Const) {
-                return ctx.warnTensorWithMsg(
-                    `from 'LibCall.torch.cosine_similarity': dim must be a constant number ${dimVal}`,
-                    source
-                );
-            }
-        }
-
-        const x1x2Bc = ExpShape.broadcast(x1Shape, x2Shape, source);
-        // negative index handling
-        let dim_: ExpNum;
-        if (dim.value < 0) {
-            dim_ = ExpNum.bop(NumBopType.Add, ExpShape.getRank(x1x2Bc), dim, source);
-        } else {
-            dim_ = dim;
-        }
-        const shape1 = ExpShape.slice(x1x2Bc, 0, dim_, source);
-        const shape2 = ExpShape.slice(
-            x1x2Bc,
-            ExpNum.bop(NumBopType.Add, dim_, 1, source),
-            ExpShape.getRank(x1x2Bc),
-            source
-        );
-        const returnShape = ExpShape.concat(shape1, shape2, source);
-
-        if (dim.value < 0) {
-            return ctx
-                .require(
-                    [
-                        ctx.genLte(ExpNum.uop(NumUopType.Neg, x1Rank, source), dim, source),
-                        ctx.genLt(dim, x1Rank, source),
-                        ctx.genLte(ExpNum.uop(NumUopType.Neg, x2Rank, source), dim, source),
-                        ctx.genLt(dim, x2Rank, source),
-                        ctx.genBroadcastable(x1Shape, x2Shape, source),
-                    ],
-                    `from 'LibCall.torch.cosine_similarity': shapes must be broadcastable, dim must be within rank`,
-                    source
-                )
-                .flatMap((ctx) => genTensor(ctx, returnShape, source));
-        } else {
-            return ctx
-                .require(
-                    [
-                        ctx.genLte(ExpNum.uop(NumUopType.Neg, x1Rank, source), dim, source),
-                        ctx.genLt(dim, x1Rank, source),
-                        ctx.genLte(ExpNum.uop(NumUopType.Neg, x2Rank, source), dim, source),
-                        ctx.genLt(dim, x2Rank, source),
-                        ctx.genEq(x1Rank, x2Rank, source),
-                        ctx.genBroadcastable(x1Shape, x2Shape, source),
-                    ],
-                    `from 'LibCall.torch.cosine_similarity': shapes must be broadcastable, dim must be within rank`,
-                    source
-                )
-                .flatMap((ctx) => genTensor(ctx, returnShape, source));
-        }
-    }
-
     // conditions of elements in "target" is not considered.
     export function cross_entropy(
         ctx: Context<LCBase.ExplicitParams>,
@@ -3069,7 +2965,6 @@ export namespace TorchLCImpl {
         pool2d,
         batchnorm2d,
         interpolate,
-        cosine_similarity,
         cross_entropy,
         unsqueeze,
         squeeze,
