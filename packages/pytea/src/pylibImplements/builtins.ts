@@ -927,6 +927,10 @@ export namespace BuiltinsLCImpl {
             return ctx.toSetWith(SVInt.create(num, source));
         }
 
+        if (aVal.value === bVal.value) {
+            return ctx.toSetWith(SVInt.create(aVal.value, source));
+        }
+
         let symCtx = ctx.genIntGte(prefix, aVal.value, source);
         const num = symCtx.retVal;
         symCtx = symCtx.guarantee(symCtx.genLte(num, bVal.value, source));
@@ -1013,6 +1017,10 @@ export namespace BuiltinsLCImpl {
         if (varRng && typeof aVal.value === 'number' && typeof bVal.value === 'number') {
             const num = varRng.nextFloat(aVal.value, bVal.value);
             return ctx.toSetWith(SVFloat.create(num, source));
+        }
+
+        if (aVal.value === bVal.value) {
+            return ctx.toSetWith(SVFloat.create(aVal.value, source));
         }
 
         let symCtx = ctx.genFloatGte(prefix, aVal.value, source);

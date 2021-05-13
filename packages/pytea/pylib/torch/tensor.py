@@ -275,24 +275,19 @@ class Tensor:
         return torch.topk(self, k, dim)
 
     def to(self, *args, **kwargs):
-        firstArg = args[0]
+        tensor = LibCall.torch.identityShape(self)
+        tensor.dtype = self.dtype
 
-        if isinstance(firstArg, Tensor):
-            return self.type(firstArg.dtype)
-        elif isinstance(firstArg, str):  # device
-            tensor = LibCall.torch.identityShape(self)
+        if len(args) > 0:
+            firstArg = args[0]
+            if isinstance(firstArg, Tensor):
+                tensor.dtype = firstArg.dtype
+            elif isinstance(firstArg, torch.dtype):
+                tensor.dtype = firstArg
+        elif "dtype" in kwargs:
             tensor.dtype = self.dtype
-            tensor.device = firstArg
-            return tensor
-        elif isinstance(firstArg, torch.device):
-            tensor = LibCall.torch.identityShape(self)
-            tensor.dtype = self.dtype
-            tensor.device = firstArg
-            return tensor
-        else:
-            return self.type(firstArg)
 
-        return NotImplemented
+        return tensor
 
     def type(self, dtype=None, **kwargs):
         if dtype is None:

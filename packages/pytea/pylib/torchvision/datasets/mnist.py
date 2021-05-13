@@ -21,9 +21,9 @@ class MNIST(data.Dataset):
         self.target_transform = target_transform
 
         if train:
-            self._len = 60000
+            self._len = LibCall.builtins.randInt(60000, 60000, "MNIST_Train")
         else:
-            self._len = 10000
+            self._len = LibCall.builtins.randInt(10000, 10000, "MNIST_Test")
 
     def __getitem__(self, index):
         img = Image.Image()

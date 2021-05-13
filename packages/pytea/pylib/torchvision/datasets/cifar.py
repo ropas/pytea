@@ -1,6 +1,6 @@
+import LibCall
 import torch
 import torch.utils.data as data
-import random
 from PIL import Image
 
 
@@ -14,9 +14,9 @@ class CIFAR10(data.Dataset):
         self.target_transform = target_transform
 
         if train:
-            self._len = 50000
+            self._len = LibCall.builtins.randInt(50000, 50000, "CIFAR10_Train")
         else:
-            self._len = 10000
+            self._len = LibCall.builtins.randInt(10000, 10000, "CIFAR10_Test")
 
     def __getitem__(self, index):
         img = Image.Image()
@@ -46,9 +46,9 @@ class CIFAR100(data.Dataset):
         self.target_transform = target_transform
 
         if train:
-            self._len = 50000
+            self._len = LibCall.builtins.randInt(50000, 50000, "CIFAR100_Train")
         else:
-            self._len = 10000
+            self._len = LibCall.builtins.randInt(10000, 10000, "CIFAR100_Test")
 
     def __getitem__(self, index):
         img = Image.Image()
