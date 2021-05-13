@@ -5,7 +5,7 @@ We use `pyteaconfig.json` to handle options for Pytea, following `pyrightconfig.
 Place `pyteaconfig.ts` to the directory that contains the target Python file, or run with options like below.
 
 ```bash
-python bin/pytea.py --node-arguments="--configPath=path/to/pyrightconfig.json" path/to/source.py
+python bin/pytea.py --config=path/to/pyrightconfig.json path/to/source.py
 
 # or use below
 node bin/index.js --configPath=path/to/pyrightconfig.json path/to/source.py
@@ -15,7 +15,7 @@ We will call `index.js` (constraint generator) as **Node side**, and `pytea.py` 
 
 ## Notable Configurations
 
-### `pythonCmdArgs: { [prefix: string]: null | number | [number | null, number | null] }`:
+### `pythonCmdArgs: { [option: string]: boolean | number | string }`:
 
 This options will be injected to `ArgumentParser.add_argument(...)` method from Python [argparse](https://docs.python.org/3/library/argparse.html) module.
 
@@ -64,85 +64,98 @@ In addition to above, prints every value assinged to variables in the environmen
 
 It also prints **Warnings**. Warnings contains **Unimplemented function call**, so if you have met some false warnings about unimplemented API that we have not implemented, please make issue and notify us!
 
-*Or you can manually implement it and contribute to this project*! See [how to implement](how-to-implement-python-library.md).
+_Or you can manually implement it and contribute to this project_! See [how to implement](how-to-implement-python-library.md).
 (We will translate it to English later.)
 
 Constraints are divided by three classes.
-* **Hard Constraint** (Dark Gray): Initialization condition of each symbolic variable. Produced from for loop (index range) or unknown tensor initialization (each dimension should be non-zero)
-* **Path Constraint** (Yellow): Branch condition (e.g. `if ...` in Python syntax)
-* **Soft Constraint** (White): Conditions required by each API. It can be violated, that means, if this constriant is violated, there is an error.
 
-Example:
-![result](../img/result2.png)
+- **Hard Constraint** (Dark Gray): Initialization condition of each symbolic variable. Produced from for loop (index range) or unknown tensor initialization (each dimension should be non-zero)
+- **Path Constraint** (Yellow): Branch condition (e.g. `if ...` in Python syntax)
+- **Soft Constraint** (White): Conditions required by each API. It can be violated, that means, if this constriant is violated, there is an error.
 
 #### `full`
 
 In addition to above, prints every raw dumps of environments and python. It also prints PyTea IR (internal representation) translation result of entry file. You may not want this option.
 
-### `variableRange: { [prefix: string]: null | number | [number | null, number | null] }`
-### `variableSeed: { [prefix: string]: number | null }`
-
-See the comments below.
-
 ## Full Configurations
 
 ```typescript
 export type PyCmdArgs = { [option: string]: boolean | number | string };
-export type PyteaLogLevel = 'none' | 'result-only' | 'reduced' | 'full';
+export type PyteaLogLevel = "none" | "result-only" | "reduced" | "full";
 export interface PyteaOptions {
-    // Absolute path to pyteaconfig.json
-    configPath: string;
+  // Absolute path to pyteaconfig.json
+  configPath: string;
 
-    // Path of PyTea implementation of Python builtins.
-    // Absolute or relative to configPath
-    pyteaLibPath: string;
+  // Path of PyTea implementation of Python builtins.
+  // Absolute or relative to configPath
+  pyteaLibPath: string;
 
-    // Python entry point. Absolute or relative to configPath
-    entryPath: string;
+  // Python entry point. Absolute or relative to configPath
+  entryPath: string;
 
-    // Python command line arguments.
-    pythonCmdArgs: PyCmdArgs;
+  // Python command line arguments.
+  pythonCmdArgs: PyCmdArgs;
 
-    // 'dest' of argparse.add_subparsers(...)
-    pythonSubcommand: string;
+  // 'dest' of argparse.add_subparsers(...)
+  pythonSubcommand: string;
 
-    // Severity of analysis result (default: reduced)
-    logLevel: PyteaLogLevel;
+  // Severity of analysis result (default: reduced)
+  logLevel: PyteaLogLevel;
 
-    // Check and discard trivial constraints (default: true)
-    immediateConstraintCheck: boolean;
+  // Check and discard trivial constraints (default: true)
+  immediateConstraintCheck: boolean;
 
-    // Ignore assert statements of Python. (default: false)
-    ignoreAssert: boolean;
+  // Ignore assert statements of Python. (default: false)
+  ignoreAssert: boolean;
 
-    // Extract internal representation to file (TorchIR)
-    extractIR: boolean;
+  // Extract internal representation to file (TorchIR)
+  extractIR: boolean;
 
-    // Explicit range of random variables.
-    // key should be the prefix of specific random variable; if the name of random variable is
-    // 'PILImgC_I3', the key should be "PILImgC" (the suffix '_I3' means third immediate random variable)
-    // The range of random varaible which name starts with prefix will be altered to this.
-    // range is always inclusive. null means the range is unbounded (or half-bounded).
-    variableRange: { [prefix: string]: null | number | [number | null, number | null] };
+  // Explicit range of random variables.
+  // key should be the prefix of specific random variable; if the name of random variable is
+  // 'PILImgC_I3', the key should be "PILImgC" (the suffix '_I3' means third immediate random variable)
+  // The range of random varaible which name starts with prefix will be altered to this.
+  // range is always inclusive. null means the range is unbounded (or half-bounded).
+  variableRange: {
+    [prefix: string]: null | number | [number | null, number | null];
+  };
 
-    // Assign random concrete value to some random variable by seed (if set).
-    // key should be the prefix of specific random variable (see above 'variableRange')
-    // null means the seed will be set from runtime of analyzer.
-    // if variableRange is not set to this prefix, the default range will be
-    // [1, 10000] (int) or [0.0, 1.0] (float).
-    variableSeed: { [prefix: string]: number | null };
+  // Assign random concrete value to some random variable by seed (if set).
+  // key should be the prefix of specific random variable (see above 'variableRange')
+  // null means the seed will be set from runtime of analyzer.
+  // if variableRange is not set to this prefix, the default range will be
+  // [1, 10000] (int) or [0.0, 1.0] (float).
+  variableSeed: { [prefix: string]: number | null };
 
-    // Pass analysis result to Python Z3 server (default: false)
-    runZ3: boolean;
+  // Iterate torch DataLoader only once. (default: true)
+  // If it is set to false, large dataset will give its all data (e.g. MNIST gives 60000 items)
+  boxDataLoader: boolean;
 
-    // Port to Python Z3 server
-    z3Port: number;
+  // Analyzer timeout in millisecond. undefined means no timeout (default: 60000 (1 min))
+  timeout: number | undefined;
 
-    // Analyzer timeout in millisecond. undefined means no timeout (default: undefined)
-    timeout?: number;
+  // Set max path count, throw runtime error if path count exceeds it (default: 1000)
+  maxPath: number | undefined;
 
-    // Set max path count, throw runtime error if path count exceeds it (default: undefined)
-    maxPath?: number;
+  // Port to Python Z3 server (default: 17851)
+  z3Port: number;
 }
-```
 
+export const defaultOptions: PyteaOptions = {
+  configPath: "",
+  pyteaLibPath: "",
+  entryPath: "",
+  pythonCmdArgs: {},
+  pythonSubcommand: "",
+  logLevel: "reduced",
+  immediateConstraintCheck: true,
+  ignoreAssert: false,
+  extractIR: false,
+  variableRange: {},
+  variableSeed: {},
+  z3Port: 17851,
+  timeout: undefined,
+  maxPath: undefined,
+  boxDataLoader: true,
+};
+```

@@ -4,21 +4,23 @@
 
 ### 주요 참고 파일
 
-- `src/pylibImplements`: PyTorch API의 semantic을 정해주는 LibCall들의 실제 구현.
-  - `index.ts`: `libCallMap`에 구현한 LibCall들을 등록해주어야 함.
-  - `libcall.ts`: `explicit` LibCall 콜을 제외한 TorchIR 고유의 LibCall 구현. (`import`, `callKV`, `DEBUG` 등)
-  - `utils.ts`: range 기반 symbolic expression의 실시간 계산 구현.
-- `src/pyt`: PyTea entry point
-  - `pytService.ts`: Python 스크립트들을 관리하고 로그 출력 및 import resolution 등을 맡음
+- `src/pytea.ts`: PyTea entry point
+- `src/service`: Service modules (language server / analysis manager)
+  - `pyteaService.ts`: Python 스크립트들을 관리하고 로그 출력 및 import resolution 등을 맡음
+- `src/frontend`: Python 코드를 PyTea IR로 변환
 - `src/backend`: Symbolic execution을 구현하는 기본
   - `torchBackend.ts`: 메인 backend
   - `context.ts`: `Context` 및 `ContextSet`의 구현. interface에 구현된 함수들을 유심히 볼 것.
-  - `constraintSet.ts`: Constraint들의 집합.
+  - `constraintSet.ts`: Constraint들의 집합. Constraint를 생성 및 관리하는데 사용되는 함수들이 있으나 대부분 Context class를 통해 접근할 수 있으므로 직접 사용을 권장하지 않음.
   - `constraintType.ts`: Constraint들의 구조. 실제 Constraint의 생산은 Context 또는 ConstraintSet을 통해서만 할 수 있다.
+  - `constraintSolver.ts`: Online constraint checker. 비교적 간단한 형태의 Linear CAS의 구현.
   - `sharpValues.ts`: backend에서 사용하는 Python의 기초 value들. (int, float 등)
   - `sharpEnvironments.ts`: backend에서 사용하는 heap과 env의 구현
   - `symExpressions.ts`: symbolic variable 및 expression의 구조
-  - `range.ts`: range abstract domain의 구현. inplace SMT에서 사용
+  - `range.ts`: range abstract domain의 구현. Online constraint check에서 사용
+- `src/pylibImplements`: PyTorch API의 semantic을 정해주는 LibCall들의 실제 구현.
+  - `index.ts`: `libCallMap`에 구현한 LibCall들을 등록해주어야 함.
+  - `libcall.ts`: `explicit` LibCall 콜을 제외한 TorchIR 고유의 LibCall 구현. (`import`, `callKV`, `DEBUG` 등)
 - `pylib`: PyTorch API의 Python 뼈대
   - `LibCall.py`: LibCall의 path들. 구현한 LibCall은 여기에 등록하면 추적이 편하나 필수는 아님.
 
