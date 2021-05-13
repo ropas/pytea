@@ -1,13 +1,5 @@
 #!/usr/bin/env python
 
-"""
-json2z3.py
-Copyright (c) Seoul National University
-Licensed under the MIT license.
-Author: Ho Young Jhoo
-
-Main starting point of Pytea analyzer
-"""
 import os
 import subprocess
 import argparse

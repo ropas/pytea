@@ -1,14 +1,3 @@
-"""
-    LibCall.py
-    ~~~
-
-    PTTyR LibCall wrapper for Python
-
-    :copyright: Copyright 2020 Seoul National University.
-    :license: MIT License.
-    :author: Ho Young Jhoo
-"""
-
 import builtins as built
 
 

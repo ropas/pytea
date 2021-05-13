@@ -1,14 +1,5 @@
 #!/usr/bin/env python
 
-"""
-json2z3.py
-Copyright (c) Seoul National University
-Licensed under the MIT license.
-Author: Se Hoon Kim
-
-Encode json-formatted constraints to z3 formula, solve it,
-and return constraint conditions.
-"""
 from enum import Enum
 from functools import reduce, wraps
 from pathlib import Path

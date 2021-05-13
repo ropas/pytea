@@ -1,13 +1,3 @@
-"""
-pyteaserver.py
-
-Copyright (c) Seoul National University
-Licensed under the MIT license.
-Author: Ho Young Jhoo
-
-runs simple JSON-RPC server,
-analyze constraints by Z3 and serve it to HTML.
-"""
 import argparse
 import importlib.util
 import json
