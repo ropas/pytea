@@ -77,3 +77,8 @@ class Module:
 
     def bfloat16(self):
         return self
+
+    def load_state_dict(state_dict, strict=True):
+        # TODO: generally, we cannot infer state_dict statically.
+        # this means we had no choice but to ignore the state_dict
+        pass
