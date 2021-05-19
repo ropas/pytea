@@ -186,12 +186,23 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
     }
 
     getConstraintObject(pathStore?: FilePathStore): object {
+        const ctrList = this.getConstraints().map((ctr) => {
+            const codePos = formatCodeSource(ctr.source, pathStore);
+            const str = ctrToStr(simplifyConstraint(this, ctr));
+            if (codePos) {
+                ctr.message = `${ctr.message ?? '-'} at <${codePos}>\n  ${str}`;
+            } else {
+                ctr.message = `constraint at <${codePos}>\n  ${str}`;
+            }
+            return ctr;
+        });
+
         return {
-            ctrPool: sanitizeSource(this.getConstraints(), pathStore),
+            ctrPool: sanitizeSource(ctrList, pathStore),
             hardCtr: this.hardCtr.toArray(),
             softCtr: this.softCtr.toArray(),
             pathCtr: this.pathCtr.toArray(),
-        }
+        };
     }
 
     getConstraintJSON(pathStore?: FilePathStore): string {

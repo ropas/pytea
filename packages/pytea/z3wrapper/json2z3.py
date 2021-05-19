@@ -317,20 +317,26 @@ class CtrSet:
             log = "Valid path: Constraints are satisfiable."
             return PathResult.Valid.value, log, extras
         elif sat == PathResult.Unreachable.value:
+            wrong_ctr = self.ctrPool[unsatIndice]
             log = "Unreachable path. Path condition is unsatisfiable.\n"
             log += f"  first conflicted constraint {bcolors.BOLD}(constraint #{unsatIndice + 1}){bcolors.ENDC}: \n"
-            log += f"{bcolors.BOLD}{self.ctrPool[unsatIndice]}{bcolors.ENDC}\n"
+            log += f"    message: {bcolors.BOLD}{wrong_ctr.message}{bcolors.ENDC}\n"
+            # log += f"{bcolors.BOLD}{self.ctrPool[unsatIndice]}{bcolors.ENDC}\n"
             extras["conflict"] = unsatIndice
         elif sat == PathResult.Unsat.value:
+            wrong_ctr = self.ctrPool[unsatIndice]
             log = "Invalid path: Found conflicted constraints.\n"
             log += f"  first conflicted constraint {bcolors.BOLD}(constraint #{unsatIndice + 1}){bcolors.ENDC}: \n    "
-            log += f"{bcolors.BOLD}{self.ctrPool[unsatIndice]}{bcolors.ENDC}\n"
+            log += f"    message: {bcolors.BOLD}{wrong_ctr.message}{bcolors.ENDC}\n"
+            # log += f"{bcolors.BOLD}{self.ctrPool[unsatIndice]}{bcolors.ENDC}\n"
             extras["conflict"] = unsatIndice
         else:
+            wrong_ctr = self.ctrPool[unsatIndice]
             sat = PathResult.DontKnow.value
             log = "Undecidable path: Z3 failed to solve constraints.\n"
             log += f"  first undecidable constraint {bcolors.BOLD}(constraint #{unsatIndice + 1}){bcolors.ENDC}: \n    "
-            log += f"{bcolors.BOLD}{self.ctrPool[unsatIndice]}{bcolors.ENDC}\n"
+            log += f"    message: {bcolors.BOLD}{wrong_ctr.message}{bcolors.ENDC}\n"
+            # log += f"{bcolors.BOLD}{self.ctrPool[unsatIndice]}{bcolors.ENDC}\n"
             extras["undecide"] = unsatIndice
 
         return sat, log, extras
@@ -415,10 +421,8 @@ class Ctr:
     def __init__(self, jsonCtr):
         self.json = jsonCtr
         self.formula = self.encode(jsonCtr)
-        if "source" in jsonCtr:
-            self.source = jsonCtr["source"]
-        else:
-            self.source = None
+        self.source = jsonCtr["source"] if "source" in jsonCtr else None
+        self.message = jsonCtr["message"] if "message" in jsonCtr else ""
 
     def __str__(self):
         ctrLog = str(self.formula)

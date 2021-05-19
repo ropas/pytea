@@ -996,7 +996,9 @@ export class ContextSetImpl<T> implements ContextSet<T> {
 
     require(ctr: Constraint | Constraint[], failMsg: string, source: CodeSource | undefined): ContextSet<T | SVError> {
         // immediate constraint check
-        const ctrList: Constraint[] = Array.isArray(ctr) ? ctr : [ctr];
+        const ctrList: Constraint[] = Array.isArray(ctr)
+            ? ctr.map((c) => ({ ...c, message: failMsg }))
+            : [{ ...ctr, message: failMsg }];
 
         return this.map((ctx) => {
             const ctrSet = ctx.ctrSet.requireAll(ctrList);
@@ -1026,12 +1028,12 @@ export class ContextSetImpl<T> implements ContextSet<T> {
         const elsePath: Context<T>[] = [];
 
         this.ctxList.forEach((ctx) => {
-            const ctrSet = ctx.ctrSet.addIf(ctr);
+            const ctrSet = ctx.ctrSet.addIf({ ...ctr, message: 'true path' });
             if (ctrSet.valid !== false) {
                 ifPath.push(ctx.setCtrSet(ctrSet));
             }
 
-            const elseSet = ctx.ctrSet.addIf(ctx.ctrSet.genNot(ctr, source));
+            const elseSet = ctx.ctrSet.addIf({ ...ctx.ctrSet.genNot(ctr, source), message: 'false path' });
             if (elseSet.valid !== false) {
                 elsePath.push(ctx.setCtrSet(elseSet));
             }

@@ -43,6 +43,7 @@ export interface ConstraintBase {
     type: ConstraintType;
     id: ConstraintIndex;
     source: CodeSource | undefined;
+    message?: string;
 }
 
 export interface CtrExpBool extends ConstraintBase {
