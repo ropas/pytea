@@ -931,11 +931,19 @@ export namespace BuiltinsLCImpl {
             return ctx.toSetWith(SVInt.create(aVal.value, source));
         }
 
-        let symCtx = ctx.genIntGte(prefix, aVal.value, source);
-        const num = symCtx.retVal;
-        symCtx = symCtx.guarantee(symCtx.genLte(num, bVal.value, source));
+        return ctx
+            .require(
+                ctx.genLte(aVal.value, bVal.value, source),
+                `from 'LibCall.builtins.randInt': min value is greater than max value.`,
+                source
+            )
+            .flatMap((ctx) => {
+                let symCtx = ctx.genIntGte(prefix, aVal.value, source);
+                const num = symCtx.retVal;
+                symCtx = symCtx.guarantee(symCtx.genLte(num, bVal.value, source));
 
-        return symCtx.toSetWith(SVInt.create(num, source));
+                return symCtx.toSetWith(SVInt.create(num, source));
+            });
     }
 
     // exclusive randfloat (a <= retVal < b)
@@ -1023,11 +1031,19 @@ export namespace BuiltinsLCImpl {
             return ctx.toSetWith(SVFloat.create(aVal.value, source));
         }
 
-        let symCtx = ctx.genFloatGte(prefix, aVal.value, source);
-        const num = symCtx.retVal;
-        symCtx = symCtx.guarantee(symCtx.genLt(num, bVal.value, source));
+        return ctx
+            .require(
+                ctx.genLte(aVal.value, bVal.value, source),
+                `from 'LibCall.builtins.randFloat': min value is greater than max value.`,
+                source
+            )
+            .flatMap((ctx) => {
+                let symCtx = ctx.genFloatGte(prefix, aVal.value, source);
+                const num = symCtx.retVal;
+                symCtx = symCtx.guarantee(symCtx.genLt(num, bVal.value, source));
 
-        return symCtx.toSetWith(SVFloat.create(num, source));
+                return symCtx.toSetWith(SVFloat.create(num, source));
+            });
     }
 
     export function exit(ctx: Context<LCBase.ExplicitParams>, source: CodeSource | undefined): ContextSet<ShValue> {
