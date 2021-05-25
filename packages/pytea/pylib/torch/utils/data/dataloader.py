@@ -33,6 +33,8 @@ class DataLoader:
             self._last_batch += 1
             self._len = datalen // self.batch_size + remainder
 
+        self._len = LibCall.guard.new_symbol_int("DataLoader_Len", self._len)
+
         self._curr_idx = 0
 
     def __len__(self):
@@ -55,6 +57,9 @@ class DataLoader:
             li = self._len - 1
             step = 1 // (abs(index - li) + 1)
             batch_size = self.batch_size - lb * step
+
+        # return new symbolic variable if batch_size is not a constant
+        batch_size = LibCall.guard.new_symbol_int("DataLoader_Batch", batch_size)
 
         ret_list = []
         for item in item_tuple:

@@ -6,9 +6,11 @@
  *
  * require guard in pylib side
  */
+import { ExpNum } from 'src/backend/symExpressions';
+
 import { fetchAddr, isSize } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
-import { CodeSource, ShValue, SVBool, SVType } from '../backend/sharpValues';
+import { CodeSource, ShValue, SVBool, SVInt, SVType } from '../backend/sharpValues';
 import { LCImpl } from '.';
 import { LCBase } from './libcall';
 
@@ -252,6 +254,49 @@ export namespace GuardLCImpl {
             .return(SVBool.create(true, source));
     }
 
+    // return new symbolic variable that is equal with given value.
+    // if given value is constant, return that constant
+    export function new_symbol_int(
+        ctx: Context<LCBase.ExplicitParams>,
+        source: CodeSource | undefined
+    ): ContextSet<ShValue> {
+        const params = ctx.retVal.params;
+        if (params.length !== 2) {
+            return ctx
+                .warnWithMsg(
+                    `from 'LibCall.guard.new_symbol_int': got insufficient number of argument: ${params.length}`,
+                    source
+                )
+                .toSet();
+        }
+
+        const heap = ctx.heap;
+        const [nameAddr, valueAddr] = params;
+
+        const name = fetchAddr(nameAddr, heap);
+        const value = fetchAddr(valueAddr, heap);
+
+        if (name?.type !== SVType.String || typeof name.value !== 'string') {
+            return ctx
+                .warnWithMsg(`from 'LibCall.guard.new_symbol_int': name is not a constant string`, source)
+                .toSet();
+        }
+
+        if (value?.type !== SVType.Int) {
+            return ctx.warnWithMsg(`from 'LibCall.guard.new_symbol_int': value is not an integer type`, source).toSet();
+        }
+
+        const valueRng = ctx.getCachedRange(value.value);
+        if (valueRng?.isConst()) {
+            return ctx.toSetWith(SVInt.create(valueRng.start, value.source));
+        }
+
+        const newCtx = ctx.genIntEq(name.value, value.value, source);
+        const exp = SVInt.create(newCtx.retVal, source);
+
+        return newCtx.toSetWith(exp);
+    }
+
     export const libCallImpls: { [key: string]: LCImpl } = {
         require_lt,
         require_lte,
@@ -259,6 +304,7 @@ export namespace GuardLCImpl {
         require_neq,
         require_broadcastable,
         require_shape_eq,
+        new_symbol_int,
     };
 }
 

@@ -439,6 +439,14 @@ export class Context<T> extends Record(contextDefaults) implements ContextProps<
         return this.ctrSet.genSymShape(name, rank, source);
     }
 
+    // return ExpNumSymbol that is equal to `value`;
+    genIntEq(name: string, value: number | ExpNum, source: CodeSource | undefined): Context<ExpNumSymbol> {
+        source = this._replaceBuiltinSource(source);
+        const [num, ctrSet] = this.ctrSet.genSymIntEq(name, value, source);
+        const exp = ExpNum.fromSymbol(num);
+        return this.setCtrSet(ctrSet).setRetVal(exp);
+    }
+
     // return ExpNumSymbol that is greater than `value`;
     genIntGte(name: string, value: number | ExpNum, source: CodeSource | undefined): Context<ExpNumSymbol> {
         const num = this.genSymInt(name, source);

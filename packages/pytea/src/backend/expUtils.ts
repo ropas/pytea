@@ -394,6 +394,32 @@ export function simplifyNum(ctrSet: ConstraintSet, exp: ExpNum): ExpNum {
                 default:
                     break;
             }
+
+            const rng = ctrSet.getCachedRange(baseValue);
+            if (rng) {
+                if (rng.isConst()) {
+                    const base = rng.start;
+                    switch (exp.uopType) {
+                        case NumUopType.Neg:
+                            return ExpNum.fromConst(-base, exp.source);
+                        case NumUopType.Floor:
+                            return ExpNum.fromConst(Math.floor(base), exp.source);
+                        case NumUopType.Ceil:
+                            return ExpNum.fromConst(Math.ceil(base), exp.source);
+                        case NumUopType.Abs:
+                            return ExpNum.fromConst(Math.abs(base), exp.source);
+                    }
+                }
+
+                if (exp.uopType === NumUopType.Abs) {
+                    if (rng.gte(0)) {
+                        return baseValue;
+                    } else if (rng.lte(0)) {
+                        return simplifyNum(ctrSet, ExpNum.uop(NumUopType.Neg, baseValue, exp.source));
+                    }
+                }
+            }
+
             return ExpNum.uop(exp.uopType, baseValue, exp.source);
         }
         case NumOpType.Bop: {

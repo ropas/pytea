@@ -63,8 +63,9 @@ export interface ConstraintGen {
     genSymBool(name: string, source: CodeSource | undefined): SymBool;
     genSymString(name: string, source: CodeSource | undefined): SymString;
     genSymShape(name: string, rank: ExpNum, source: CodeSource | undefined): SymShape;
-    genSymIntGte(name: string, min: number, source: CodeSource | undefined): CSReturn<SymInt>;
-    genSymFloatGte(name: string, min: number, source: CodeSource | undefined): CSReturn<SymFloat>;
+    genSymIntGte(name: string, min: number | ExpNum, source: CodeSource | undefined): CSReturn<SymInt>;
+    genSymIntEq(name: string, min: number | ExpNum, source: CodeSource | undefined): CSReturn<SymInt>;
+    genSymFloatGte(name: string, min: number | ExpNum, source: CodeSource | undefined): CSReturn<SymFloat>;
     genShaped(
         name: string,
         rank: number,
@@ -326,23 +327,39 @@ export class ConstraintSet extends Record(constraintSetDefaults) implements Cons
         };
     }
 
-    genSymIntGte(name: string, min: number, source: CodeSource | undefined): CSReturn<SymInt> {
+    genSymIntGte(name: string, min: number | ExpNum, source: CodeSource | undefined): CSReturn<SymInt> {
         const newSym = this.genSymInt(name, source);
         const comp = this.genNumCompare(
             ConstraintType.LessThanOrEqual,
-            ExpNum.fromConst(min, source),
             ExpNum.fromSymbol(newSym),
+            SymExp.fromConst(min) as ExpNum,
             source
         );
         return [newSym, this.guarantee(comp)];
     }
 
-    genSymFloatGte(name: string, min: number, source: CodeSource | undefined): CSReturn<SymFloat> {
+    genSymIntEq(name: string, value: number | ExpNum, source: CodeSource | undefined): CSReturn<SymInt> {
+        const newSym = this.genSymInt(name, source);
+        const exp = SymExp.fromConst(value) as ExpNum;
+        const ctr = this.genEquality(ConstraintType.Equal, ExpNum.fromSymbol(newSym), exp, source);
+
+        // bypass guarantee
+        const range = this.getCachedRange(value);
+        if (range?.valid()) {
+            const cache = this.rangeCache.set(newSym.id, range);
+            const newCtr = this.set('rangeCache', cache);
+            return [newSym, newCtr._pushHard(ctr)];
+        } else {
+            return [newSym, this.guarantee(ctr)];
+        }
+    }
+
+    genSymFloatGte(name: string, min: number | ExpNum, source: CodeSource | undefined): CSReturn<SymFloat> {
         const newSym = this.genSymFloat(name, source);
         const comp = this.genNumCompare(
             ConstraintType.LessThanOrEqual,
-            ExpNum.fromConst(min, source),
             ExpNum.fromSymbol(newSym),
+            SymExp.fromConst(min) as ExpNum,
             source
         );
         return [newSym, this.guarantee(comp)];
