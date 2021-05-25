@@ -95,14 +95,14 @@ export namespace TorchvisionLCImpl {
             return ctx.warnTensorWithMsg(`from 'LibCall.torchvision.normalize': ${size}`, source);
         }
         if (meanLen?.type !== SVType.Int) {
+            const str = meanLen ? ShValue.toString(meanLen) : 'undefined';
             return ctx
-                .warnWithMsg(`from 'LibCall.torchvision.normalize': incorrect len of mean ${meanLen}`, source)
+                .warnWithMsg(`from 'LibCall.torchvision.normalize': incorrect len of mean ${str}`, source)
                 .toSet();
         }
         if (stdLen?.type !== SVType.Int) {
-            return ctx
-                .warnWithMsg(`from 'LibCall.torchvision.normalize': incorrect len of std ${stdLen}`, source)
-                .toSet();
+            const str = stdLen ? ShValue.toString(stdLen) : 'undefined';
+            return ctx.warnWithMsg(`from 'LibCall.torchvision.normalize': incorrect len of std ${str}`, source).toSet();
         }
         const shape = size.shape;
         const rank = size.rank();
@@ -111,17 +111,23 @@ export namespace TorchvisionLCImpl {
         return ctx
             .require(
                 [ctx.genEq(3, rank, source)],
-                `from 'LibCall.torchvision.normalize: Expected tensor to be a tensor image of size (C, H, W). Got a tensor whose rank is ${rank}.`,
+                `from 'LibCall.torchvision.normalize: Expected tensor to be a tensor image of size (C, H, W). Got a tensor whose rank is ${ExpNum.toString(
+                    rank
+                )}.`,
                 source
             )
             .require(
                 [ctx.genOr(ctx.genEq(1, meanLen.value, source), ctx.genEq(channel, meanLen.value, source), source)],
-                `from 'LibCall.torchvision.normalize: Lengths of mean must be 1 or equal to channel. Got channel: ${channel}, mean: ${meanLen.value}.`,
+                `from 'LibCall.torchvision.normalize: Lengths of mean must be 1 or equal to channel. Got channel: ${ExpNum.toString(
+                    channel
+                )}, mean: ${ExpNum.toString(meanLen.value)}.`,
                 source
             )
             .require(
                 [ctx.genOr(ctx.genEq(1, stdLen.value, source), ctx.genEq(channel, stdLen.value, source), source)],
-                `from 'LibCall.torchvision.normalize: Lengths of std must be 1 or equal to channel. Got channel: ${channel}, std: ${stdLen.value}.`,
+                `from 'LibCall.torchvision.normalize: Lengths of std must be 1 or equal to channel. Got channel: ${ExpNum.toString(
+                    channel
+                )}, std: ${ExpNum.toString(stdLen.value)}.`,
                 source
             )
             .flatMap((ctx) => genTensor(ctx, shape, source));
