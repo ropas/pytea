@@ -105,7 +105,7 @@ def average(a, axis=None, weights=None, returned=False):
 
 def mean(a, axis=None, dtype=None, out=None, keepdims=False, where=None):
     # TODO: implement `where` option
-    if not isinstance(a):
+    if not isinstance(a, ndarray):
         a = array(a)
     arr = LibCall.numpy.reduce(a, axis, keepdims)
     LibCall.numpy.copyOut(arr, out)
