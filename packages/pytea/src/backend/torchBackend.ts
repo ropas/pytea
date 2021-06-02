@@ -826,7 +826,7 @@ export namespace TorchBackend {
                             `loop value is not an object: got ${obj ? svTypeToString(obj.type) : 'undefined'} type`,
                             exp.source
                         )
-                        .toSet();
+                        .toSetWith(ShContFlag.Run);
                 }
 
                 return BuiltinsLCImpl.len(ctx.setRetVal({ params: [objAddr] }), exp.source).flatMap((ctx) => {
