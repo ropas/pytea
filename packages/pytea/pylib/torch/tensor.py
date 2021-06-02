@@ -122,6 +122,9 @@ class Tensor:
     def log2(self):
         return torch.log2(self)
 
+    def log2_(self):
+        return self
+
     def exp(self):
         return torch.exp(self)
 
@@ -159,6 +162,12 @@ class Tensor:
         return self
 
     def fill_(self):
+        return self
+
+    def clamp(self, min=0, max=0):
+        return torch.clamp(self, min, max)
+
+    def clamp_(self, min=0, max=0):
         return self
 
     def new_zeros(self, *size, dtype=None, device=None, requires_grad=None):
@@ -367,16 +376,16 @@ class Tensor:
     def permute(self, *args):
         ndim = self.dim()
         if ndim != len(args):
-            raise ValueError("permute shape mismatched")
+            raise ValueError("from 'torch.Tensor.permute': permute length mismatch")
         ret_shape = []
+        self_shape = self.shape
         for arg in args:
             # TODO: add duplicated indices assertion
-            # currently, __setitem__ for list is not supported
             if arg < 0 or arg >= ndim:
-                raise ValueError("permute invalid index!")
-            ret_shape.append(self.shape[arg])
+                raise ValueError("from 'torch.Tensor.permute': index out of range")
+            ret_shape.append(self_shape[arg])
 
-        tensor = self.view(*ret_shape)
+        tensor = torch.Tensor(torch.Size(ret_shape))
         tensor.dtype = self.dtype
         return tensor
 

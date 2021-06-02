@@ -368,6 +368,12 @@ def tan(input, out=None):
     return result
 
 
+def clamp(input, min=0, max=0, out=None):
+    result = LibCall.torch.identityShape(input)
+    LibCall.torch.copyOut(result, out)
+    return result
+
+
 def bernoulli(input, generator=None, out=None):
     result = LibCall.torch.identityShape(input)
     LibCall.torch.copyOut(result, out)

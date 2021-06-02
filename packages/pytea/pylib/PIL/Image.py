@@ -1,6 +1,4 @@
 import LibCall
-import random
-import numpy as np
 
 """
 Image.size() -> (W, H)
@@ -71,6 +69,9 @@ class Image:
 
         return tuple(ret_val)
 
+    def save(self, fp, mode=None, **kwargs):
+        pass
+
 
 def new(mode, size, color=0):
     if len(mode) == 1:
@@ -121,9 +122,17 @@ def fromarray(obj, mode=None):
     size = LibCall.shape.extractShape(obj)
     if mode is None:
         im = Image()
-        im._setSize(size[0], size[1], size[2])
+        if len(size) <= 2:
+            im._setSize(size[0], size[1], 1)
+        else:
+            im._setSize(size[0], size[1], size[2])
+        return im
     else:
         return new(mode, size[0], size[1])
+
+
+def save(fp, mode=None, **kwargs):
+    pass
 
 
 NEAREST = 0

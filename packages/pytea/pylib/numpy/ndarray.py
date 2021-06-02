@@ -138,6 +138,28 @@ class ndarray:
     def item(self):
         return LibCall.torch.item(self)
 
+    def transpose(self, *args):
+        first_arg = args[0]
+        if isinstance(first_arg, tuple) or isinstance(first_arg, list):
+            args = first_arg
+
+        ndim = len(self.shape)
+        if ndim != len(args):
+            raise ValueError(
+                "from 'numpy.ndarray.transpose': transpose length mismatch"
+            )
+        ret_shape = []
+        self_shape = self.shape
+        for arg in args:
+            # TODO: add duplicated indices assertion
+            if arg < 0 or arg >= ndim:
+                raise ValueError("from 'numpy.ndarray.transpose': index out of range")
+            ret_shape.append(self_shape[arg])
+
+        tensor = ndarray(ret_shape)
+        tensor.dtype = self.dtype
+        return tensor
+
     def astype(self, dtype, order="K", casting="unsafe", subok=True, copy=True):
         if dtype is float:
             dtype = np.floatDefault

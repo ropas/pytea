@@ -11,7 +11,10 @@ def array(obj, dtype=None, **kwargs):
     if isinstance(obj, torch.Tensor):
         arr = ndarray(obj.shape)
     if isinstance(obj, Image.Image):
-        arr = ndarray((obj.height, obj.width, obj._channel))
+        if obj._channel == 1:
+            arr = ndarray((obj.height, obj.width))
+        else:
+            arr = ndarray((obj.height, obj.width, obj._channel))
     else:
         arr = ndarray(LibCall.shape.extractShape(obj))
     arr.dtype = _parseDtype(obj)
