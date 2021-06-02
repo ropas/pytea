@@ -39,16 +39,17 @@ export interface PyteaOptions {
     extractIR: boolean;
 
     // Explicit range of random variables.
-    // key should be the prefix of specific random variable; if the name of random variable is
-    // 'PILImgC_I3', the key should be "PILImgC" (the suffix '_I3' means third immediate random variable)
+    // Key should be the prefix of specific random variable.
+    // If the name of random variable is 'PILImgC_I3', the key should be "PILImgC".
+    // (the suffix '_I3' means third immediate random variable)
     // The range of random varaible which name starts with prefix will be altered to this.
-    // range is always inclusive. null means the range is unbounded (or half-bounded).
+    // Range is always inclusive. null means the range is unbounded (or half-bounded).
     variableRange: { [prefix: string]: null | number | [number | null, number | null] };
 
     // Assign random concrete value to some random variable by seed (if set).
-    // key should be the prefix of specific random variable (see above 'variableRange')
+    // Key should be the prefix of specific random variable (see above 'variableRange')
     // null means the seed will be set from runtime of analyzer.
-    // if variableRange is not set to this prefix, the default range will be
+    // If variableRange is not set to this prefix, the default range will be
     // [1, 10000] (int) or [0.0, 1.0] (float).
     variableSeed: { [prefix: string]: number | null };
 
@@ -56,7 +57,7 @@ export interface PyteaOptions {
     // If it is set to false, large dataset will give its all data (e.g. MNIST gives 60000 items)
     boxDataLoader: boolean;
 
-    // Analyzer timeout in millisecond. undefined means no timeout (default: 60000 (1 min))
+    // Analyzer timeout in millisecond. undefined means no timeout (default: no timeout)
     timeout: number | undefined;
 
     // Set max path count, throw runtime error if path count exceeds it (default: 1000)
