@@ -1,0 +1,13 @@
+{
+    "pythonCmdArgs": {
+        "teacher_epochs": 1,
+        "batch_size": 16,
+        "batch_size_test": 8
+    },
+    "variableRange": {
+        "CIFAR10_Train": 30,
+        "CIFAR10_Test": 10
+    },
+    "logLevel": "result-only",
+    "entryPath": "train.py"
+}

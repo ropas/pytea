@@ -1,0 +1,9 @@
+{
+    "pythonCmdArgs": {
+        "cuda": true,
+        "upscale_factor": 2,
+        "nEpochs": 1
+    },
+    "logLevel": "result-only",
+    "entryPath": "main.py"
+}

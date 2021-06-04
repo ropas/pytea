@@ -3,18 +3,11 @@ from PIL import Image
 
 
 def load_image(filename, size=None, scale=None):
-    # POTENTIAL ERROR: image can be monochrome.
-    # img = Image.open(filename)
-
-    # RIGHT
     img = Image.open(filename).convert('RGB')
-
     if size is not None:
         img = img.resize((size, size), Image.ANTIALIAS)
     elif scale is not None:
-        img = img.resize(
-            (int(img.size[0] / scale), int(img.size[1] / scale)), Image.ANTIALIAS
-        )
+        img = img.resize((int(img.size[0] / scale), int(img.size[1] / scale)), Image.ANTIALIAS)
     return img
 
 
@@ -39,4 +32,3 @@ def normalize_batch(batch):
     std = batch.new_tensor([0.229, 0.224, 0.225]).view(-1, 1, 1)
     batch = batch.div_(255.0)
     return (batch - mean) / std
-    # return batch

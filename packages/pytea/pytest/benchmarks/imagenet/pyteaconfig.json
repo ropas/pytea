@@ -1,0 +1,9 @@
+{
+    "pythonCmdArgs": {
+        "data": "./data",
+        "gpu": 1,
+        "epochs": 1
+    },
+    "logLevel": "result-only",
+    "entryPath": "./main.py"
+}

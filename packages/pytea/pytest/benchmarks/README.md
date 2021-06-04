@@ -1,0 +1,21 @@
+# PyTorch Examples
+
+![Run Examples](https://github.com/pytorch/examples/workflows/Run%20Examples/badge.svg)
+
+WARNING: if you fork this repo, github actions will run daily on it. To disable
+this, go to <myuser>/examples/settings/actions and Disable Actions for this
+repository
+
+A repository showcasing examples of using [PyTorch](https://github.com/pytorch/pytorch)
+
+- [Image classification (MNIST) using Convnets](mnist)
+- [Word level Language Modeling using LSTM RNNs](word_language_model)
+- [Training Imagenet Classifiers with Residual Networks](imagenet)
+- [Generative Adversarial Networks (DCGAN)](dcgan)
+- [Variational Auto-Encoders](vae)
+- [Superresolution using an efficient sub-pixel convolutional neural network](super_resolution)
+- [Hogwild training of shared ConvNets across multiple processes on MNIST](mnist_hogwild)
+- [Training a CartPole to balance in OpenAI Gym with actor-critic](reinforcement_learning)
+- [Natural Language Inference (SNLI) with GloVe vectors, LSTMs, and torchtext](snli)
+- [Time sequence prediction - use an LSTM to learn Sine waves](time_sequence_prediction)
+- [Implement the Neural Style Transfer algorithm on images](fast_neural_style)

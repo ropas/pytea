@@ -1,0 +1,11 @@
+{
+    "pythonSubcommand": "train",
+    "pythonCmdArgs": {
+        "epochs": 1,
+        "cuda": 1,
+        "dataset": "./",
+        "save-model-dir": "./"
+    },
+    "logLevel": "result-only",
+    "entryPath": "./neural_style/neural_style.py"
+}

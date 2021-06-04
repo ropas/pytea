@@ -1,0 +1,10 @@
+{
+    "pythonCmdArgs": {
+        "cuda": true,
+        "dataset": "cifar10",
+        "niter": 1,
+        "manualSeed": 1
+    },
+    "logLevel": "result-only",
+    "entryPath": "main.py"
+}
