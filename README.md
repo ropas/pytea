@@ -1,5 +1,4 @@
-# PyTEA: Python Tensor Error Analyzer
-
+# PyTea: Static Analyzer for PyTorch Tensor Shape Error Detection
 ## Requirements
 
 - `node.js >= 12.x`
@@ -25,53 +24,39 @@ python bin/pytea.py path/to/source.py
 * [Configuration](doc/config.md)
 * [Build and Debug](doc/build-and-debug.md)
 
-## Brief Explanation of Analysis Result
+## Brief explanation of the analysis result
 
-For the full explanation, see [result-explain.md](doc/result-explain.md)
+PyTea is composed with two analyzers.
 
-PyTea is composed with two analyzer.
-
-* Online analysis: TypeScript / JavaScript
-  * Find numeric range based shape mismatch and misuse of API argument. If any error is found while analyzing the code, it will stop at that position and inform the errors and violated constraints to the user.
-* Offline analysis: Z3 / Python
-  * If online analyzer cannot assure that the shape requirement can be violated, it will pass on constraints to [Z3Py](https://github.com/Z3Prover/z3).
-
+- Online analysis: node.js (TypeScript / JavaScript)
+  - Find numeric range based shape mismatch and misuse of API argument. If PyTea found any error while analyzing the code, it will stop at that position and inform the errors and violated constraints to the user.
+- Offline analysis: Z3 / Python
+  - The generated constraints are passed to [Z3Py](https://github.com/Z3Prover/z3). Z3 will solve the constraint sets of each paths and print the first violated constraint (if exists).
 
 The result of Online analyzer is divided into three classes:
-* **potential success path**: the analyzer does not found shape mismatch until now, but the final constraint set can be violated if Z3 analyzes it on closer inspection.
-* **potential unreachable path**: the analyzer found shape mismatch or API misuses, but there remains *path constraints*. In short, *Path constraints* are uncertain branch conditions with symbolic variables; that means the stopped path might be *unreachable* if some path constraints mutually contradicts. Those cases will be distinguished from *Offline analysis*.
-* **immediate failed path**: the analyzer founds errors, and stops its analysis immediately.
 
-*CAVEAT*: If the code contains PyTorch or other third-party APIs that we have not implemented, it will raise false alarms. But we also record each unimplemented API calls. See `LOGS` section from result and search which unimplemented API call is performed.
+- **potential success path**: the analyzer does not found shape mismatch until now, but the final constraint set can be violated if Z3 analyzes it on closer inspection.
+- **potential unreachable path**: the analyzer found shape mismatch or API misuses, but there remains _path constraints_. In short, _path constraint_ is unresolved branch condition; that means the stopped path might be _unreachable_ if remained path constraints have contradiction. Those cases will be distinguished from _Offline analysis_.
+- **immediate failed path**: the analyzer founds errors, and stops its analysis immediately.
 
+_CAVEAT_: If the code contains PyTorch or other third-party APIs that we have not implemented, it will raise false alarms. But we also record each unimplemented API calls. See `LOGS` section from result and search which unimplemented API call is performed.
 
-The final result of Offline analyzer is divided into sevral cases.
-* **Valid path**: SMT solver have not found any error. Every constraints will always be fulfilled
-* **Invalid path**: SMT solver found a condition that can violate some constraints. Notice that this does not mean your code will always be crashed, but it found an extreme case that crashs some executions.
-* **Unreachable path**: Hard and Path constraints contain contradicting constraints; this path will not be realized from the beginning.
-* **Undecidable path**: The solver have met unsolvable constraints and timeouted. Some non-linear formulae can be classified into this case.
+The final result of the Offline analysis is divided into several cases.
 
+- **Valid path**: SMT solver has not found any error. Every constraint will always be fulfilled.
+- **Invalid path**: SMT solver found a condition that can violate some constraints. Notice that this does not mean the code will always crash, but it found an extreme case that crashes some executions.
+- **Undecidable path**: SMT solver has met unsolvable constraints, then timeouted. Some non-linear formulae can be classified into this case.
+- **Unreachable path**: Hard and Path constraints contain contradicting constraints; this path will not be realized from the beginning.
 
 ### Result examples
 
-* Error found by Offline analysis
+- Error found by Online analysis
 
-```bash
-> python bin/pytea.py --log=1 packages/pytea/pytest/benchmarks/resnet_simclr/resnet_train.py
-```
+![test1](img/test1.png)
 
-![result](img/result1.PNG)
+- Error found by Offline analysis
 
-* Error found by Online analysis
-
-```bash
-> python bin/pytea.py --log=1 packages/pytea/pytest/benchmarks/fast_neural_style/neural_style/neural_style.py
-```
-
-![result](img/result3.png)
-
-Offline analyzer have found a conflicted constraint (#7). Then, run `pytea.py` with `--log=2` to find code position of violated constraint.
-
+![test2](img/test2.png)
 # License
 
 MIT License

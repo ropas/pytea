@@ -1,32 +1,33 @@
-# Python Library API 구현 방법
+# How to implement Python Library API and LibCalls
 
-앞으로 언급되는 모든 path는 `packages/pytea`를 base path로 둔다.
+Every path below comes with a prefix `packages/pytea` as a base path.
 
-### 주요 참고 파일
+## Source structure
 
 - `src/pytea.ts`: PyTea entry point
 - `src/service`: Service modules (language server / analysis manager)
-  - `pyteaService.ts`: Python 스크립트들을 관리하고 로그 출력 및 import resolution 등을 맡음
-- `src/frontend`: Python 코드를 PyTea IR로 변환
-- `src/backend`: Symbolic execution을 구현하는 기본
-  - `torchBackend.ts`: 메인 backend
-  - `context.ts`: `Context` 및 `ContextSet`의 구현. interface에 구현된 함수들을 유심히 볼 것.
-  - `constraintSet.ts`: Constraint들의 집합. Constraint를 생성 및 관리하는데 사용되는 함수들이 있으나 대부분 Context class를 통해 접근할 수 있으므로 직접 사용을 권장하지 않음.
-  - `constraintType.ts`: Constraint들의 구조. 실제 Constraint의 생산은 Context 또는 ConstraintSet을 통해서만 할 수 있다.
-  - `constraintSolver.ts`: Online constraint checker. 비교적 간단한 형태의 Linear CAS의 구현.
-  - `sharpValues.ts`: backend에서 사용하는 Python의 기초 value들. (int, float 등)
-  - `sharpEnvironments.ts`: backend에서 사용하는 heap과 env의 구현
-  - `symExpressions.ts`: symbolic variable 및 expression의 구조
-  - `range.ts`: range abstract domain의 구현. Online constraint check에서 사용
-- `src/pylibImplements`: PyTorch API의 semantic을 정해주는 LibCall들의 실제 구현.
-  - `index.ts`: `libCallMap`에 구현한 LibCall들을 등록해주어야 함.
-  - `libcall.ts`: `explicit` LibCall 콜을 제외한 TorchIR 고유의 LibCall 구현. (`import`, `callKV`, `DEBUG` 등)
-- `pylib`: PyTorch API의 Python 뼈대
-  - `LibCall.py`: LibCall의 path들. 구현한 LibCall은 여기에 등록하면 추적이 편하나 필수는 아님.
+  - `pyteaService.ts`: Manage Python scripts, setting, logging, and import resolutions
+- `src/frontend`: Translate Python script into PyTea IR
+  - `torchFrontend.ts`: Main translation engine
+  - `torchStatements.ts`: Definition of PyTea IR
+- `src/backend`: Run online analysis and collect constraints
+  - `torchBackend.ts`: Main analysis engine
+  - `context.ts`: Implementation of `Context` and `ContextSet`. Look after the interfaces of those classes.
+  - `constraintSet.ts`: Constraint set of a single path. Most of the methods can be accessed from a `Context`, so you should not use those methods in this class directly.
+  - `constraintType.ts`: Definitions of constraints
+  - `constraintSolver.ts`: Online constraint checker (Simple Linear CAS)
+  - `expUtils.ts`: Simplify symbolic expressions and extract information from it
+  - `sharpValues.ts`: Values of PyTea IR Static semeantics
+  - `sharpEnvironments.ts`: Heap and Enviroment of PyTea IR
+  - `symExpressions.ts`: Symbolic variables and expressions
+  - `range.ts`: Abstract range domain
+- `src/pylibImplements`: Implementations of PyTea LibCall (Semantics of PyTorch and 3rd-party libraries)
+  - `index.ts`: Register `libCallMap`
+  - `libcall.ts`: Implemntation of special LibCalls except `explicit` (e.g., `import`, `callKV`, `exportGlobal`). Those are mainly for special Python semantics like `f(*args, **kwargs)` (variadic/keyword parameter).
+- `pylib`: Implementation of Python builtin and 3rd-party libraries
 
-pylib의 구조는 Anaconda를 깔았다면 `Anaconda3/envs/<envname>/Lib`에 있는 파일의 구조와 거의 동일하다. (virtualenv라면 env/Lib 폴더)
 
-### 전체적인 워크플로우
+## Overall workflow
 
 - 1\. 구현하고자 하는 PyTorch API의 뼈대를 `pylib` 폴더에 다른 함수들을 참고하여 구현한다. 기초적인 syntax는 python이랑 같으니 python 만으로 구현할 수 있는 것은 그대로 구현한다.
 - 2\. shape error 또는 list range constraint 등을 명시적으로 주어야 하는 api는 `LibCall.torch.matmul(self, other)`와 같이 `LibCall` 문을 사용한다. `LibCall.torch.matmul` 은 frontend에서 적절히 처리되어 `src/pylibImplements/backend/torch/index.ts`의 `matmul` 함수를 부르는 것으로 처리된다.
@@ -35,11 +36,7 @@ pylib의 구조는 Anaconda를 깔았다면 `Anaconda3/envs/<envname>/Lib`에 �
 - 4\. `index.ts` 아래의 `libCallImpls`에 구현한 `foo` 값을 집어넣는다.
 - 5\. 구현한 `bar` 함수는 `src/pylibImplements/backend/torch/index.ts`의 `libCallMap`, `src/pylibImplements/backend/index.ts`의 `libCallMap`을 거쳐 `src/backend/evaluator.ts`의 `evalLibCall` 함수에서 LibCallType.explicit 부분을 처리하는 곳에서 처리된다. 앞의 두 `libCallMap`에 bar이 잘 들어갈 수 있는지 확인한다.
 
-### 이전 워크플로우와의 차이점.
-
-이전 워크플로우 및 함수 설명은 [README.old.md]를 참고하자. 큰 틀은 비슷하지만 context를 다루는 부분과 일부 value 및 expression의 구조가 바뀌었다.
-
-#### 공통 변경 사항
+### Note
 
 - `SymExp`, `SymVal`, `Constraint`를 제외한 모든 값은 immutable.js를 사용하여 구현되었다. 즉, assign을 통한 프로퍼티의 직접 변경이 불가능하다. (persistent data structure)
   - 위 3개는 (가능하더라도) 프로퍼티의 직접 수정을 하지 말아야 한다. `ExpNum.create`, `ctx.genLte` 등의 유틸 함수들을 활용하여 값을 제작하여야 한다.
@@ -48,7 +45,7 @@ pylib의 구조는 Anaconda를 깔았다면 `Anaconda3/envs/<envname>/Lib`에 �
 - 모든 integer range는 0-based, exclusive이다. 즉, Python의 range 범위와 동일하다.
   - ExpShape.slice(shape, start, end)는 Python의 `shape[start:end]`과 같다. 즉, start, dim 모두 0부터 시작하는 index이며, start는 포함하고 end는 포함하지 않는 range이다.
 
-#### Context<T>와 ContextSet<T>의 구현
+## Implementation of Context<T> and ContextSet<T>
 
 `Context<T>`는 코드 상의 어떤 한 지점에서 코드의 한 라인을 실행시키기 위한 모든 정보를 가지고 있는 자료구조이다. `ContextSet<T>`는 `Context`의 집합으로, 성공 path들의 리스트와 실패 path의 리스트를 모두 들고 있다.
 
@@ -124,7 +121,7 @@ LibCall 구현에 사용 가능한 함수는 다음과 같다.
   - `genTensor(ctx, shape, source?)`: shape을 기반으로 한 Tensor 타입의 object를 반환한다. 기본적으로 Python에서 `torch.Tensor(*shape)`을 부르는 것과 동일하나, 내부적으로 해야하는 일이 많기 때문에 새로운 Tensor를 만들 때는 이 함수를 사용하여야 한다.
   - `fetchSize(mayAddr, heap)`: 만약 mayAddr이 SVAddr 타입의 값이라 가리키는 값이 SVSize라면 그 SVSize 값을 반환한다.
 
-#### getCachedRange의 사용
+### getCachedRange의 사용
 
 TypeScript에 구현한 in-place SMT는 conservative range를 기반으로 구현되어 있다.
 
@@ -134,7 +131,7 @@ NumRange 타입은 닫힌 구간, 열린 구간, 반만 닫힌 구간을 구현�
 
 만약 `__getitem__` 같이 LibCall 구현 도중에 정확한 numeric value를 알아야 하는 경우 이 함수를 사용할 수 있으며, 만약 정확한 value가 아니라 range가 나왔다면 warn또는 warnTensorWithMsg를 사용하여 현재 LibCall이 정확한 값을 반환할 수 없다는 것을 표현할 수 있다.
 
-#### ShValue 및 SVObject, SVSize의 구현
+### ShValue 및 SVObject, SVSize의 구현
 
 `ShValue`는 이전의 `ThValue`를 계승하는 Python의 primitive value들의 구현이다. immutable.js 기반으로 구현되어 있으므로 값의 직접 변경은 불가능하며, 기존 값을 기반으로 새로운 값을 만들어낼 수만 있다.
 
@@ -146,7 +143,7 @@ NumRange 타입은 닫힌 구간, 열린 구간, 반만 닫힌 구간을 구현�
 
 새로운 ShValue를 만들 때는 `SVInt.create` 등의 함수를 사용한다. (interface이므로 new를 사용해서 만들 수 없다.) 항상 source를 넣어주는 것을 잊지 말자.
 
-#### Constraint의 추가
+### Constraint의 추가
 
 Constraint는 3 종류로 나뉜다.
 
@@ -156,7 +153,7 @@ Constraint는 3 종류로 나뉜다.
 
 `ctx.genXXX` 함수를 통해 constraint를 만들고 `guarantee, require, ifThenElse`로 constraint를 주입하면 된다.
 
-### LibCall의 구현
+## Implementation of LibCall
 
 LibCall의 파라미터로는 `Context<ExplicitParams>`를 받는데, 이 안에는 단순히 `ShValue[]` 타입의 `ctx.retVal.params` 값이 있을 뿐이다. 이 안에서 타입을 적절히 판단해서 Tensor와 사이즈를 뽑아내려면 적절한 boilerplate가 필요하다. (나중에 이를 단순화시킬 수 있겠으나 현재는 생으로 해야한다.)
 
@@ -317,4 +314,3 @@ export function matmul(
 }
 ```
 
-### 디버그
