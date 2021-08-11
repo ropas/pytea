@@ -1,4 +1,4 @@
-# PyTea: Static Analyzer for PyTorch Tensor Shape Error Detection
+# PyTea: PyTorch Tensor Shape Error Detection
 ## Requirements
 
 - `node.js >= 12.x`
