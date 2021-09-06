@@ -7,15 +7,14 @@
  * Pathname utility functions.
  */
 
-import { randomBytes } from 'crypto';
-import { Dirent } from 'fs';
+import type { Dirent } from 'fs';
 import * as path from 'path';
 import Char from 'typescript-char';
 import { URI } from 'vscode-uri';
 
-import { PyrightFileSystem } from '../pyrightFileSystem';
 import { some } from './collectionUtils';
 import { compareValues, Comparison, GetCanonicalFileName, identity } from './core';
+import { randomBytesHex } from './crypto';
 import * as debug from './debug';
 import { FileSystem, Stats } from './fileSystem';
 import {
@@ -555,7 +554,7 @@ export function isFile(fs: FileSystem, path: string): boolean {
 export function tryStat(fs: FileSystem, path: string): Stats | undefined {
     try {
         return fs.statSync(path);
-    } catch (e) {
+    } catch (e: any) {
         return undefined;
     }
 }
@@ -563,7 +562,7 @@ export function tryStat(fs: FileSystem, path: string): Stats | undefined {
 export function tryRealpath(fs: FileSystem, path: string): string | undefined {
     try {
         return fs.realpathSync(path);
-    } catch (e) {
+    } catch (e: any) {
         return undefined;
     }
 }
@@ -571,7 +570,7 @@ export function tryRealpath(fs: FileSystem, path: string): string | undefined {
 export function getFileSystemEntries(fs: FileSystem, path: string): FileSystemEntries {
     try {
         return getFileSystemEntriesFromDirEntries(fs.readdirEntriesSync(path || '.'), fs, path);
-    } catch (e) {
+    } catch (e: any) {
         return { files: [], directories: [] };
     }
 }
@@ -868,33 +867,30 @@ function fileSystemEntryExists(fs: FileSystem, path: string, entryKind: FileSyst
             default:
                 return false;
         }
-    } catch (e) {
+    } catch (e: any) {
         return false;
     }
 }
 
 export function convertUriToPath(fs: FileSystem, uriString: string): string {
+    return fs.getMappedFilePath(extractPathFromUri(uriString));
+}
+
+export function extractPathFromUri(uriString: string) {
     const uri = URI.parse(uriString);
     let convertedPath = normalizePath(uri.path);
+
     // If this is a DOS-style path with a drive letter, remove
     // the leading slash.
     if (convertedPath.match(/^\\[a-zA-Z]:\\/)) {
         convertedPath = convertedPath.substr(1);
     }
 
-    if (fs instanceof PyrightFileSystem) {
-        return fs.getMappedFilePath(convertedPath);
-    }
-
     return convertedPath;
 }
 
 export function convertPathToUri(fs: FileSystem, path: string): string {
-    if (fs instanceof PyrightFileSystem) {
-        path = fs.getOriginalFilePath(path);
-    }
-
-    return URI.file(path).toString();
+    return fs.getUri(fs.getOriginalFilePath(path));
 }
 
 // For file systems that are case-insensitive, returns a lowercase
@@ -924,7 +920,7 @@ export function isFileSystemCaseSensitiveInternal(fs: FileSystem) {
         let name: string;
         let mangledFilePath: string;
         do {
-            name = `${randomBytes(21).toString('hex')}-a`;
+            name = `${randomBytesHex(21)}-a`;
             filePath = path.join(fs.tmpdir(), name);
             mangledFilePath = path.join(fs.tmpdir(), name.toUpperCase());
         } while (fs.existsSync(filePath) || fs.existsSync(mangledFilePath));
@@ -933,7 +929,7 @@ export function isFileSystemCaseSensitiveInternal(fs: FileSystem) {
 
         // If file exists, then it is insensitive.
         return !fs.existsSync(mangledFilePath);
-    } catch (e) {
+    } catch (e: any) {
         return false;
     } finally {
         if (filePath) {

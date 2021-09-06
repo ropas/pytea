@@ -8,6 +8,7 @@
  */
 
 import * as assert from 'assert';
+import * as JSONC from 'jsonc-parser';
 import Char from 'typescript-char';
 import {
     CancellationToken,
@@ -54,9 +55,10 @@ import { convertHoverResults } from '../../../languageService/hoverProvider';
 import { ParseResults } from '../../../parser/parser';
 import { Tokenizer } from '../../../parser/tokenizer';
 import { PyrightFileSystem } from '../../../pyrightFileSystem';
-import * as host from '../host';
+import { TestAccessHost } from '../testAccessHost';
+import * as host from '../testHost';
 import { stringify } from '../utils';
-import { createFromFileSystem } from '../vfs/factory';
+import { createFromFileSystem, distlibFolder, libFolder } from '../vfs/factory';
 import * as vfs from '../vfs/filesystem';
 import {
     CompilerSettings,
@@ -89,6 +91,8 @@ export interface HostSpecificFeatures {
 
     execute(ls: LanguageServerInterface, params: ExecuteCommandParams, token: CancellationToken): Promise<any>;
 }
+
+const testAccessHost = new TestAccessHost(vfs.MODULE_PATH, [libFolder, distlibFolder]);
 
 export class TestState {
     private readonly _cancellationToken: TestCancellationToken;
@@ -131,12 +135,12 @@ export class TestState {
             // if one of file is configuration file, set config options from the given json
             if (this._isConfig(file, ignoreCase)) {
                 try {
-                    this.rawConfigJson = JSON.parse(file.content);
-                } catch (e) {
+                    this.rawConfigJson = JSONC.parse(file.content);
+                } catch (e: any) {
                     throw new Error(`Failed to parse test ${file.fileName}: ${e.message}`);
                 }
 
-                configOptions.initializeFromJson(this.rawConfigJson, 'basic', nullConsole);
+                configOptions.initializeFromJson(this.rawConfigJson, 'basic', nullConsole, testAccessHost);
                 this._applyTestConfigOptions(configOptions);
             } else {
                 files[file.fileName] = new vfs.File(file.content, { meta: file.fileOptions, encoding: 'utf8' });
@@ -663,7 +667,7 @@ export class TestState {
 
         const commandResult = await this._hostSpecificFeatures.execute(
             new TestLanguageService(this.workspace, this.console, this.fs),
-            { command: command.command, arguments: command.arguments },
+            { command: command.command, arguments: command.arguments || [] },
             CancellationToken.None
         );
 
@@ -724,7 +728,7 @@ export class TestState {
                     ls,
                     {
                         command: codeAction.command!.command,
-                        arguments: codeAction.command?.arguments,
+                        arguments: codeAction.command?.arguments || [],
                     },
                     CancellationToken.None
                 );
@@ -875,7 +879,9 @@ export class TestState {
 
                 for (let i = 0; i < expectedCompletions.length; i++) {
                     const expected = expectedCompletions[i];
-                    const actualIndex = result.completionList.items.findIndex((a) => a.label === expected.label);
+                    const actualIndex = result.completionList.items.findIndex(
+                        (a) => a.label === expected.label && (expected.kind ? a.kind === expected.kind : true)
+                    );
                     if (actualIndex >= 0) {
                         if (verifyMode === 'excluded') {
                             // we're not supposed to find the completions passed to the test
@@ -1189,6 +1195,7 @@ export class TestState {
                 fileName,
                 position,
                 expected.newName,
+                /* isDefaultWorkspace */ false,
                 CancellationToken.None
             );
 
@@ -1229,11 +1236,6 @@ export class TestState {
 
         // Always analyze all files
         configOptions.checkOnlyOpenFiles = false;
-
-        // run test in venv mode under root so that
-        // under test we can point to local lib folder
-        configOptions.venvPath = vfs.MODULE_PATH;
-        configOptions.venv = vfs.MODULE_PATH;
 
         // make sure we set typing path
         if (configOptions.stubPath === undefined) {
@@ -1454,9 +1456,10 @@ export class TestState {
         }
     }
 
-    private _tryFindFileWorker(
-        name: string
-    ): { readonly file: FourSlashFile | undefined; readonly availableNames: readonly string[] } {
+    private _tryFindFileWorker(name: string): {
+        readonly file: FourSlashFile | undefined;
+        readonly availableNames: readonly string[];
+    } {
         name = normalizePath(name);
 
         let file: FourSlashFile | undefined;
@@ -1550,7 +1553,14 @@ export class TestState {
         configOptions: ConfigOptions
     ) {
         // we do not initiate automatic analysis or file watcher in test.
-        const service = new AnalyzerService('test service', this.fs, nullConsole, importResolverFactory, configOptions);
+        const service = new AnalyzerService(
+            'test service',
+            this.fs,
+            nullConsole,
+            () => testAccessHost,
+            importResolverFactory,
+            configOptions
+        );
 
         // directly set files to track rather than using fileSpec from config
         // to discover those files from file system

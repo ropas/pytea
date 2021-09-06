@@ -16,6 +16,7 @@ Pyright supports [configuration files](/docs/configuration.md) that provide gran
 * [PEP 544](https://www.python.org/dev/peps/pep-0544/) structural subtyping
 * [PEP 561](https://www.python.org/dev/peps/pep-0561/) distributing and packaging type information
 * [PEP 563](https://www.python.org/dev/peps/pep-0563/) postponed evaluation of annotations
+* [PEP 570](https://www.python.org/dev/peps/pep-0570/) position-only parameters
 * [PEP 585](https://www.python.org/dev/peps/pep-0585/) type hinting generics in standard collections
 * [PEP 586](https://www.python.org/dev/peps/pep-0586/) literal types
 * [PEP 589](https://www.python.org/dev/peps/pep-0589/) typed dictionaries
@@ -52,4 +53,4 @@ The VS Code extension supports many time-saving language features including:
 
 Pyright includes a recent copy of the stdlib type stubs from [Typeshed](https://github.com/python/typeshed). It can be configured to use another (perhaps more recent or modified) copy of the Typeshed type stubs. Of course, it also works with custom type stub files that are part of your project.
 
-For more details, refer to the [README](https://github.com/Microsoft/pyright/blob/master/README.md) on the Pyright GitHub site.
+For more details, refer to the [README](https://github.com/microsoft/pyright/blob/main/README.md) on the Pyright GitHub site.

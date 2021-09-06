@@ -25,9 +25,10 @@ import {
     Declaration,
     DeclarationType,
     FunctionDeclaration,
-    isAliasDeclaration,
     isFunctionDeclaration,
+    VariableDeclaration,
 } from '../analyzer/declaration';
+import { isDefinedInFile } from '../analyzer/declarationUtils';
 import { convertDocStringToMarkdown, convertDocStringToPlainText } from '../analyzer/docStringConversion';
 import { ImportedModuleDescriptor, ImportResolver } from '../analyzer/importResolver';
 import * as ParseTreeUtils from '../analyzer/parseTreeUtils';
@@ -41,25 +42,25 @@ import {
     getModuleDocString,
     getOverloadedFunctionDocStringsInherited,
     getPropertyDocStringInherited,
-    getVariableInStubFileDocStrings,
+    getVariableDocString,
 } from '../analyzer/typeDocStringUtils';
 import { CallSignatureInfo, TypeEvaluator } from '../analyzer/typeEvaluator';
+import { printLiteralValue } from '../analyzer/typePrinter';
 import {
     ClassType,
     FunctionType,
     getTypeAliasInfo,
     isClass,
+    isClassInstance,
     isFunction,
+    isInstantiableClass,
     isModule,
     isNone,
-    isObject,
     isOverloadedFunction,
     isUnbound,
     isUnknown,
-    ObjectType,
     Type,
     TypeBase,
-    TypeCategory,
     UnknownType,
 } from '../analyzer/types';
 import {
@@ -67,27 +68,31 @@ import {
     getDeclaringModulesForType,
     getMembersForClass,
     getMembersForModule,
+    isLiteralType,
     isProperty,
-    transformTypeObjectToClass,
 } from '../analyzer/typeUtils';
 import { throwIfCancellationRequested } from '../common/cancellationUtils';
-import { ConfigOptions } from '../common/configOptions';
+import { ConfigOptions, ExecutionEnvironment } from '../common/configOptions';
 import * as debug from '../common/debug';
 import { fail } from '../common/debug';
 import { TextEditAction } from '../common/editAction';
 import { convertOffsetToPosition, convertPositionToOffset } from '../common/positionUtils';
+import { PythonVersion } from '../common/pythonVersion';
 import * as StringUtils from '../common/stringUtils';
 import { comparePositions, Position } from '../common/textRange';
 import { TextRange } from '../common/textRange';
 import { TextRangeCollection } from '../common/textRangeCollection';
 import { Duration } from '../common/timing';
 import {
+    ArgumentCategory,
     DecoratorNode,
+    DictionaryKeyEntryNode,
     ErrorExpressionCategory,
     ErrorNode,
     ExpressionNode,
     FunctionNode,
     ImportFromNode,
+    IndexNode,
     isExpressionNode,
     ModuleNameNode,
     NameNode,
@@ -100,49 +105,62 @@ import {
 import { ParseResults } from '../parser/parser';
 import { Token } from '../parser/tokenizerTypes';
 import { AbbreviationInfo, AutoImporter, AutoImportResult, ModuleSymbolMap } from './autoImporter';
+import { DocumentSymbolCollector } from './documentSymbolCollector';
 import { IndexResults } from './documentSymbolProvider';
-import { getFunctionDocStringFromType, getOverloadedFunctionTooltip } from './tooltipUtils';
+import { getAutoImportText, getFunctionDocStringFromType, getOverloadedFunctionTooltip } from './tooltipUtils';
 
-const _keywords: string[] = [
-    // Expression keywords
-    'True',
-    'False',
-    'None',
-    'and',
-    'or',
-    'await',
-    'not',
-    'is',
-    'lambda',
-    'yield',
+namespace Keywords {
+    const base: string[] = [
+        // Expression keywords
+        'True',
+        'False',
+        'None',
+        'and',
+        'or',
+        'not',
+        'is',
+        'lambda',
+        'yield',
 
-    // Statement keywords
-    'assert',
-    'async',
-    'break',
-    'case',
-    'class',
-    'continue',
-    'def',
-    'del',
-    'elif',
-    'else',
-    'except',
-    'finally',
-    'for',
-    'from',
-    'global',
-    'if',
-    'import',
-    'in',
-    'match',
-    'nonlocal',
-    'pass',
-    'raise',
-    'return',
-    'try',
-    'while',
-];
+        // Statement keywords
+        'assert',
+        'break',
+        'class',
+        'continue',
+        'def',
+        'del',
+        'elif',
+        'else',
+        'except',
+        'finally',
+        'for',
+        'from',
+        'global',
+        'if',
+        'import',
+        'in',
+        'nonlocal',
+        'pass',
+        'raise',
+        'return',
+        'try',
+        'while',
+    ];
+
+    const python3_5: string[] = [...base, 'async', 'await'];
+
+    const python3_10: string[] = [...python3_5, 'case', 'match'];
+
+    export function forVersion(version: PythonVersion): string[] {
+        if (version >= PythonVersion.V3_10) {
+            return python3_10;
+        }
+        if (version >= PythonVersion.V3_5) {
+            return python3_5;
+        }
+        return base;
+    }
+}
 
 enum SortCategory {
     // The order of the following is important. We use
@@ -193,16 +211,16 @@ export interface CompletionItemData {
     filePath: string;
     workspacePath: string;
     position: Position;
-    autoImportText?: string;
-    symbolLabel?: string;
-    funcParensDisabled?: boolean;
+    autoImportText?: string | undefined;
+    symbolLabel?: string | undefined;
+    funcParensDisabled?: boolean | undefined;
 }
 
 // MemberAccessInfo attempts to gather info for unknown types
 export interface MemberAccessInfo {
-    lastKnownModule?: string;
-    lastKnownMemberName?: string;
-    unknownMemberName?: string;
+    lastKnownModule?: string | undefined;
+    lastKnownMemberName?: string | undefined;
+    unknownMemberName?: string | undefined;
 }
 
 export interface AutoImportInfo {
@@ -230,9 +248,9 @@ export interface ExtensionInfo {
 
 export interface CompletionResults {
     completionList: CompletionList | undefined;
-    memberAccessInfo?: MemberAccessInfo;
-    autoImportInfo?: AutoImportInfo;
-    extensionInfo?: ExtensionInfo;
+    memberAccessInfo?: MemberAccessInfo | undefined;
+    autoImportInfo?: AutoImportInfo | undefined;
+    extensionInfo?: ExtensionInfo | undefined;
 }
 
 export interface CompletionOptions {
@@ -244,8 +262,8 @@ export interface CompletionOptions {
 export type AbbreviationMap = Map<string, AbbreviationInfo>;
 
 export interface AutoImportMaps {
-    nameMap?: AbbreviationMap;
-    libraryMap?: Map<string, IndexResults>;
+    nameMap?: AbbreviationMap | undefined;
+    libraryMap?: Map<string, IndexResults> | undefined;
     getModuleSymbolsMap: () => ModuleSymbolMap;
 }
 
@@ -255,28 +273,31 @@ interface RecentCompletionInfo {
 }
 
 interface Edits {
-    format?: InsertTextFormat;
-    textEdit?: TextEdit;
-    additionalTextEdits?: TextEditAction[];
+    format?: InsertTextFormat | undefined;
+    textEdit?: TextEdit | undefined;
+    additionalTextEdits?: TextEditAction[] | undefined;
 }
 
 interface SymbolDetail {
-    funcParensDisabled?: boolean;
-    autoImportSource?: string;
-    autoImportAlias?: string;
-    boundObject?: ObjectType;
-    edits?: Edits;
+    funcParensDisabled?: boolean | undefined;
+    autoImportSource?: string | undefined;
+    autoImportAlias?: string | undefined;
+    boundObject?: ClassType | undefined;
+    edits?: Edits | undefined;
 }
 
 interface CompletionDetail {
-    funcParensDisabled?: boolean;
-    typeDetail?: string;
-    documentation?: string;
-    autoImportText?: string;
-    edits?: Edits;
+    funcParensDisabled?: boolean | undefined;
+    typeDetail?: string | undefined;
+    documentation?: string | undefined;
+    autoImportText?: string | undefined;
+    edits?: Edits | undefined;
+    sortText?: string | undefined;
+    itemDetail?: string | undefined;
 }
 
 export const autoImportDetail = 'Auto-import';
+export const dictionaryKeyDetail = 'Dictionary key';
 
 // We'll use a somewhat-arbitrary cutoff value here to determine
 // whether it's sufficiently similar.
@@ -292,6 +313,8 @@ export class CompletionProvider {
     // original completion algorithm and look for this symbol.
     private _itemToResolve: CompletionItem | undefined;
 
+    private _execEnv: ExecutionEnvironment;
+
     constructor(
         private _workspacePath: string,
         private _parseResults: ParseResults,
@@ -306,7 +329,9 @@ export class CompletionProvider {
         private _sourceMapper: SourceMapper,
         private _autoImportMaps: AutoImportMaps | undefined,
         private _cancellationToken: CancellationToken
-    ) {}
+    ) {
+        this._execEnv = this._configOptions.findExecEnvironment(this._filePath);
+    }
 
     getCompletionsForPosition(): CompletionResults | undefined {
         const offset = convertPositionToOffset(this._position, this._parseResults.tokenizerOutput.lines);
@@ -389,7 +414,7 @@ export class CompletionProvider {
             throwIfCancellationRequested(this._cancellationToken);
 
             if (curNode.nodeType === ParseNodeType.String) {
-                return this._getStringLiteralCompletions(curNode, priorWord, priorText, postText);
+                return this._getLiteralCompletions(curNode, priorWord, priorText, postText);
             }
 
             if (curNode.nodeType === ParseNodeType.StringList || curNode.nodeType === ParseNodeType.FormatString) {
@@ -524,7 +549,7 @@ export class CompletionProvider {
                 const completionList = CompletionList.create();
                 const completionResults = { completionList };
 
-                this._getAutoImportCompletions(
+                this._addAutoImportCompletions(
                     completionItemData.symbolLabel,
                     /* similarityLimit */ 1,
                     /* lazyEdit */ false,
@@ -692,7 +717,7 @@ export class CompletionProvider {
             }
 
             case ErrorExpressionCategory.MissingIndexOrSlice: {
-                let completionResults = this._getStringLiteralCompletions(node, priorWord, priorText, postText);
+                let completionResults = this._getLiteralCompletions(node, priorWord, priorText, postText);
 
                 if (!completionResults || !completionResults.completionList) {
                     completionResults = this._getExpressionCompletions(node, priorWord, priorText, postText);
@@ -789,7 +814,7 @@ export class CompletionProvider {
 
                 const symbolTable = new Map<string, Symbol>();
                 for (const mroClass of classResults.classType.details.mro) {
-                    if (isClass(mroClass)) {
+                    if (isInstantiableClass(mroClass)) {
                         getMembersForClass(mroClass, symbolTable, /* includeInstanceVars */ false);
                     }
                 }
@@ -826,7 +851,7 @@ export class CompletionProvider {
         const symbolTable = new Map<string, Symbol>();
         for (let i = 1; i < classResults.classType.details.mro.length; i++) {
             const mroClass = classResults.classType.details.mro[i];
-            if (isClass(mroClass)) {
+            if (isInstantiableClass(mroClass)) {
                 getMembersForClass(mroClass, symbolTable, /* includeInstanceVars */ false);
             }
         }
@@ -845,7 +870,7 @@ export class CompletionProvider {
                         return;
                     }
 
-                    let isProperty = isObject(declaredType) && ClassType.isPropertyClass(declaredType.classType);
+                    let isProperty = isClassInstance(declaredType) && ClassType.isPropertyClass(declaredType);
 
                     if (SymbolNameUtils.isDunderName(name)) {
                         // Don't offer suggestions for built-in properties like "__class__", etc.
@@ -976,7 +1001,7 @@ export class CompletionProvider {
 
         if (
             classType.details.baseClasses.length === 1 &&
-            classType.details.baseClasses[0].category === TypeCategory.Class &&
+            isClass(classType.details.baseClasses[0]) &&
             classType.details.baseClasses[0].details.fullName === 'builtins.object'
         ) {
             sb += this._options.snippet ? '${0:pass}' : 'pass';
@@ -1039,27 +1064,25 @@ export class CompletionProvider {
             leftType = this._evaluator.makeTopLevelTypeVarsConcrete(leftType);
 
             doForEachSubtype(leftType, (subtype) => {
-                subtype = this._evaluator.makeTopLevelTypeVarsConcrete(transformTypeObjectToClass(subtype));
+                subtype = this._evaluator.makeTopLevelTypeVarsConcrete(subtype);
 
-                if (isObject(subtype)) {
-                    getMembersForClass(subtype.classType, symbolTable, /* includeInstanceVars */ true);
-                } else if (isClass(subtype)) {
-                    getMembersForClass(subtype, symbolTable, /* includeInstanceVars */ false);
+                if (isClass(subtype)) {
+                    getMembersForClass(subtype, symbolTable, /* includeInstanceVars */ TypeBase.isInstance(subtype));
                 } else if (isModule(subtype)) {
                     getMembersForModule(subtype, symbolTable);
                 } else if (isFunction(subtype) || isOverloadedFunction(subtype)) {
                     const functionClass = this._evaluator.getBuiltInType(leftExprNode, 'function');
-                    if (functionClass && isClass(functionClass)) {
+                    if (functionClass && isInstantiableClass(functionClass)) {
                         getMembersForClass(functionClass, symbolTable, /* includeInstanceVars */ true);
                     }
                 } else if (isNone(subtype)) {
                     const objectClass = this._evaluator.getBuiltInType(leftExprNode, 'object');
-                    if (objectClass && isClass(objectClass)) {
+                    if (objectClass && isInstantiableClass(objectClass)) {
                         getMembersForClass(objectClass, symbolTable, TypeBase.isInstance(subtype));
                     }
                 }
 
-                const boundObject = isObject(subtype) ? subtype : undefined;
+                const boundObject = isClassInstance(subtype) ? subtype : undefined;
                 this._addSymbolsForSymbolTable(
                     symbolTable,
                     (_) => true,
@@ -1119,10 +1142,10 @@ export class CompletionProvider {
 
             if (curNode.nodeType === ParseNodeType.MemberAccess) {
                 memberAccessInfo.lastKnownMemberName = curNode.memberName.value;
-            } else if (curNode.nodeType === ParseNodeType.Name && isClass(curType)) {
+            } else if (curNode.nodeType === ParseNodeType.Name && isInstantiableClass(curType)) {
                 memberAccessInfo.lastKnownMemberName = curType.details.name;
-            } else if (curNode.nodeType === ParseNodeType.Name && isObject(curType)) {
-                memberAccessInfo.lastKnownMemberName = curType.classType.details.name;
+            } else if (curNode.nodeType === ParseNodeType.Name && isClassInstance(curType)) {
+                memberAccessInfo.lastKnownMemberName = curType.details.name;
             }
 
             memberAccessInfo.unknownMemberName = unknownMemberName;
@@ -1147,9 +1170,11 @@ export class CompletionProvider {
         priorText: string,
         postText: string
     ): CompletionResults | undefined {
+        const isIndexArgument = this._isIndexArgument(parseNode);
+
         // If the user typed a "." as part of a number, don't present
         // any completion options.
-        if (parseNode.nodeType === ParseNodeType.Number) {
+        if (!isIndexArgument && parseNode.nodeType === ParseNodeType.Number) {
             return undefined;
         }
 
@@ -1165,14 +1190,26 @@ export class CompletionProvider {
         const completionList = CompletionList.create();
         const completionResults = { completionList };
 
+        // Return empty completionList for Ellipsis
+        if (priorText.slice(-2) === '..') {
+            return completionResults;
+        }
+
         // Add call argument completions.
-        this._addCallArgumentCompletions(parseNode, priorWord, priorText, postText, completionList);
+        this._addCallArgumentCompletions(
+            parseNode,
+            priorWord,
+            priorText,
+            postText,
+            /*atArgument*/ false,
+            completionList
+        );
 
         // Add symbols that are in scope.
         this._addSymbols(parseNode, priorWord, completionList);
 
         // Add keywords.
-        this._findMatchingKeywords(_keywords, priorWord).map((keyword) => {
+        this._findMatchingKeywords(Keywords.forVersion(this._execEnv.pythonVersion), priorWord).map((keyword) => {
             const completionItem = CompletionItem.create(keyword);
             completionItem.kind = CompletionItemKind.Keyword;
             completionList.items.push(completionItem);
@@ -1182,13 +1219,21 @@ export class CompletionProvider {
         // Add auto-import suggestions from other modules.
         // Ignore this check for privates, since they are not imported.
         if (this._configOptions.autoImportCompletions && !priorWord.startsWith('_') && !this._itemToResolve) {
-            this._getAutoImportCompletions(priorWord, similarityLimit, this._options.lazyEdit, completionResults);
+            this._addAutoImportCompletions(priorWord, similarityLimit, this._options.lazyEdit, completionResults);
         }
 
         // Add literal values if appropriate.
         if (parseNode.nodeType === ParseNodeType.Error) {
-            if (parseNode.category === ErrorExpressionCategory.MissingIndexOrSlice) {
-                this._getIndexStringLiteral(parseNode, completionList);
+            if (
+                parseNode.category === ErrorExpressionCategory.MissingIndexOrSlice &&
+                parseNode.parent?.nodeType === ParseNodeType.Index
+            ) {
+                this._tryAddTypedDictStringLiteral(
+                    parseNode.parent,
+                    /*priorText*/ undefined,
+                    /*postText*/ undefined,
+                    completionList
+                );
             } else if (parseNode.category === ErrorExpressionCategory.MissingExpression) {
                 if (parseNode.parent && parseNode.parent.nodeType === ParseNodeType.Assignment) {
                     const declaredTypeOfTarget = this._evaluator.getDeclaredTypeForExpression(
@@ -1196,13 +1241,53 @@ export class CompletionProvider {
                     );
 
                     if (declaredTypeOfTarget) {
-                        this._addLiteralValuesForTargetType(declaredTypeOfTarget, priorText, postText, completionList);
+                        this._addLiteralValuesForTargetType(
+                            declaredTypeOfTarget,
+                            priorText,
+                            priorWord,
+                            postText,
+                            completionList
+                        );
                     }
                 }
             }
         }
 
+        if (isIndexArgument) {
+            // Completion for dict key (ex, dict_variable[<here>])
+            const indexNode = parseNode.parent!.parent! as IndexNode;
+            const excludes = new Set(completionList.items.map((i) => i.label));
+
+            this._getDictionaryKeys(indexNode, parseNode).forEach((key) => {
+                if (excludes.has(key)) {
+                    // Don't add key if it already exists in the completion.
+                    // ex) key = "dictKey"
+                    //     dict[key] = 1
+                    //     print(dict[<key will come from symbol table provider>]))
+                    return;
+                }
+
+                this._addNameToCompletionList(key, CompletionItemKind.Constant, priorWord, completionList, {
+                    sortText: this._makeSortText(SortCategory.LiteralValue, key),
+                    itemDetail: dictionaryKeyDetail,
+                });
+            });
+        }
+
         return completionResults;
+    }
+
+    private _isIndexArgument(node: ParseNode) {
+        const currentNode = node.parent;
+        return (
+            currentNode &&
+            currentNode.nodeType === ParseNodeType.Argument &&
+            currentNode.argumentCategory === ArgumentCategory.Simple &&
+            currentNode.parent &&
+            currentNode.parent.nodeType === ParseNodeType.Index &&
+            currentNode.parent.baseExpression &&
+            currentNode.parent.baseExpression.nodeType === ParseNodeType.Name
+        );
     }
 
     private _addCallArgumentCompletions(
@@ -1210,6 +1295,7 @@ export class CompletionProvider {
         priorWord: string,
         priorText: string,
         postText: string,
+        atArgument: boolean,
         completionList: CompletionList
     ) {
         // If we're within the argument list of a call, add parameter names.
@@ -1238,10 +1324,12 @@ export class CompletionProvider {
             );
 
             if (comparePositions(this._position, callNameEnd) > 0) {
-                this._addNamedParameters(signatureInfo, priorWord, completionList);
+                if (!atArgument) {
+                    this._addNamedParameters(signatureInfo, priorWord, completionList);
+                }
 
                 // Add literals that apply to this parameter.
-                this._addLiteralValuesForArgument(signatureInfo, priorText, postText, completionList);
+                this._addLiteralValuesForArgument(signatureInfo, priorText, priorWord, postText, completionList);
             }
         }
     }
@@ -1249,6 +1337,7 @@ export class CompletionProvider {
     private _addLiteralValuesForArgument(
         signatureInfo: CallSignatureInfo,
         priorText: string,
+        priorWord: string,
         postText: string,
         completionList: CompletionList
     ) {
@@ -1265,7 +1354,7 @@ export class CompletionProvider {
             }
 
             const paramType = type.details.parameters[paramIndex].type;
-            this._addLiteralValuesForTargetType(paramType, priorText, postText, completionList);
+            this._addLiteralValuesForTargetType(paramType, priorText, priorWord, postText, completionList);
             return undefined;
         });
     }
@@ -1273,28 +1362,175 @@ export class CompletionProvider {
     private _addLiteralValuesForTargetType(
         type: Type,
         priorText: string,
+        priorWord: string,
         postText: string,
         completionList: CompletionList
     ) {
         const quoteValue = this._getQuoteValueFromPriorText(priorText);
-        doForEachSubtype(type, (subtype) => {
-            if (
-                isObject(subtype) &&
-                ClassType.isBuiltIn(subtype.classType, 'str') &&
-                subtype.classType.literalValue !== undefined
-            ) {
-                this._addStringLiteralToCompletionList(
-                    subtype.classType.literalValue as string,
-                    quoteValue.stringValue,
-                    postText,
-                    quoteValue.quoteCharacter,
-                    completionList
-                );
+        this._getSubTypesWithLiteralValues(type).forEach((v) => {
+            if (ClassType.isBuiltIn(v, 'str')) {
+                const value = printLiteralValue(v, quoteValue.quoteCharacter);
+                if (quoteValue.stringValue === undefined) {
+                    this._addNameToCompletionList(value, CompletionItemKind.Constant, priorWord, completionList, {
+                        sortText: this._makeSortText(SortCategory.LiteralValue, v.literalValue as string),
+                    });
+                } else {
+                    this._addStringLiteralToCompletionList(
+                        value.substr(1, value.length - 2),
+                        quoteValue.stringValue,
+                        postText,
+                        quoteValue.quoteCharacter,
+                        completionList
+                    );
+                }
             }
         });
     }
 
-    private _getStringLiteralCompletions(
+    private _getSubTypesWithLiteralValues(type: Type) {
+        const values: ClassType[] = [];
+
+        doForEachSubtype(type, (subtype) => {
+            if (isClassInstance(subtype) && isLiteralType(subtype)) {
+                values.push(subtype);
+            }
+        });
+
+        return values;
+    }
+
+    private _getDictionaryKeys(indexNode: IndexNode, invocationNode: ParseNode) {
+        if (indexNode.baseExpression.nodeType !== ParseNodeType.Name) {
+            // This completion only supports simple name case
+            return [];
+        }
+
+        const baseType = this._evaluator.getType(indexNode.baseExpression);
+        if (!baseType || !isClassInstance(baseType)) {
+            return [];
+        }
+
+        // Must be dict type
+        if (!ClassType.isBuiltIn(baseType, 'dict') && !ClassType.isBuiltIn(baseType, 'Mapping')) {
+            return [];
+        }
+
+        // See whether dictionary is typed using Literal types. If it is, return those literal keys.
+        // For now, we are not using __getitem__ since we don't have a way to get effective parameter type of __getitem__.
+        if (baseType.typeArguments?.length === 2) {
+            const keys: string[] = [];
+
+            this._getSubTypesWithLiteralValues(baseType.typeArguments[0]).forEach((v) => {
+                if (
+                    !ClassType.isBuiltIn(v, 'str') &&
+                    !ClassType.isBuiltIn(v, 'int') &&
+                    !ClassType.isBuiltIn(v, 'bool') &&
+                    !ClassType.isBuiltIn(v, 'bytes') &&
+                    !ClassType.isEnumClass(v)
+                ) {
+                    return;
+                }
+
+                keys.push(printLiteralValue(v, this._parseResults.tokenizerOutput.predominantSingleQuoteCharacter));
+            });
+
+            if (keys.length > 0) {
+                return keys;
+            }
+        }
+
+        // Must be local variable/parameter
+        const declarations = this._evaluator.getDeclarationsForNameNode(indexNode.baseExpression) ?? [];
+        const declaration = declarations.length > 0 ? declarations[0] : undefined;
+        if (
+            !declaration ||
+            (declaration.type !== DeclarationType.Variable && declaration.type !== DeclarationType.Parameter)
+        ) {
+            return [];
+        }
+
+        if (declaration.path !== this._filePath) {
+            return [];
+        }
+
+        let startingNode: ParseNode = indexNode.baseExpression;
+        if (declaration.node) {
+            const scopeRoot = ParseTreeUtils.getEvaluationScopeNode(declaration.node);
+
+            // Find the lowest tree to search the symbol.
+            if (
+                ParseTreeUtils.getFileInfoFromNode(startingNode)?.filePath ===
+                ParseTreeUtils.getFileInfoFromNode(scopeRoot)?.filePath
+            ) {
+                startingNode = scopeRoot;
+            }
+        }
+
+        const results: NameNode[] = [];
+        const collector = new DocumentSymbolCollector(
+            indexNode.baseExpression,
+            this._evaluator,
+            results,
+            this._cancellationToken,
+            startingNode
+        );
+        collector.collect();
+
+        const keys: Set<string> = new Set<string>();
+        for (const nameNode of results) {
+            const node = nameNode.parent?.nodeType === ParseNodeType.TypeAnnotation ? nameNode.parent : nameNode;
+
+            if (
+                node.parent?.nodeType === ParseNodeType.Assignment ||
+                node.parent?.nodeType === ParseNodeType.AssignmentExpression
+            ) {
+                if (node.parent.rightExpression.nodeType === ParseNodeType.Dictionary) {
+                    const dictionary = node.parent.rightExpression;
+                    for (const entry of dictionary.entries.filter(
+                        (e) => e.nodeType === ParseNodeType.DictionaryKeyEntry
+                    ) as DictionaryKeyEntryNode[]) {
+                        const key = this._parseResults.text
+                            .substr(entry.keyExpression.start, entry.keyExpression.length)
+                            .trim();
+                        if (key.length > 0) keys.add(key);
+                    }
+                }
+
+                if (node.parent.rightExpression.nodeType === ParseNodeType.Call) {
+                    const call = node.parent.rightExpression;
+                    const type = this._evaluator.getType(call.leftExpression);
+                    if (!type || !isInstantiableClass(type) || !ClassType.isBuiltIn(type, 'dict')) {
+                        continue;
+                    }
+
+                    for (const arg of call.arguments) {
+                        const key = arg.name?.value.trim() ?? '';
+                        const quote = this._parseResults.tokenizerOutput.predominantSingleQuoteCharacter;
+                        if (key.length > 0) {
+                            keys.add(`${quote}${key}${quote}`);
+                        }
+                    }
+                }
+            }
+
+            if (
+                node.parent?.nodeType === ParseNodeType.Index &&
+                node.parent.items.length === 1 &&
+                node.parent.items[0].valueExpression.nodeType !== ParseNodeType.Error &&
+                !TextRange.containsRange(node.parent, invocationNode)
+            ) {
+                const indexArgument = node.parent.items[0];
+                const key = this._parseResults.text
+                    .substr(indexArgument.valueExpression.start, indexArgument.valueExpression.length)
+                    .trim();
+                if (key.length > 0) keys.add(key);
+            }
+        }
+
+        return [...keys];
+    }
+
+    private _getLiteralCompletions(
         parseNode: StringNode | ErrorNode,
         priorWord: string,
         priorText: string,
@@ -1318,45 +1554,65 @@ export class CompletionProvider {
         }
 
         const completionList = CompletionList.create();
-
         if (parentNode.nodeType === ParseNodeType.Argument && parentNode.parent?.nodeType === ParseNodeType.Index) {
-            const baseType = this._evaluator.getType(parentNode.parent.baseExpression);
-            if (!baseType || !isObject(baseType)) {
-                return undefined;
-            }
-
-            // We currently handle only TypedDict objects.
-            const classType = baseType.classType;
-            if (!ClassType.isTypedDictClass(classType)) {
-                return;
-            }
-
-            const entries = this._evaluator.getTypedDictMembersForClass(classType, /* allowNarrowed */ true);
-            const quoteValue = this._getQuoteValueFromPriorText(priorText);
-
-            entries.forEach((_, key) => {
-                this._addStringLiteralToCompletionList(
-                    key,
-                    quoteValue.stringValue,
+            if (
+                !this._tryAddTypedDictStringLiteral(
+                    parentNode.parent,
+                    parseNode.nodeType === ParseNodeType.String ? priorText : '',
                     postText,
-                    quoteValue.quoteCharacter,
                     completionList
-                );
-            });
+                )
+            ) {
+                const keys = this._getDictionaryKeys(parentNode.parent, parseNode);
+                const quoteValue = this._getQuoteValueFromPriorText(priorText);
+
+                for (const key of keys) {
+                    const stringLiteral = /^["|'].*["|']$/.test(key);
+                    if (parseNode.nodeType === ParseNodeType.String && !stringLiteral) {
+                        continue;
+                    }
+
+                    if (stringLiteral) {
+                        const keyWithoutQuote = key.substr(1, key.length - 2);
+
+                        this._addStringLiteralToCompletionList(
+                            keyWithoutQuote,
+                            quoteValue.stringValue,
+                            postText,
+                            quoteValue.quoteCharacter,
+                            completionList,
+                            dictionaryKeyDetail
+                        );
+                    } else {
+                        this._addNameToCompletionList(key, CompletionItemKind.Constant, priorWord, completionList, {
+                            sortText: this._makeSortText(SortCategory.LiteralValue, key),
+                            itemDetail: dictionaryKeyDetail,
+                        });
+                    }
+                }
+
+                if (completionList.items.length === 0) {
+                    return undefined;
+                }
+            }
         } else if (parentNode.nodeType === ParseNodeType.Assignment) {
             const declaredTypeOfTarget = this._evaluator.getDeclaredTypeForExpression(parentNode.leftExpression);
 
             if (declaredTypeOfTarget) {
-                this._addLiteralValuesForTargetType(declaredTypeOfTarget, priorText, postText, completionList);
+                this._addLiteralValuesForTargetType(
+                    declaredTypeOfTarget,
+                    priorText,
+                    priorWord,
+                    postText,
+                    completionList
+                );
             }
         } else {
-            // Make sure we are not inside of the string literal.
             debug.assert(parseNode.nodeType === ParseNodeType.String);
 
             const offset = convertPositionToOffset(this._position, this._parseResults.tokenizerOutput.lines)!;
-            if (offset <= parentNode.start || TextRange.getEnd(parseNode) <= offset) {
-                this._addCallArgumentCompletions(parseNode, priorWord, priorText, postText, completionList);
-            }
+            const atArgument = parentNode.start < offset && offset < TextRange.getEnd(parseNode);
+            this._addCallArgumentCompletions(parseNode, priorWord, priorText, postText, atArgument, completionList);
         }
 
         return { completionList };
@@ -1384,32 +1640,42 @@ export class CompletionProvider {
         return { stringValue, quoteCharacter };
     }
 
-    private _getIndexStringLiteral(parseNode: ErrorNode, completionList: CompletionList) {
-        if (!parseNode.parent || parseNode.parent.nodeType !== ParseNodeType.Index) {
-            return;
+    private _tryAddTypedDictStringLiteral(
+        indexNode: IndexNode | undefined,
+        priorText: string | undefined,
+        postText: string | undefined,
+        completionList: CompletionList
+    ) {
+        if (!indexNode) {
+            return false;
         }
 
-        const baseType = this._evaluator.getType(parseNode.parent.baseExpression);
-        if (!baseType || !isObject(baseType)) {
-            return;
+        const baseType = this._evaluator.getType(indexNode.baseExpression);
+        if (!baseType || !isClassInstance(baseType)) {
+            return false;
         }
 
         // We currently handle only TypedDict objects.
-        const classType = baseType.classType;
-        if (!ClassType.isTypedDictClass(classType)) {
-            return;
+        if (!ClassType.isTypedDictClass(baseType)) {
+            return false;
         }
 
-        const entries = this._evaluator.getTypedDictMembersForClass(classType, /* allowNarrowed */ true);
+        const entries = this._evaluator.getTypedDictMembersForClass(baseType, /* allowNarrowed */ true);
+        const quoteValue = priorText ? this._getQuoteValueFromPriorText(priorText) : undefined;
+
         entries.forEach((_, key) => {
             this._addStringLiteralToCompletionList(
                 key,
-                undefined,
-                undefined,
-                this._parseResults.tokenizerOutput.predominantSingleQuoteCharacter,
+                quoteValue ? quoteValue.stringValue : undefined,
+                postText,
+                quoteValue
+                    ? quoteValue.quoteCharacter
+                    : this._parseResults.tokenizerOutput.predominantSingleQuoteCharacter,
                 completionList
             );
         });
+
+        return true;
     }
 
     private _addStringLiteralToCompletionList(
@@ -1417,7 +1683,8 @@ export class CompletionProvider {
         priorString: string | undefined,
         postText: string | undefined,
         quoteCharacter: string,
-        completionList: CompletionList
+        completionList: CompletionList,
+        detail?: string
     ) {
         if (StringUtils.isPatternInSymbol(priorString || '', value)) {
             const valueWithQuotes = `${quoteCharacter}${value}${quoteCharacter}`;
@@ -1444,12 +1711,13 @@ export class CompletionProvider {
                 end: { line: this._position.line, character: rangeEndCol },
             };
             completionItem.textEdit = TextEdit.replace(range, valueWithQuotes);
+            completionItem.detail = detail;
 
             completionList.items.push(completionItem);
         }
     }
 
-    private _getAutoImportCompletions(
+    private _addAutoImportCompletions(
         priorWord: string,
         similarityLimit: number,
         lazyEdit: boolean,
@@ -1467,7 +1735,7 @@ export class CompletionProvider {
         const moduleSymbolMap = this._autoImportMaps.getModuleSymbolsMap();
         const excludes = new Set(completionList.items.filter((i) => !i.data?.autoImport).map((i) => i.label));
         const autoImporter = new AutoImporter(
-            this._configOptions.findExecEnvironment(this._filePath),
+            this._execEnv,
             this._importResolver,
             this._parseResults,
             this._position,
@@ -1656,9 +1924,9 @@ export class CompletionProvider {
                 // If this is a class scope, add symbols from parent classes.
                 if (curNode.nodeType === ParseNodeType.Class) {
                     const classType = this._evaluator.getTypeOfClass(curNode);
-                    if (classType && isClass(classType.classType)) {
+                    if (classType && isInstantiableClass(classType.classType)) {
                         classType.classType.details.mro.forEach((baseClass, index) => {
-                            if (isClass(baseClass)) {
+                            if (isInstantiableClass(baseClass)) {
                                 this._addSymbolsForSymbolTable(
                                     baseClass.details.fields,
                                     (name) => {
@@ -1693,7 +1961,7 @@ export class CompletionProvider {
         includeSymbolCallback: (name: string) => boolean,
         priorWord: string,
         isInImport: boolean,
-        boundObject: ObjectType | undefined,
+        boundObject: ClassType | undefined,
         completionList: CompletionList
     ) {
         symbolTable.forEach((symbol, name) => {
@@ -1701,7 +1969,8 @@ export class CompletionProvider {
             // exported from this scope, don't include it in the
             // suggestion list unless we are in the same file.
             const hidden =
-                symbol.isExternallyHidden() && !symbol.getDeclarations().some((d) => this._definedInCurrentFile(d));
+                symbol.isExternallyHidden() &&
+                !symbol.getDeclarations().some((d) => isDefinedInFile(d, this._filePath));
             if (!hidden && includeSymbolCallback(name)) {
                 // Don't add a symbol more than once. It may have already been
                 // added from an inner scope's symbol table.
@@ -1713,26 +1982,6 @@ export class CompletionProvider {
                 }
             }
         });
-    }
-
-    private _definedInCurrentFile(decl: Declaration) {
-        if (isAliasDeclaration(decl)) {
-            // Alias decl's path points to the original symbol
-            // the alias is pointing to. So, we need to get the
-            // filepath in that the alias is defined from the node.
-            return getFileInfo(decl.node)?.filePath === this._filePath;
-        }
-
-        // Other decls, the path points to the file the symbol is defined in.
-        return decl.path === this._filePath;
-
-        function getFileInfo(node: ParseNode | undefined) {
-            while (node && node.nodeType !== ParseNodeType.Module) {
-                node = node.parent;
-            }
-
-            return node ? AnalyzerNodeInfo.getFileInfo(node) : undefined;
-        }
     }
 
     private _addSymbol(
@@ -1796,7 +2045,7 @@ export class CompletionProvider {
                                         if (isProperty(functionType) && detail.boundObject) {
                                             const propertyType =
                                                 this._evaluator.getGetterTypeFromProperty(
-                                                    functionType.classType,
+                                                    functionType as ClassType,
                                                     /* inferTypeIfNeeded */ true
                                                 ) || UnknownType.create();
                                             typeDetail =
@@ -1846,7 +2095,7 @@ export class CompletionProvider {
 
                             if (isModule(type)) {
                                 documentation = getModuleDocString(type, primaryDecl, this._sourceMapper);
-                            } else if (isClass(type)) {
+                            } else if (isInstantiableClass(type)) {
                                 documentation = getClassDocString(type, primaryDecl, this._sourceMapper);
                             } else if (isFunction(type)) {
                                 documentation = getFunctionDocStringFromType(type, this._sourceMapper, this._evaluator);
@@ -1872,9 +2121,11 @@ export class CompletionProvider {
                                     this._evaluator
                                 );
                             } else if (primaryDecl?.type === DeclarationType.Variable) {
-                                documentation = getVariableInStubFileDocStrings(primaryDecl, this._sourceMapper).find(
-                                    (doc) => doc
-                                );
+                                const decl = (symbol
+                                    .getDeclarations()
+                                    .find((d) => d.type === DeclarationType.Variable && !!d.docString) ??
+                                    primaryDecl) as VariableDeclaration;
+                                documentation = getVariableDocString(decl, this._sourceMapper);
                             }
 
                             if (this._options.format === MarkupKind.Markdown) {
@@ -1936,16 +2187,7 @@ export class CompletionProvider {
     }
 
     private _getAutoImportText(importName: string, importFrom?: string, importAlias?: string) {
-        let autoImportText: string | undefined;
-        if (!importFrom) {
-            autoImportText = `import ${importName}`;
-        } else {
-            autoImportText = `from ${importFrom} import ${importName}`;
-        }
-
-        if (importAlias) {
-            autoImportText = `${autoImportText} as ${importAlias}`;
-        }
+        const autoImportText = getAutoImportText(importName, importFrom, importAlias);
 
         if (this._options.format === MarkupKind.Markdown) {
             return `\`\`\`\n${autoImportText}\n\`\`\``;
@@ -1984,7 +2226,10 @@ export class CompletionProvider {
 
         completionItem.data = completionItemData;
 
-        if (detail?.autoImportText) {
+        if (detail?.sortText || detail?.itemDetail) {
+            completionItem.sortText = detail.sortText;
+            completionItem.detail = detail.itemDetail;
+        } else if (detail?.autoImportText) {
             // Force auto-import entries to the end.
             completionItem.sortText = this._makeSortText(SortCategory.AutoImport, name, detail.autoImportText);
             completionItemData.autoImportText = detail.autoImportText;
@@ -2183,19 +2428,17 @@ export class CompletionProvider {
     }
 
     private _getImportModuleCompletions(node: ModuleNameNode): CompletionResults {
-        const execEnvironment = this._configOptions.findExecEnvironment(this._filePath);
         const moduleDescriptor: ImportedModuleDescriptor = {
             leadingDots: node.leadingDots,
-            hasTrailingDot: node.hasTrailingDot,
+            hasTrailingDot: node.hasTrailingDot || false,
             nameParts: node.nameParts.map((part) => part.value),
             importedSymbols: [],
         };
 
         const completions = this._importResolver.getCompletionSuggestions(
             this._filePath,
-            execEnvironment,
-            moduleDescriptor,
-            similarityLimit
+            this._execEnv,
+            moduleDescriptor
         );
 
         const completionList = CompletionList.create();

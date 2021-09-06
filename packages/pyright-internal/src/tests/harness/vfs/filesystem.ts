@@ -8,6 +8,7 @@
 
 /* eslint-disable no-dupe-class-members */
 import { Dirent, ReadStream, WriteStream } from 'fs';
+import { URI } from 'vscode-uri';
 
 import { FileSystem, FileWatcher, FileWatcherEventHandler, TmpfileOptions } from '../../../common/fileSystem';
 import * as pathUtil from '../../../common/pathUtils';
@@ -335,6 +336,28 @@ export class TestFileSystem implements FileSystem {
         return path;
     }
 
+    realCasePath(path: string): string {
+        return path;
+    }
+
+    isMappedFilePath(filepath: string): boolean {
+        return false;
+    }
+
+    // Get original filepath if the given filepath is mapped.
+    getOriginalFilePath(mappedFilePath: string) {
+        return mappedFilePath;
+    }
+
+    // Get mapped filepath if the given filepath is mapped.
+    getMappedFilePath(originalFilepath: string) {
+        return originalFilepath;
+    }
+
+    getUri(path: string): string {
+        return URI.file(path).toString();
+    }
+
     private _scan(path: string, stats: Stats, axis: Axis, traversal: Traversal, noFollow: boolean, results: string[]) {
         if (axis === 'ancestors-or-self' || axis === 'self' || axis === 'descendants-or-self') {
             if (!traversal.accept || traversal.accept(path, stats)) {
@@ -409,7 +432,7 @@ export class TestFileSystem implements FileSystem {
                 }
                 this.rmdirSync(path);
             }
-        } catch (e) {
+        } catch (e: any) {
             if (e.code === 'ENOENT') {
                 return;
             }
@@ -704,10 +727,12 @@ export class TestFileSystem implements FileSystem {
             throw createIOError('EROFS');
         }
 
-        const { parent: oldParent, links: oldParentLinks, node, basename: oldBasename } = this._walk(
-            this._resolve(oldpath),
-            /*noFollow*/ true
-        );
+        const {
+            parent: oldParent,
+            links: oldParentLinks,
+            node,
+            basename: oldBasename,
+        } = this._walk(this._resolve(oldpath), /*noFollow*/ true);
 
         if (!oldParent) {
             throw createIOError('EPERM');
@@ -716,10 +741,12 @@ export class TestFileSystem implements FileSystem {
             throw createIOError('ENOENT');
         }
 
-        const { parent: newParent, links: newParentLinks, node: existingNode, basename: newBasename } = this._walk(
-            this._resolve(newpath),
-            /*noFollow*/ true
-        );
+        const {
+            parent: newParent,
+            links: newParentLinks,
+            node: existingNode,
+            basename: newBasename,
+        } = this._walk(this._resolve(newpath), /*noFollow*/ true);
 
         if (!newParent) {
             throw createIOError('EPERM');
@@ -889,6 +916,10 @@ export class TestFileSystem implements FileSystem {
     static diff(changed: TestFileSystem, base: TestFileSystem, options: DiffOptions = {}) {
         const differences: FileSet = {};
         return TestFileSystem._rootDiff(differences, changed, base, options) ? differences : undefined;
+    }
+
+    isInZipOrEgg(path: string): boolean {
+        return false;
     }
 
     private static _diffWorker(
@@ -1507,16 +1538,16 @@ export class TestFileSystem implements FileSystem {
 export interface FileSystemOptions {
     // Sets the initial timestamp for new files and directories, or the function used
     // to calculate timestamps.
-    time?: number | Date | (() => number | Date);
+    time?: number | Date | (() => number | Date) | undefined;
 
     // A set of file system entries to initially add to the file system.
-    files?: FileSet;
+    files?: FileSet | undefined;
 
     // Sets the initial working directory for the file system.
-    cwd?: string;
+    cwd?: string | undefined;
 
     // Sets initial metadata attached to the file system.
-    meta?: Record<string, any>;
+    meta?: Record<string, any> | undefined;
 }
 
 export type Axis = 'ancestors' | 'ancestors-or-self' | 'self' | 'descendants-or-self' | 'descendants';
@@ -1639,12 +1670,12 @@ interface FileInode {
     ctimeMs: number; // status change time
     birthtimeMs: number; // creation time
     nlink: number; // number of hard links
-    size?: number;
-    buffer?: Buffer;
-    source?: string;
-    resolver?: FileSystemResolver;
-    shadowRoot?: FileInode;
-    meta?: Metadata;
+    size?: number | undefined;
+    buffer?: Buffer | undefined;
+    source?: string | undefined;
+    resolver?: FileSystemResolver | undefined;
+    shadowRoot?: FileInode | undefined;
+    meta?: Metadata | undefined;
 }
 
 interface DirectoryInode {
@@ -1656,11 +1687,11 @@ interface DirectoryInode {
     ctimeMs: number; // status change time
     birthtimeMs: number; // creation time
     nlink: number; // number of hard links
-    links?: SortedMap<string, Inode>;
-    source?: string;
-    resolver?: FileSystemResolver;
-    shadowRoot?: DirectoryInode;
-    meta?: Metadata;
+    links?: SortedMap<string, Inode> | undefined;
+    source?: string | undefined;
+    resolver?: FileSystemResolver | undefined;
+    shadowRoot?: DirectoryInode | undefined;
+    meta?: Metadata | undefined;
 }
 
 interface SymlinkInode {
@@ -1673,8 +1704,8 @@ interface SymlinkInode {
     birthtimeMs: number; // creation time
     nlink: number; // number of hard links
     symlink: string;
-    shadowRoot?: SymlinkInode;
-    meta?: Metadata;
+    shadowRoot?: SymlinkInode | undefined;
+    meta?: Metadata | undefined;
 }
 
 function isEmptyNonShadowedDirectory(node: DirectoryInode) {

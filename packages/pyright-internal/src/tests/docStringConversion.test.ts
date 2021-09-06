@@ -718,6 +718,94 @@ test('EscapeHtmlTagsOutsideCodeBlocks', () => {
     _testConvertToMarkdown(docstring, markdown);
 });
 
+test('RestTableWithHeader', () => {
+    const docstring = `
+=============== =========================================================
+Generator
+--------------- ---------------------------------------------------------
+Generator       Class implementing all of the random number distributions
+default_rng     Default constructor for \`\`Generator\`\`
+=============== =========================================================`;
+
+    const markdown = `
+|Generator | |
+|---------------|---------------------------------------------------------|
+|Generator       |Class implementing all of the random number distributions|
+|default_rng     |Default constructor for \`\`Generator\`\`|
+
+<br/>`;
+
+    _testConvertToMarkdown(docstring, markdown);
+});
+
+test('RestTablesMultilineHeader', () => {
+    const docstring = `
+==================== =========================================================
+Compatibility
+functions - removed
+in the new API
+-------------------- ---------------------------------------------------------
+rand                 Uniformly distributed values.
+==================== =========================================================`;
+
+    const markdown = `
+|Compatibility <br>functions - removed <br>in the new API | <br> <br> |
+|--------------------|---------------------------------------------------------|
+|rand                 |Uniformly distributed values.|
+
+<br/>`;
+
+    _testConvertToMarkdown(docstring, markdown);
+});
+
+test('RestTableSimple', () => {
+    const docstring = `
+============================== =====================================
+Scalar Type                    Array Type
+============================== =====================================
+:class:\`pandas.Interval\`       :class:\`pandas.arrays.IntervalArray\`
+:class:\`pandas.Period\`         :class:\`pandas.arrays.PeriodArray\`
+============================== =====================================
+    `;
+
+    const markdown = `|Scalar Type                     |Array Type |
+|------------------------------|-------------------------------------|
+|:class:\`pandas.Interval\`       |:class:\`pandas.arrays.IntervalArray\`|
+|:class:\`pandas.Period\`         |:class:\`pandas.arrays.PeriodArray\`|
+
+<br/>`;
+
+    _testConvertToMarkdown(docstring, markdown);
+});
+
+test('ReSTTableIndented', () => {
+    const docstring = `
+    data :
+
+    dtype : str, np.dtype, or ExtensionDtype, optional
+
+        ============================== =====================================
+        Scalar Type                    Array Type
+        ============================== =====================================
+        :class:\`pandas.Interval\`     :class:\`pandas.arrays.IntervalArray\`
+        :class:\`pandas.Period\`       :class:\`pandas.arrays.PeriodArray\`
+        ============================== =====================================`;
+
+    const markdown = `
+data :
+
+dtype : str, np.dtype, or ExtensionDtype, optional
+
+|    Scalar Type                 |    Array Type |
+|------------------------------|-------------------------------------|
+|    :class:\`pandas.Interval\`   |  :class:\`pandas.arrays.IntervalArray\`|
+|    :class:\`pandas.Period\`     |  :class:\`pandas.arrays.PeriodArray\`|
+
+<br/>`;
+
+    _testConvertToMarkdown(docstring, markdown);
+});
+
 function _testConvertToMarkdown(docstring: string, expectedMarkdown: string) {
     const actualMarkdown = convertDocStringToMarkdown(docstring);
 

@@ -81,3 +81,29 @@ var3: TestClass3 = func1
 var3 = func2
 var3 = func3
 var3 = func4
+
+
+class TestClass4(Protocol):
+    foo: int
+
+    def __call__(self, x: int) -> None:
+        pass
+
+
+def func5(x: int) -> None:
+    pass
+
+
+var4: TestClass4 = func5
+
+
+class TestClass5(Protocol):
+    def __call__(self, *, a: int, b: str) -> int:
+        ...
+
+
+def func6(a: int, b: str) -> int:
+    return 123
+
+
+f: TestClass5 = func6

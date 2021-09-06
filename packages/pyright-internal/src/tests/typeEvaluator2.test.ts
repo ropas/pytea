@@ -30,6 +30,18 @@ test('CallbackProtocol3', () => {
     TestUtils.validateResults(analysisResults, 0);
 });
 
+test('CallbackProtocol4', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['callbackProtocol4.py']);
+
+    TestUtils.validateResults(analysisResults, 2);
+});
+
+test('CallbackProtocol5', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['callbackProtocol5.py']);
+
+    TestUtils.validateResults(analysisResults, 2);
+});
+
 test('Assignment1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['assignment1.py']);
 
@@ -90,6 +102,12 @@ test('AugmentedAssignment1', () => {
     TestUtils.validateResults(analysisResults, 3);
 });
 
+test('AugmentedAssignment2', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['augmentedAssignment2.py']);
+
+    TestUtils.validateResults(analysisResults, 3);
+});
+
 test('Super1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['super1.py']);
 
@@ -104,6 +122,12 @@ test('Super2', () => {
 
 test('Super3', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['super3.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('Super4', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['super4.py']);
 
     TestUtils.validateResults(analysisResults, 0);
 });
@@ -156,7 +180,7 @@ test('isInstance3', () => {
 test('isInstance4', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['isinstance4.py']);
 
-    TestUtils.validateResults(analysisResults, 0);
+    TestUtils.validateResults(analysisResults, 2);
 });
 
 test('isInstance5', () => {
@@ -179,6 +203,12 @@ test('isInstance7', () => {
 
 test('isInstance9', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['isinstance9.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('isInstance10', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['isinstance10.py']);
 
     TestUtils.validateResults(analysisResults, 0);
 });
@@ -306,7 +336,7 @@ test('GenericTypes8', () => {
 test('GenericTypes9', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['genericTypes9.py']);
 
-    TestUtils.validateResults(analysisResults, 3);
+    TestUtils.validateResults(analysisResults, 5);
 });
 
 test('GenericTypes10', () => {
@@ -463,7 +493,7 @@ test('GenericTypes33', () => {
 test('GenericTypes34', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['genericTypes34.py']);
 
-    TestUtils.validateResults(analysisResults, 0);
+    TestUtils.validateResults(analysisResults, 1);
 });
 
 // This test is intentionally commented out for now. The functionality
@@ -538,7 +568,7 @@ test('GenericTypes45', () => {
 test('GenericTypes46', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['genericTypes46.py']);
 
-    TestUtils.validateResults(analysisResults, 3);
+    TestUtils.validateResults(analysisResults, 2);
 });
 
 test('GenericTypes47', () => {
@@ -607,10 +637,64 @@ test('GenericTypes57', () => {
     TestUtils.validateResults(analysisResults, 0);
 });
 
+test('GenericTypes58', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['genericTypes58.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('GenericTypes59', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['genericTypes59.py']);
+
+    TestUtils.validateResults(analysisResults, 2);
+});
+
+test('GenericTypes60', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['genericTypes60.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('GenericTypes61', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['genericTypes61.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('GenericTypes62', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['genericTypes62.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('GenericTypes63', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['genericTypes63.py']);
+
+    TestUtils.validateResults(analysisResults, 1);
+});
+
+test('GenericTypes64', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['genericTypes64.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('GenericTypes65', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['genericTypes65.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('GenericTypes66', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['genericTypes66.py']);
+
+    TestUtils.validateResults(analysisResults, 1);
+});
+
 test('Protocol1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['protocol1.py']);
 
-    TestUtils.validateResults(analysisResults, 2);
+    TestUtils.validateResults(analysisResults, 3);
 });
 
 test('Protocol2', () => {
@@ -711,6 +795,24 @@ test('Protocol17', () => {
     TestUtils.validateResults(analysisResults, 7);
 });
 
+test('Protocol18', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['protocol18.py']);
+
+    TestUtils.validateResults(analysisResults, 2);
+});
+
+test('Protocol19', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['protocol19.py']);
+
+    TestUtils.validateResults(analysisResults, 2);
+});
+
+test('Protocol20', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['protocol20.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
 test('TypedDict1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typedDict1.py']);
 
@@ -785,6 +887,12 @@ test('TypedDict12', () => {
 
 test('TypedDict13', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typedDict13.py']);
+
+    TestUtils.validateResults(analysisResults, 1);
+});
+
+test('TypedDict14', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typedDict14.py']);
 
     TestUtils.validateResults(analysisResults, 1);
 });

@@ -8,7 +8,8 @@
  */
 
 import { ParseNodeType } from '../parser/parseNodes';
-import { Declaration, DeclarationType } from './declaration';
+import { Declaration, DeclarationType, isAliasDeclaration } from './declaration';
+import { getFileInfoFromNode } from './parseTreeUtils';
 
 export function hasTypeForDeclaration(declaration: Declaration): boolean {
     switch (declaration.type) {
@@ -91,7 +92,40 @@ export function isExplicitTypeAliasDeclaration(decl: Declaration) {
 }
 
 export function isPossibleTypeAliasDeclaration(decl: Declaration) {
-    return decl.type === DeclarationType.Variable && !!decl.typeAliasName && !decl.typeAnnotationNode;
+    if (decl.type !== DeclarationType.Variable || !decl.typeAliasName || decl.typeAnnotationNode) {
+        return false;
+    }
+
+    if (decl.node.parent?.nodeType !== ParseNodeType.Assignment) {
+        return false;
+    }
+
+    // Perform a sanity check on the RHS expression. Some expression
+    // forms should never be considered legitimate for type aliases.
+    const rhsOfAssignment = decl.node.parent.rightExpression;
+    switch (rhsOfAssignment.nodeType) {
+        case ParseNodeType.Error:
+        case ParseNodeType.UnaryOperation:
+        case ParseNodeType.AssignmentExpression:
+        case ParseNodeType.TypeAnnotation:
+        case ParseNodeType.Await:
+        case ParseNodeType.Ternary:
+        case ParseNodeType.Unpack:
+        case ParseNodeType.Tuple:
+        case ParseNodeType.Call:
+        case ParseNodeType.ListComprehension:
+        case ParseNodeType.Slice:
+        case ParseNodeType.Yield:
+        case ParseNodeType.YieldFrom:
+        case ParseNodeType.Lambda:
+        case ParseNodeType.Number:
+        case ParseNodeType.Dictionary:
+        case ParseNodeType.List:
+        case ParseNodeType.Set:
+            return false;
+    }
+
+    return true;
 }
 
 export function getNameFromDeclaration(declaration: Declaration) {
@@ -115,4 +149,16 @@ export function getNameFromDeclaration(declaration: Declaration) {
     }
 
     throw new Error(`Shouldn't reach here`);
+}
+
+export function isDefinedInFile(decl: Declaration, filePath: string) {
+    if (isAliasDeclaration(decl)) {
+        // Alias decl's path points to the original symbol
+        // the alias is pointing to. So, we need to get the
+        // filepath in that the alias is defined from the node.
+        return getFileInfoFromNode(decl.node)?.filePath === filePath;
+    }
+
+    // Other decls, the path points to the file the symbol is defined in.
+    return decl.path === filePath;
 }

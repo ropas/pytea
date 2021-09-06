@@ -128,7 +128,7 @@ export interface ParseNodeBase extends TextRange {
     // A unique ID given to each parse node.
     id: number;
 
-    parent?: ParseNode;
+    parent?: ParseNode | undefined;
 }
 
 let _nextNodeId = 1;
@@ -191,7 +191,7 @@ export interface IfNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.If;
     testExpression: ExpressionNode;
     ifSuite: SuiteNode;
-    elseSuite?: SuiteNode | IfNode;
+    elseSuite?: SuiteNode | IfNode | undefined;
 }
 
 export namespace IfNode {
@@ -229,7 +229,7 @@ export interface WhileNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.While;
     testExpression: ExpressionNode;
     whileSuite: SuiteNode;
-    elseSuite?: SuiteNode;
+    elseSuite?: SuiteNode | undefined;
 }
 
 export namespace WhileNode {
@@ -255,10 +255,11 @@ export namespace WhileNode {
 export interface ForNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.For;
     isAsync?: boolean;
+    asyncToken?: Token;
     targetExpression: ExpressionNode;
     iterableExpression: ExpressionNode;
     forSuite: SuiteNode;
-    elseSuite?: SuiteNode;
+    elseSuite?: SuiteNode | undefined;
 }
 
 export namespace ForNode {
@@ -293,6 +294,7 @@ export type ListComprehensionIterNode = ListComprehensionForNode | ListComprehen
 export interface ListComprehensionForNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.ListComprehensionFor;
     isAsync?: boolean;
+    asyncToken?: Token;
     targetExpression: ExpressionNode;
     iterableExpression: ExpressionNode;
 }
@@ -345,8 +347,8 @@ export interface TryNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.Try;
     trySuite: SuiteNode;
     exceptClauses: ExceptNode[];
-    elseSuite?: SuiteNode;
-    finallySuite?: SuiteNode;
+    elseSuite?: SuiteNode | undefined;
+    finallySuite?: SuiteNode | undefined;
 }
 
 export namespace TryNode {
@@ -370,8 +372,8 @@ export namespace TryNode {
 
 export interface ExceptNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.Except;
-    typeExpression?: ExpressionNode;
-    name?: NameNode;
+    typeExpression?: ExpressionNode | undefined;
+    name?: NameNode | undefined;
     exceptSuite: SuiteNode;
 }
 
@@ -399,8 +401,8 @@ export interface FunctionNode extends ParseNodeBase {
     isAsync?: boolean;
     name: NameNode;
     parameters: ParameterNode[];
-    returnTypeAnnotation?: ExpressionNode;
-    functionAnnotationComment?: FunctionAnnotationNode;
+    returnTypeAnnotation?: ExpressionNode | undefined;
+    functionAnnotationComment?: FunctionAnnotationNode | undefined;
     suite: SuiteNode;
 }
 
@@ -435,10 +437,10 @@ export const enum ParameterCategory {
 export interface ParameterNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.Parameter;
     category: ParameterCategory;
-    name?: NameNode;
-    typeAnnotation?: ExpressionNode;
-    typeAnnotationComment?: ExpressionNode;
-    defaultValue?: ExpressionNode;
+    name?: NameNode | undefined;
+    typeAnnotation?: ExpressionNode | undefined;
+    typeAnnotationComment?: ExpressionNode | undefined;
+    defaultValue?: ExpressionNode | undefined;
 }
 
 export namespace ParameterNode {
@@ -533,6 +535,7 @@ export namespace ClassNode {
 export interface WithNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.With;
     isAsync?: boolean;
+    asyncToken?: Token;
     withItems: WithItemNode[];
     suite: SuiteNode;
 }
@@ -559,7 +562,7 @@ export namespace WithNode {
 export interface WithItemNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.WithItem;
     expression: ExpressionNode;
-    target?: ExpressionNode;
+    target?: ExpressionNode | undefined;
 }
 
 export namespace WithItemNode {
@@ -715,8 +718,8 @@ export function isExpressionNode(node: ParseNode): node is ExpressionNode {
 export interface ErrorNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.Error;
     readonly category: ErrorExpressionCategory;
-    readonly child?: ExpressionNode;
-    readonly decorators?: DecoratorNode[];
+    readonly child?: ExpressionNode | undefined;
+    readonly decorators?: DecoratorNode[] | undefined;
 }
 
 export namespace ErrorNode {
@@ -848,7 +851,7 @@ export interface AssignmentNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.Assignment;
     leftExpression: ExpressionNode;
     rightExpression: ExpressionNode;
-    typeAnnotationComment?: ExpressionNode;
+    typeAnnotationComment?: ExpressionNode | undefined;
 }
 
 export namespace AssignmentNode {
@@ -1155,9 +1158,9 @@ export namespace IndexNode {
 
 export interface SliceNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.Slice;
-    startValue?: ExpressionNode;
-    endValue?: ExpressionNode;
-    stepValue?: ExpressionNode;
+    startValue?: ExpressionNode | undefined;
+    endValue?: ExpressionNode | undefined;
+    stepValue?: ExpressionNode | undefined;
 }
 
 export namespace SliceNode {
@@ -1175,7 +1178,7 @@ export namespace SliceNode {
 
 export interface YieldNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.Yield;
-    expression?: ExpressionNode;
+    expression?: ExpressionNode | undefined;
 }
 
 export namespace YieldNode {
@@ -1554,7 +1557,7 @@ export const enum ArgumentCategory {
 export interface ArgumentNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.Argument;
     argumentCategory: ArgumentCategory;
-    name?: NameNode;
+    name?: NameNode | undefined;
     valueExpression: ExpressionNode;
 }
 
@@ -1663,7 +1666,7 @@ export namespace ModuleNameNode {
 export interface ImportAsNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.ImportAs;
     module: ModuleNameNode;
-    alias?: NameNode;
+    alias?: NameNode | undefined;
 }
 
 export namespace ImportAsNode {
@@ -1716,7 +1719,7 @@ export namespace ImportFromNode {
 export interface ImportFromAsNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.ImportFromAs;
     name: NameNode;
-    alias?: NameNode;
+    alias?: NameNode | undefined;
 }
 
 export namespace ImportFromAsNode {
@@ -1776,7 +1779,7 @@ export namespace NonlocalNode {
 export interface AssertNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.Assert;
     testExpression: ExpressionNode;
-    exceptionExpression?: ExpressionNode;
+    exceptionExpression?: ExpressionNode | undefined;
 }
 
 export namespace AssertNode {
@@ -1833,7 +1836,7 @@ export namespace ContinueNode {
 
 export interface ReturnNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.Return;
-    returnExpression?: ExpressionNode;
+    returnExpression?: ExpressionNode | undefined;
 }
 
 export namespace ReturnNode {
@@ -1851,9 +1854,9 @@ export namespace ReturnNode {
 
 export interface RaiseNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.Raise;
-    typeExpression?: ExpressionNode;
-    valueExpression?: ExpressionNode;
-    tracebackExpression?: ExpressionNode;
+    typeExpression?: ExpressionNode | undefined;
+    valueExpression?: ExpressionNode | undefined;
+    tracebackExpression?: ExpressionNode | undefined;
 }
 
 export namespace RaiseNode {
@@ -1898,7 +1901,7 @@ export interface CaseNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.Case;
     pattern: PatternAtomNode;
     isIrrefutable: boolean;
-    guardExpression?: ExpressionNode;
+    guardExpression?: ExpressionNode | undefined;
     suite: SuiteNode;
 }
 
@@ -1973,7 +1976,7 @@ export namespace PatternSequenceNode {
 export interface PatternAsNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.PatternAs;
     orPatterns: PatternAtomNode[];
-    target?: NameNode;
+    target?: NameNode | undefined;
 }
 
 export namespace PatternAsNode {
@@ -2057,7 +2060,7 @@ export namespace PatternClassNode {
 
 export interface PatternClassArgumentNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.PatternClassArgument;
-    name?: NameNode;
+    name?: NameNode | undefined;
     pattern: PatternAsNode;
 }
 

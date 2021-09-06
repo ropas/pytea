@@ -132,7 +132,7 @@ import {
 interface ListResult<T> {
     list: T[];
     trailingComma: boolean;
-    parseError?: ErrorNode;
+    parseError?: ErrorNode | undefined;
 }
 
 interface SubscriptListResult {
@@ -164,7 +164,7 @@ export interface ParseResults {
 }
 
 export interface ParseExpressionTextResults {
-    parseTree?: ExpressionNode;
+    parseTree?: ExpressionNode | undefined;
     lines: TextRangeCollection<TextRange>;
     diagnostics: Diagnostic[];
 }
@@ -184,6 +184,10 @@ const enum ParseTextMode {
     VariableAnnotation,
     FunctionAnnotation,
 }
+
+// PEP 637 proposed support for keyword arguments in subscript
+// expressions, but it was rejected.
+const supportPEP637 = false;
 
 export class Parser {
     private _fileContents?: string;
@@ -980,6 +984,8 @@ export class Parser {
                 return PatternLiteralNode.create(this._parseAtom());
             }
         }
+
+        return undefined;
     }
 
     // signed_number: NUMBER | '-' NUMBER
@@ -1322,6 +1328,7 @@ export class Parser {
 
         if (asyncToken) {
             forNode.isAsync = true;
+            forNode.asyncToken = asyncToken;
             extendRange(forNode, asyncToken);
         }
 
@@ -1403,6 +1410,7 @@ export class Parser {
 
         if (asyncToken) {
             compForNode.isAsync = true;
+            compForNode.asyncToken = asyncToken;
         }
 
         return compForNode;
@@ -1631,9 +1639,9 @@ export class Parser {
         const paramList: ParameterNode[] = [];
         let sawDefaultParam = false;
         let reportedNonDefaultParamErr = false;
-        let sawKwSeparator = false;
+        let sawKeywordOnlySeparator = false;
         let sawPositionOnlySeparator = false;
-        let sawVarArgs = false;
+        let sawArgs = false;
         let sawKwArgs = false;
 
         while (true) {
@@ -1664,14 +1672,16 @@ export class Parser {
                 if (!param.name) {
                     if (sawPositionOnlySeparator) {
                         this._addError(Localizer.Diagnostic.duplicatePositionOnly(), param);
-                    } else if (sawKwSeparator) {
-                        this._addError(Localizer.Diagnostic.positionOnlyAfterNameOnly(), param);
+                    } else if (sawKeywordOnlySeparator) {
+                        this._addError(Localizer.Diagnostic.positionOnlyAfterKeywordOnly(), param);
+                    } else if (sawArgs) {
+                        this._addError(Localizer.Diagnostic.positionOnlyAfterArgs(), param);
                     }
                     sawPositionOnlySeparator = true;
                 } else {
                     if (param.defaultValue) {
                         sawDefaultParam = true;
-                    } else if (sawDefaultParam && !sawKwSeparator && !sawVarArgs) {
+                    } else if (sawDefaultParam && !sawKeywordOnlySeparator && !sawArgs) {
                         // Report this error only once.
                         if (!reportedNonDefaultParamErr) {
                             this._addError(Localizer.Diagnostic.nonDefaultAfterDefault(), param);
@@ -1685,15 +1695,17 @@ export class Parser {
 
             if (param.category === ParameterCategory.VarArgList) {
                 if (!param.name) {
-                    if (sawKwSeparator) {
-                        this._addError(Localizer.Diagnostic.duplicateNameOnly(), param);
+                    if (sawKeywordOnlySeparator) {
+                        this._addError(Localizer.Diagnostic.duplicateKeywordOnly(), param);
+                    } else if (sawArgs) {
+                        this._addError(Localizer.Diagnostic.keywordOnlyAfterArgs(), param);
                     }
-                    sawKwSeparator = true;
+                    sawKeywordOnlySeparator = true;
                 } else {
-                    if (sawVarArgs) {
+                    if (sawArgs) {
                         this._addError(Localizer.Diagnostic.duplicateArgsParam(), param);
                     }
-                    sawVarArgs = true;
+                    sawArgs = true;
                 }
             }
 
@@ -1808,7 +1820,7 @@ export class Parser {
     // with_item list.
     private _parseWithStatement(asyncToken?: KeywordToken): WithNode {
         const withToken = this._getKeywordToken(KeywordType.With);
-        const withItemList: WithItemNode[] = [];
+        let withItemList: WithItemNode[] = [];
 
         const possibleParen = this._peekToken();
 
@@ -1823,7 +1835,7 @@ export class Parser {
             this._suppressErrors(() => {
                 this._getNextToken();
                 while (true) {
-                    this._parseWithItem();
+                    withItemList.push(this._parseWithItem());
                     if (!this._consumeTokenIfType(TokenType.Comma)) {
                         break;
                     }
@@ -1837,10 +1849,11 @@ export class Parser {
                     this._peekToken().type === TokenType.CloseParenthesis &&
                     this._peekToken(1).type === TokenType.Colon
                 ) {
-                    isParenthesizedWithItemList = true;
+                    isParenthesizedWithItemList = withItemList.length !== 1 || withItemList[0].target !== undefined;
                 }
 
                 this._tokenIndex = openParenTokenIndex;
+                withItemList = [];
             });
         }
 
@@ -1873,6 +1886,7 @@ export class Parser {
         const withNode = WithNode.create(withToken, withSuite);
         if (asyncToken) {
             withNode.isAsync = true;
+            withNode.asyncToken = asyncToken;
             extendRange(withNode, asyncToken);
         }
 
@@ -2104,12 +2118,15 @@ export class Parser {
                 this._containsWildcardImport = true;
             } else {
                 const inParen = this._consumeTokenIfType(TokenType.OpenParenthesis);
+                let trailingCommaToken: Token | undefined;
 
                 while (true) {
                     const importName = this._getTokenIfIdentifier();
                     if (!importName) {
                         break;
                     }
+
+                    trailingCommaToken = undefined;
 
                     const importFromAsNode = ImportFromAsNode.create(NameNode.create(importName));
 
@@ -2133,9 +2150,11 @@ export class Parser {
                         this._futureImportMap.set(importName.value, true);
                     }
 
+                    const nextToken = this._peekToken();
                     if (!this._consumeTokenIfType(TokenType.Comma)) {
                         break;
                     }
+                    trailingCommaToken = nextToken;
                 }
 
                 if (importFromNode.imports.length === 0) {
@@ -2151,6 +2170,8 @@ export class Parser {
                     } else {
                         extendRange(importFromNode, nextToken);
                     }
+                } else if (trailingCommaToken) {
+                    this._addError(Localizer.Diagnostic.trailingCommaInFromImport(), trailingCommaToken);
                 }
             }
         }
@@ -2262,9 +2283,9 @@ export class Parser {
         }
 
         while (true) {
-            const identifier = this._getTokenIfIdentifier([KeywordType.Import]);
+            const identifier = this._getTokenIfIdentifier();
             if (!identifier) {
-                if (!allowJustDots || moduleNameNode.leadingDots === 0) {
+                if (!allowJustDots || moduleNameNode.leadingDots === 0 || moduleNameNode.nameParts.length > 0) {
                     this._addError(Localizer.Diagnostic.expectedModuleName(), this._peekToken());
                     moduleNameNode.hasTrailingDot = true;
                 }
@@ -2450,9 +2471,13 @@ export class Parser {
                 const invalidToken = this._getNextToken();
                 const text = this._fileContents!.substr(invalidToken.start, invalidToken.length);
 
+                const firstCharCode = text.charCodeAt(0);
+
                 // Remove any non-printable characters.
-                const cleanedText = text.replace(/[\S\W]/g, '');
-                this._addError(Localizer.Diagnostic.invalidTokenChars().format({ text: cleanedText }), invalidToken);
+                this._addError(
+                    Localizer.Diagnostic.invalidTokenChars().format({ text: `\\u${firstCharCode.toString(16)}` }),
+                    invalidToken
+                );
                 this._consumeTokensUntilType([TokenType.NewLine]);
                 break;
             }
@@ -3169,7 +3194,16 @@ export class Parser {
             }
             argList.push(argNode);
 
-            if (!this._parseOptions.isStubFile && this._getLanguageVersion() < PythonVersion.V3_10) {
+            if (supportPEP637) {
+                if (!this._parseOptions.isStubFile && this._getLanguageVersion() < PythonVersion.V3_10) {
+                    if (argNode.name) {
+                        this._addError(Localizer.Diagnostic.keywordSubscriptIllegal(), argNode.name);
+                    }
+                    if (argType !== ArgumentCategory.Simple) {
+                        this._addError(Localizer.Diagnostic.unpackedSubscriptIllegal(), argNode);
+                    }
+                }
+            } else {
                 if (argNode.name) {
                     this._addError(Localizer.Diagnostic.keywordSubscriptIllegal(), argNode.name);
                 }
@@ -4122,11 +4156,14 @@ export class Parser {
                         if (braceDepth > 0) {
                             braceDepth--;
                             if (braceDepth === 0) {
+                                const formatSegmentLength = this._getFormatStringExpressionLength(
+                                    segment.value.substr(segmentExprLength + startOfExprOffset, i - startOfExprOffset)
+                                );
                                 const parseTree = this._parseFormatStringSegment(
                                     stringToken,
                                     segment,
                                     segmentExprLength + startOfExprOffset,
-                                    i - startOfExprOffset
+                                    formatSegmentLength
                                 );
                                 if (parseTree) {
                                     formatExpressions.push(parseTree);
@@ -4193,7 +4230,7 @@ export class Parser {
 
                     if (quoteStack.length > 0 && quoteStack[quoteStack.length - 1] === quoteSequence) {
                         quoteStack.pop();
-                    } else {
+                    } else if (quoteStack.length === 0) {
                         quoteStack.push(quoteSequence);
                     }
                 } else if (curChar === '(') {
@@ -4432,7 +4469,7 @@ export class Parser {
         return (nextToken as OperatorToken).operatorType;
     }
 
-    private _getTokenIfIdentifier(disallowedKeywords: KeywordType[] = []): IdentifierToken | undefined {
+    private _getTokenIfIdentifier(): IdentifierToken | undefined {
         const nextToken = this._peekToken();
         if (nextToken.type === TokenType.Identifier) {
             return this._getNextToken() as IdentifierToken;
@@ -4445,11 +4482,11 @@ export class Parser {
             return IdentifierToken.create(nextToken.start, nextToken.length, '', nextToken.comments);
         }
 
-        // If keywords are allowed in this context, convert the keyword
-        // to an identifier token.
+        // If this is a "soft keyword", it can be converted into an identifier.
         if (nextToken.type === TokenType.Keyword) {
             const keywordType = this._peekKeywordType();
-            if (!disallowedKeywords.find((type) => type === keywordType)) {
+            const softKeywords = [KeywordType.Debug, KeywordType.Match, KeywordType.Case];
+            if (softKeywords.find((type) => type === keywordType)) {
                 const keywordText = this._fileContents!.substr(nextToken.start, nextToken.length);
                 this._getNextToken();
                 return IdentifierToken.create(nextToken.start, nextToken.length, keywordText, nextToken.comments);

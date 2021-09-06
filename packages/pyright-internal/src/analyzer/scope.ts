@@ -67,7 +67,7 @@ export class Scope {
 
     // The next scope in the hierarchy or undefined if it's the
     // top-most scope.
-    readonly parent?: Scope;
+    readonly parent: Scope | undefined;
 
     // Association between names and symbols.
     readonly symbolTable: SymbolTable = new Map<string, Symbol>();
@@ -75,6 +75,10 @@ export class Scope {
     // Names within this scope that are bound to other scopes
     // (either nonlocal or global).
     readonly notLocalBindings = new Map<string, NameBindingType>();
+
+    // Names defined by __slots__ within this scope (used only
+    // for class scopes).
+    slotsNames: string[] | undefined;
 
     constructor(type: ScopeType, parent?: Scope) {
         this.type = type;
@@ -169,5 +173,13 @@ export class Scope {
 
     setBindingType(name: string, bindingType: NameBindingType) {
         return this.notLocalBindings.set(name, bindingType);
+    }
+
+    setSlotsNames(names: string[]) {
+        this.slotsNames = names;
+    }
+
+    getSlotsNames(): string[] | undefined {
+        return this.slotsNames;
     }
 }

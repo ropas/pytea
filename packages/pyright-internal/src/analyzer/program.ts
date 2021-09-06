@@ -21,7 +21,6 @@ import {
 import { OperationCanceledException, throwIfCancellationRequested } from '../common/cancellationUtils';
 import { ConfigOptions, ExecutionEnvironment } from '../common/configOptions';
 import { ConsoleInterface, StandardConsole } from '../common/console';
-import { isDebugMode } from '../common/core';
 import { assert } from '../common/debug';
 import { Diagnostic } from '../common/diagnostic';
 import { FileDiagnostics } from '../common/diagnosticSink';
@@ -77,6 +76,8 @@ import { TypeStubWriter } from './typeStubWriter';
 
 const _maxImportDepth = 256;
 
+export const MaxWorkspaceIndexFileCount = 2000;
+
 // Tracks information about each source file in a program,
 // including the reason it was added to the program and any
 // dependencies that it has on other files in the program.
@@ -88,8 +89,8 @@ export interface SourceFileInfo {
     isTypeshedFile: boolean;
     isThirdPartyImport: boolean;
     isThirdPartyPyTypedPresent: boolean;
-    diagnosticsVersion?: number;
-    builtinsImport?: SourceFileInfo;
+    diagnosticsVersion?: number | undefined;
+    builtinsImport?: SourceFileInfo | undefined;
 
     // Information about why the file is included in the program
     // and its relation to other source files in the program.
@@ -153,7 +154,8 @@ export class Program {
         initialConfigOptions: ConfigOptions,
         console?: ConsoleInterface,
         private _extension?: LanguageServiceExtension,
-        logTracker?: LogTracker
+        logTracker?: LogTracker,
+        private _disableChecker?: boolean
     ) {
         this._console = console || new StandardConsole();
         this._logTracker = logTracker ?? new LogTracker(console, 'FG');
@@ -263,7 +265,12 @@ export class Program {
         return sourceFile;
     }
 
-    setFileOpened(filePath: string, version: number | null, contents: TextDocumentContentChangeEvent[]) {
+    setFileOpened(
+        filePath: string,
+        version: number | null,
+        contents: TextDocumentContentChangeEvent[],
+        isTracked = false
+    ) {
         let sourceFileInfo = this._getSourceFileInfoFromPath(filePath);
         if (!sourceFileInfo) {
             const importName = this._getImportNameForFile(filePath);
@@ -278,7 +285,7 @@ export class Program {
             );
             sourceFileInfo = {
                 sourceFile,
-                isTracked: false,
+                isTracked: isTracked,
                 isOpenByClient: true,
                 isTypeshedFile: false,
                 isThirdPartyImport: false,
@@ -293,10 +300,11 @@ export class Program {
         } else {
             sourceFileInfo.isOpenByClient = true;
 
-            // Reset the diagnostic version so we force an update
-            // to the diagnostics, which can change based on whether
-            // the file is open.
-            sourceFileInfo.diagnosticsVersion = undefined;
+            // Reset the diagnostic version so we force an update to the
+            // diagnostics, which can change based on whether the file is open.
+            // We do not set the version to undefined here because that implies
+            // there are no diagnostics currently reported for this file.
+            sourceFileInfo.diagnosticsVersion = 0;
         }
 
         sourceFileInfo.sourceFile.setClientVersion(version, contents);
@@ -362,8 +370,16 @@ export class Program {
         return this._sourceFileList.length;
     }
 
+    getTracked(): SourceFileInfo[] {
+        return this._sourceFileList.filter((s) => s.isTracked);
+    }
+
     getFilesToAnalyzeCount() {
         let sourceFileCount = 0;
+
+        if (this._disableChecker) {
+            return sourceFileCount;
+        }
 
         this._sourceFileList.forEach((fileInfo) => {
             if (fileInfo.sourceFile.isCheckingRequired()) {
@@ -462,18 +478,29 @@ export class Program {
         return this._runEvaluatorWithCancellationToken(token, () => {
             // Go through all workspace files to create indexing data.
             // This will cause all files in the workspace to be parsed and bound. But
-            // _handleMemoryHighUsage will make sure we don't OOM
+            // _handleMemoryHighUsage will make sure we don't OOM and
+            // at the end of this method, we will drop all trees and symbol tables
+            // created due to indexing.
+            const initiallyParsedSet = new Set<SourceFileInfo>();
+            for (const sourceFileInfo of this._sourceFileList) {
+                if (!sourceFileInfo.sourceFile.isParseRequired()) {
+                    initiallyParsedSet.add(sourceFileInfo);
+                }
+            }
+
             let count = 0;
             for (const sourceFileInfo of this._sourceFileList) {
-                if (!this._isUserCode(sourceFileInfo)) {
+                if (!this._isUserCode(sourceFileInfo) || !sourceFileInfo.sourceFile.isIndexingRequired()) {
                     continue;
                 }
 
                 this._bindFile(sourceFileInfo);
                 const results = sourceFileInfo.sourceFile.index({ indexingForAutoImportMode: false }, token);
                 if (results) {
-                    if (++count > 2000) {
+                    if (++count > MaxWorkspaceIndexFileCount) {
                         this._console.warn(`Workspace indexing has hit its upper limit: 2000 files`);
+
+                        dropParseAndBindInfoCreatedForIndexing(this._sourceFileList, initiallyParsedSet);
                         return count;
                     }
 
@@ -483,8 +510,23 @@ export class Program {
                 this._handleMemoryHighUsage();
             }
 
+            dropParseAndBindInfoCreatedForIndexing(this._sourceFileList, initiallyParsedSet);
             return count;
         });
+
+        function dropParseAndBindInfoCreatedForIndexing(
+            sourceFiles: SourceFileInfo[],
+            initiallyParsedSet: Set<SourceFileInfo>
+        ) {
+            for (const sourceFileInfo of sourceFiles) {
+                if (sourceFileInfo.sourceFile.isParseRequired() || initiallyParsedSet.has(sourceFileInfo)) {
+                    continue;
+                }
+
+                // Drop parse and bind info created during indexing.
+                sourceFileInfo.sourceFile.dropParseAndBindInfo();
+            }
+        }
     }
 
     // Prints import dependency information for each of the files in
@@ -567,7 +609,7 @@ export class Program {
 
                 try {
                     makeDirectories(this._fs, typeStubDir, stubPath);
-                } catch (e) {
+                } catch (e: any) {
                     const errMsg = `Could not create directory for '${typeStubDir}'`;
                     throw new Error(errMsg);
                 }
@@ -605,6 +647,10 @@ export class Program {
 
         if (configOptions.diagnosticRuleSet.printUnknownAsAny) {
             flags |= PrintTypeFlags.PrintUnknownWithAny;
+        }
+
+        if (configOptions.diagnosticRuleSet.omitConditionalConstraint) {
+            flags |= PrintTypeFlags.OmitConditionalConstraint;
         }
 
         if (configOptions.diagnosticRuleSet.omitTypeArgsIfAny) {
@@ -735,7 +781,7 @@ export class Program {
 
         // We need to parse and bind the builtins import first.
         let builtinsScope: Scope | undefined;
-        if (fileToAnalyze.builtinsImport) {
+        if (fileToAnalyze.builtinsImport && fileToAnalyze.builtinsImport !== fileToAnalyze) {
             this._bindFile(fileToAnalyze.builtinsImport);
 
             // Get the builtins scope to pass to the binding pass.
@@ -773,7 +819,7 @@ export class Program {
 
         return {
             symbolTable,
-            dunderAllNames: AnalyzerNodeInfo.getDunderAllNames(parseResults!.parseTree),
+            dunderAllNames: AnalyzerNodeInfo.getDunderAllInfo(parseResults!.parseTree)?.names,
             get docString() {
                 return getDocString(moduleNode.statements);
             },
@@ -842,7 +888,9 @@ export class Program {
                 }
             }
 
-            fileToCheck.sourceFile.check(this._evaluator!);
+            if (!this._disableChecker) {
+                fileToCheck.sourceFile.check(this._evaluator!);
+            }
 
             // For very large programs, we may need to discard the evaluator and
             // its cached types to avoid running out of heap space.
@@ -1090,6 +1138,7 @@ export class Program {
                 if (diagnostics !== undefined) {
                     fileDiagnostics.push({
                         filePath: sourceFileInfo.sourceFile.getFilePath(),
+                        version: sourceFileInfo.sourceFile.getClientVersion(),
                         diagnostics,
                     });
 
@@ -1106,6 +1155,7 @@ export class Program {
                 // "open files only" mode. Clear all diagnostics for this file.
                 fileDiagnostics.push({
                     filePath: sourceFileInfo.sourceFile.getFilePath(),
+                    version: sourceFileInfo.sourceFile.getClientVersion(),
                     diagnostics: [],
                 });
                 sourceFileInfo.diagnosticsVersion = undefined;
@@ -1522,6 +1572,7 @@ export class Program {
         filePath: string,
         position: Position,
         newName: string,
+        isDefaultWorkspace: boolean,
         token: CancellationToken
     ): FileEditAction[] | undefined {
         return this._runEvaluatorWithCancellationToken(token, () => {
@@ -1545,18 +1596,21 @@ export class Program {
                 return undefined;
             }
 
-            if (referencesResult.declarations.some((d) => !this._isUserCode(this._getSourceFileInfoFromPath(d.path)))) {
-                // Some declarations come from non-user code, so do not allow rename
+            if (
+                !isDefaultWorkspace &&
+                referencesResult.declarations.some((d) => !this._isUserCode(this._getSourceFileInfoFromPath(d.path)))
+            ) {
+                // Some declarations come from non-user code, so do not allow rename.
                 return undefined;
             }
 
             if (referencesResult.declarations.length === 0) {
-                // There is no symbol we can rename
+                // There is no symbol we can rename.
                 return undefined;
             }
 
             // Do we need to do a global search as well?
-            if (referencesResult.requiresGlobalSearch) {
+            if (referencesResult.requiresGlobalSearch && !isDefaultWorkspace) {
                 for (const curSourceFileInfo of this._sourceFileList) {
                     // Make sure we only add user code to the references to prevent us
                     // from accidentally changing third party library or type stub.
@@ -1570,7 +1624,7 @@ export class Program {
                     // for situations where we need to discard the type cache.
                     this._handleMemoryHighUsage();
                 }
-            } else if (this._isUserCode(sourceFileInfo)) {
+            } else if (isDefaultWorkspace || this._isUserCode(sourceFileInfo)) {
                 sourceFileInfo.sourceFile.addReferences(referencesResult, true, this._evaluator!, token);
             }
 
@@ -1766,14 +1820,12 @@ export class Program {
     // any other unexpected exceptions.
     private _runEvaluatorWithCancellationToken<T>(token: CancellationToken | undefined, callback: () => T): T {
         try {
-            // Don't support cancellation in debug mode because cancellation
-            // checks and exceptions interfere with debugging.
-            if (token && !isDebugMode()) {
+            if (token) {
                 return this._evaluator!.runWithCancellationToken(token, callback);
             } else {
                 return callback();
             }
-        } catch (e) {
+        } catch (e: any) {
             // An unexpected exception occurred, potentially leaving the current evaluator
             // in an inconsistent state. Discard it and replace it with a fresh one. It is
             // Cancellation exceptions are known to handle this correctly.
@@ -1797,6 +1849,7 @@ export class Program {
             if (!this._isFileNeeded(fileInfo)) {
                 fileDiagnostics.push({
                     filePath: fileInfo.sourceFile.getFilePath(),
+                    version: fileInfo.sourceFile.getClientVersion(),
                     diagnostics: [],
                 });
 
@@ -1818,6 +1871,7 @@ export class Program {
                         if (indexToRemove >= 0 && indexToRemove < i) {
                             fileDiagnostics.push({
                                 filePath: importedFile.sourceFile.getFilePath(),
+                                version: importedFile.sourceFile.getClientVersion(),
                                 diagnostics: [],
                             });
 
@@ -1839,6 +1893,7 @@ export class Program {
                 if (!this._shouldCheckFile(fileInfo) && fileInfo.diagnosticsVersion !== undefined) {
                     fileDiagnostics.push({
                         filePath: fileInfo.sourceFile.getFilePath(),
+                        version: fileInfo.sourceFile.getClientVersion(),
                         diagnostics: [],
                     });
                     fileInfo.diagnosticsVersion = undefined;

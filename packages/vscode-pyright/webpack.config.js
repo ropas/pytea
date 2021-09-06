@@ -3,13 +3,9 @@
  * Copyright: Microsoft 2018
  */
 
-/* eslint-disable @typescript-eslint/no-var-requires */
-//@ts-check
-
 const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
-const { TsconfigPathsPlugin } = require('tsconfig-paths-webpack-plugin');
-const { monorepoResourceNameMapper } = require('../../build/lib/webpack');
+const { cacheConfig, monorepoResourceNameMapper, tsconfigResolveAliases } = require('../../build/lib/webpack');
 
 const outPath = path.resolve(__dirname, 'dist');
 const typeshedFallback = path.resolve(__dirname, '..', 'pyright-internal', 'typeshed-fallback');
@@ -32,6 +28,7 @@ module.exports = (_, { mode }) => {
             clean: true,
         },
         devtool: mode === 'development' ? 'source-map' : 'nosources-source-map',
+        cache: mode === 'development' ? cacheConfig(__dirname, __filename) : false,
         stats: {
             all: false,
             errors: true,
@@ -39,12 +36,7 @@ module.exports = (_, { mode }) => {
         },
         resolve: {
             extensions: ['.ts', '.js'],
-            plugins: [
-                new TsconfigPathsPlugin({
-                    configFile: 'tsconfig.withBaseUrl.json', // TODO: Remove once the plugin understands TS 4.1's implicit baseUrl.
-                    extensions: ['.ts', '.js'],
-                }),
-            ],
+            alias: tsconfigResolveAliases('tsconfig.json'),
         },
         externals: {
             vscode: 'commonjs vscode',

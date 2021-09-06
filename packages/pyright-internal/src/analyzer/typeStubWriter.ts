@@ -9,6 +9,7 @@
  */
 
 import {
+    ArgumentCategory,
     AssignmentNode,
     AugmentedAssignmentNode,
     ClassNode,
@@ -40,6 +41,7 @@ import { SourceFile } from './sourceFile';
 import { Symbol } from './symbol';
 import * as SymbolNameUtils from './symbolNameUtils';
 import { TypeEvaluator } from './typeEvaluator';
+import { isFunction, isNever, isUnknown, removeUnknownFromUnion } from './types';
 
 class TrackedImport {
     constructor(public importName: string) {}
@@ -54,9 +56,9 @@ class TrackedImportAs extends TrackedImport {
 }
 
 interface TrackedImportSymbol {
-    symbol?: Symbol;
+    symbol?: Symbol | undefined;
     name: string;
-    alias?: string;
+    alias?: string | undefined;
     isAccessed: boolean;
 }
 
@@ -88,18 +90,18 @@ class ImportSymbolWalker extends ParseTreeWalker {
         this.walk(node);
     }
 
-    walk(node: ParseNode) {
+    override walk(node: ParseNode) {
         if (!AnalyzerNodeInfo.isCodeUnreachable(node)) {
             super.walk(node);
         }
     }
 
-    visitName(node: NameNode) {
+    override visitName(node: NameNode) {
         this._accessedImportedSymbols.set(node.value, true);
         return true;
     }
 
-    visitString(node: StringNode) {
+    override visitString(node: StringNode) {
         if (this._treatStringsAsSymbols) {
             this._accessedImportedSymbols.set(node.value, true);
         }
@@ -144,21 +146,31 @@ export class TypeStubWriter extends ParseTreeWalker {
         this._writeFile();
     }
 
-    walk(node: ParseNode) {
+    override walk(node: ParseNode) {
         if (!AnalyzerNodeInfo.isCodeUnreachable(node)) {
             super.walk(node);
         }
     }
 
-    visitClass(node: ClassNode) {
+    override visitClass(node: ClassNode) {
         const className = node.name.value;
 
         this._emittedSuite = true;
         this._emitDocString = true;
         this._emitDecorators(node.decorators);
         let line = `class ${className}`;
-        if (node.arguments.length > 0) {
-            line += `(${node.arguments
+
+        // Remove "object" from the list, since it's implied
+        const args = node.arguments.filter(
+            (arg) =>
+                arg.name !== undefined ||
+                arg.argumentCategory !== ArgumentCategory.Simple ||
+                arg.valueExpression.nodeType !== ParseNodeType.Name ||
+                arg.valueExpression.value !== 'object'
+        );
+
+        if (args.length > 0) {
+            line += `(${args
                 .map((arg) => {
                     let argString = '';
                     if (arg.name) {
@@ -184,7 +196,7 @@ export class TypeStubWriter extends ParseTreeWalker {
         return false;
     }
 
-    visitFunction(node: FunctionNode) {
+    override visitFunction(node: FunctionNode) {
         const functionName = node.name.value;
 
         // Skip if we're already within a function or if the name is private/protected.
@@ -226,6 +238,20 @@ export class TypeStubWriter extends ParseTreeWalker {
             }
 
             line += ':';
+
+            // If there was not return type annotation, see if we can infer
+            // a type that is not unknown and add it as a comment.
+            if (!returnAnnotation) {
+                const functionType = this._evaluator.getTypeOfFunction(node);
+                if (functionType && isFunction(functionType.functionType)) {
+                    let returnType = this._evaluator.getFunctionInferredReturnType(functionType.functionType);
+                    returnType = removeUnknownFromUnion(returnType);
+                    if (!isNever(returnType) && !isUnknown(returnType)) {
+                        line += ` # -> ${this._evaluator.printType(returnType, /* expandTypeAlias */ false)}:`;
+                    }
+                }
+            }
+
             this._emitLine(line);
 
             this._emitSuite(() => {
@@ -241,31 +267,31 @@ export class TypeStubWriter extends ParseTreeWalker {
         return false;
     }
 
-    visitWhile(node: WhileNode) {
+    override visitWhile(node: WhileNode) {
         // Don't emit a doc string after the first statement.
         this._emitDocString = false;
         return false;
     }
 
-    visitFor(node: ForNode) {
+    override visitFor(node: ForNode) {
         // Don't emit a doc string after the first statement.
         this._emitDocString = false;
         return false;
     }
 
-    visitTry(node: TryNode) {
+    override visitTry(node: TryNode) {
         // Don't emit a doc string after the first statement.
         this._emitDocString = false;
         return false;
     }
 
-    visitWith(node: WithNode) {
+    override visitWith(node: WithNode) {
         // Don't emit a doc string after the first statement.
         this._emitDocString = false;
         return false;
     }
 
-    visitIf(node: IfNode) {
+    override visitIf(node: IfNode) {
         // Don't emit a doc string after the first statement.
         this._emitDocString = false;
 
@@ -296,7 +322,7 @@ export class TypeStubWriter extends ParseTreeWalker {
         return false;
     }
 
-    visitAssignment(node: AssignmentNode) {
+    override visitAssignment(node: AssignmentNode) {
         let isTypeAlias = false;
         let line = '';
 
@@ -346,11 +372,11 @@ export class TypeStubWriter extends ParseTreeWalker {
         return false;
     }
 
-    visitAugmentedAssignment(node: AugmentedAssignmentNode) {
+    override visitAugmentedAssignment(node: AugmentedAssignmentNode) {
         return false;
     }
 
-    visitTypeAnnotation(node: TypeAnnotationNode) {
+    override visitTypeAnnotation(node: TypeAnnotationNode) {
         if (this._functionNestCount === 0) {
             let line = '';
             if (node.valueExpression.nodeType === ParseNodeType.Name) {
@@ -376,7 +402,7 @@ export class TypeStubWriter extends ParseTreeWalker {
         return false;
     }
 
-    visitImport(node: ImportNode) {
+    override visitImport(node: ImportNode) {
         if (this._functionNestCount > 0 || this._classNestCount > 0) {
             return false;
         }
@@ -408,7 +434,7 @@ export class TypeStubWriter extends ParseTreeWalker {
         return false;
     }
 
-    visitImportFrom(node: ImportFromNode) {
+    override visitImportFrom(node: ImportFromNode) {
         if (this._functionNestCount > 0 || this._classNestCount > 0) {
             return false;
         }
@@ -440,7 +466,7 @@ export class TypeStubWriter extends ParseTreeWalker {
         return false;
     }
 
-    visitStatementList(node: StatementListNode) {
+    override visitStatementList(node: StatementListNode) {
         if (node.statements.length > 0 && node.statements[0].nodeType === ParseNodeType.StringList) {
             // Is this the first statement in a suite? If it's a string
             // literal, assume it's a doc string and emit it.

@@ -4,9 +4,12 @@
 from typing import (
     Any,
     Dict,
+    Generic,
     List,
     Literal,
     Optional,
+    Tuple,
+    Type,
     TypeVar,
     Union,
     overload,
@@ -117,3 +120,61 @@ def func6(bar: str, /) -> int:
 
 def func6(p0: Union[int, str], /) -> int:
     return 3
+
+
+_T1 = TypeVar("_T1")
+
+
+class ClassA(Generic[_T1]):
+    @overload
+    def method1(self: "ClassA[None]") -> None:
+        ...
+
+    @overload
+    def method1(self, value: _T1) -> None:
+        ...
+
+    def method1(self, value: Any = None) -> None:
+        ...
+
+
+class ClassB:
+    ...
+
+
+class ClassC:
+    ...
+
+
+_T2 = TypeVar("_T2", ClassB, ClassC)
+
+
+@overload
+def func7(cls: Type[ClassB], var: int) -> ClassB:
+    ...
+
+
+@overload
+def func7(cls: Type[ClassC], var: str) -> ClassC:
+    ...
+
+
+def func7(cls: Type[_T2], var: Union[int, str]) -> _T2:
+    return cls()
+
+
+_T3 = TypeVar("_T3")
+
+
+@overload
+def func8(foo: int) -> int:
+    ...
+
+
+@overload
+def func8(foo: _T3) -> Tuple[_T3]:
+    ...
+
+
+def func8(foo: Union[_T3, int]) -> Union[Tuple[_T3], int]:
+    ...

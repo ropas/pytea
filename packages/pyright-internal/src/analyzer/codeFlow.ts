@@ -13,7 +13,7 @@
  * TypeScript compiler.
  */
 
-import { assert } from '../common/debug';
+import { assert, fail } from '../common/debug';
 import {
     ArgumentCategory,
     CallNode,
@@ -21,10 +21,12 @@ import {
     ExpressionNode,
     ImportFromNode,
     IndexNode,
+    MatchNode,
     MemberAccessNode,
     NameNode,
     NumberNode,
     ParseNodeType,
+    StringNode,
     SuiteNode,
 } from '../parser/parseNodes';
 
@@ -47,6 +49,7 @@ export enum FlowFlags {
     TrueNeverCondition = 1 << 16, // Condition whose type evaluates to never when narrowed in positive test
     FalseNeverCondition = 1 << 17, // Condition whose type evaluates to never when narrowed in negative test
     NarrowForPattern = 1 << 18, // Narrow the type of the subject expression within a case statement
+    ExhaustedMatch = 1 << 19, // Control flow gate that is closed when match is provably exhaustive
 }
 
 let _nextFlowNodeId = 1;
@@ -66,6 +69,14 @@ export interface FlowNode {
 // preceding control flows.
 export interface FlowLabel extends FlowNode {
     antecedents: FlowNode[];
+}
+
+export interface FlowLoopLabel extends FlowLabel {
+    // Set of all expressions that require code flow analysis
+    // through the loop to determine their types. If an expression
+    // is not within this map, loop analysis can be skipped and
+    // determined from the first antecedent only.
+    expressions: Set<string> | undefined;
 }
 
 // FlowAssignment represents a node that assigns a value.
@@ -110,13 +121,21 @@ export interface FlowWildcardImport extends FlowNode {
 // be true or false at the node's location in the control flow.
 export interface FlowCondition extends FlowNode {
     expression: ExpressionNode;
-    reference?: NameNode;
+    reference?: NameNode | undefined;
     antecedent: FlowNode;
 }
 
 export interface FlowNarrowForPattern extends FlowNode {
     subjectExpression: ExpressionNode;
-    caseStatement: CaseNode;
+    statement: CaseNode | MatchNode;
+    antecedent: FlowNode;
+}
+
+// FlowExhaustedMatch represents a control flow gate that is "closed"
+// if a match statement can be statically proven to exhaust all cases
+// (i.e. the narrowed type of the subject expression is Never at the bottom).
+export interface FlowExhaustedMatch extends FlowNode {
+    node: MatchNode;
     antecedent: FlowNode;
 }
 
@@ -156,7 +175,7 @@ export function isCodeFlowSupportedForReference(reference: ExpressionNode): bool
 
     if (reference.nodeType === ParseNodeType.Index) {
         // Allow index expressions that have a single subscript that is a
-        // literal integer value.
+        // literal integer or string value.
         if (
             reference.items.length !== 1 ||
             reference.trailingComma ||
@@ -167,7 +186,14 @@ export function isCodeFlowSupportedForReference(reference: ExpressionNode): bool
         }
 
         const subscriptNode = reference.items[0].valueExpression;
-        if (subscriptNode.nodeType !== ParseNodeType.Number || subscriptNode.isImaginary || !subscriptNode.isInteger) {
+        const isIntegerIndex =
+            subscriptNode.nodeType === ParseNodeType.Number && !subscriptNode.isImaginary && subscriptNode.isInteger;
+        const isStringIndex =
+            subscriptNode.nodeType === ParseNodeType.StringList &&
+            subscriptNode.strings.length === 1 &&
+            subscriptNode.strings[0].nodeType === ParseNodeType.String;
+
+        if (!isIntegerIndex && !isStringIndex) {
             return false;
         }
 
@@ -184,10 +210,20 @@ export function createKeyForReference(reference: CodeFlowReferenceExpressionNode
     } else if (reference.nodeType === ParseNodeType.MemberAccess) {
         const leftKey = createKeyForReference(reference.leftExpression as CodeFlowReferenceExpressionNode);
         key = `${leftKey}.${reference.memberName.value}`;
-    } else {
+    } else if (reference.nodeType === ParseNodeType.Index) {
         const leftKey = createKeyForReference(reference.baseExpression as CodeFlowReferenceExpressionNode);
-        assert(reference.items.length === 1 && reference.items[0].valueExpression.nodeType === ParseNodeType.Number);
-        key = `${leftKey}[${(reference.items[0].valueExpression as NumberNode).value.toString()}]`;
+        assert(reference.items.length === 1);
+        if (reference.items[0].valueExpression.nodeType === ParseNodeType.Number) {
+            key = `${leftKey}[${(reference.items[0].valueExpression as NumberNode).value.toString()}]`;
+        } else if (reference.items[0].valueExpression.nodeType === ParseNodeType.StringList) {
+            const valExpr = reference.items[0].valueExpression;
+            assert(valExpr.strings.length === 1 && valExpr.strings[0].nodeType === ParseNodeType.String);
+            key = `${leftKey}["${(valExpr.strings[0] as StringNode).value}"]`;
+        } else {
+            fail('createKeyForReference received unexpected index type');
+        }
+    } else {
+        fail('createKeyForReference received unexpected expression type');
     }
 
     return key;

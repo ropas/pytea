@@ -26,7 +26,7 @@ import {
 } from 'vscode-languageserver-types';
 
 import { BackgroundAnalysisBase } from '../backgroundAnalysisBase';
-import { createBackgroundThreadCancellationTokenSource } from '../common/cancellationUtils';
+import { CancellationProvider, DefaultCancellationProvider } from '../common/cancellationUtils';
 import { CommandLineOptions } from '../common/commandLineOptions';
 import { ConfigOptions } from '../common/configOptions';
 import { ConsoleInterface, log, LogLevel, StandardConsole } from '../common/console';
@@ -34,6 +34,7 @@ import { Diagnostic } from '../common/diagnostic';
 import { FileEditAction, TextEditAction } from '../common/editAction';
 import { LanguageServiceExtension } from '../common/extensibility';
 import { FileSystem, FileWatcher, ignoredWatchEventFunction } from '../common/fileSystem';
+import { Host, HostFactory, NoAccessHost } from '../common/host';
 import {
     combinePaths,
     FileSpec,
@@ -44,6 +45,7 @@ import {
     getFileSystemEntries,
     isDirectory,
     normalizePath,
+    normalizeSlashes,
     stripFileExtension,
     tryRealpath,
     tryStat,
@@ -63,14 +65,18 @@ import { MaxAnalysisTime } from './program';
 import { findPythonSearchPaths } from './pythonPathUtils';
 import { TypeEvaluator } from './typeEvaluator';
 
-export const configFileNames = ['pyrightconfig.json', 'mspythonconfig.json'];
+export const configFileNames = ['pyrightconfig.json'];
 export const pyprojectTomlName = 'pyproject.toml';
 
 // How long since the last user activity should we wait until running
 // the analyzer on any files that have not yet been analyzed?
 const _userActivityBackoffTimeInMs = 250;
 
+const _gitDirectory = normalizeSlashes('/.git/');
+const _includeFileRegex = /\.pyi?$/;
+
 export class AnalyzerService {
+    private _hostFactory: HostFactory;
     private _instanceName: string;
     private _importResolverFactory: ImportResolverFactory;
     private _executionRootPath: string;
@@ -91,20 +97,23 @@ export class AnalyzerService {
     private _extension: LanguageServiceExtension | undefined;
     private _backgroundAnalysisProgram: BackgroundAnalysisProgram;
     private _backgroundAnalysisCancellationSource: AbstractCancellationTokenSource | undefined;
-    private _maxAnalysisTimeInForeground?: MaxAnalysisTime;
-    private _backgroundAnalysisProgramFactory?: BackgroundAnalysisProgramFactory;
+    private _maxAnalysisTimeInForeground: MaxAnalysisTime | undefined;
+    private _backgroundAnalysisProgramFactory: BackgroundAnalysisProgramFactory | undefined;
     private _disposed = false;
+    private _cancellationProvider: CancellationProvider;
 
     constructor(
         instanceName: string,
         fs: FileSystem,
         console?: ConsoleInterface,
+        hostFactory?: HostFactory,
         importResolverFactory?: ImportResolverFactory,
         configOptions?: ConfigOptions,
         extension?: LanguageServiceExtension,
         backgroundAnalysis?: BackgroundAnalysisBase,
         maxAnalysisTime?: MaxAnalysisTime,
-        backgroundAnalysisProgramFactory?: BackgroundAnalysisProgramFactory
+        backgroundAnalysisProgramFactory?: BackgroundAnalysisProgramFactory,
+        cancellationProvider?: CancellationProvider
     ) {
         this._instanceName = instanceName;
         this._console = console || new StandardConsole();
@@ -113,9 +122,11 @@ export class AnalyzerService {
         this._importResolverFactory = importResolverFactory || AnalyzerService.createImportResolver;
         this._maxAnalysisTimeInForeground = maxAnalysisTime;
         this._backgroundAnalysisProgramFactory = backgroundAnalysisProgramFactory;
+        this._cancellationProvider = cancellationProvider ?? new DefaultCancellationProvider();
+        this._hostFactory = hostFactory ?? (() => new NoAccessHost());
 
         configOptions = configOptions ?? new ConfigOptions(process.cwd());
-        const importResolver = this._importResolverFactory(fs, configOptions);
+        const importResolver = this._importResolverFactory(fs, configOptions, this._hostFactory());
 
         this._backgroundAnalysisProgram =
             backgroundAnalysisProgramFactory !== undefined
@@ -142,12 +153,14 @@ export class AnalyzerService {
             instanceName,
             this._fs,
             this._console,
+            this._hostFactory,
             this._importResolverFactory,
             this._backgroundAnalysisProgram.configOptions,
             this._extension,
             backgroundAnalysis,
             this._maxAnalysisTimeInForeground,
-            this._backgroundAnalysisProgramFactory
+            this._backgroundAnalysisProgramFactory,
+            this._cancellationProvider
         );
     }
 
@@ -165,8 +178,8 @@ export class AnalyzerService {
         return this._backgroundAnalysisProgram;
     }
 
-    static createImportResolver(fs: FileSystem, options: ConfigOptions): ImportResolver {
-        return new ImportResolver(fs, options);
+    static createImportResolver(fs: FileSystem, options: ConfigOptions, host: Host): ImportResolver {
+        return new ImportResolver(fs, options, host);
     }
 
     setCompletionCallback(callback: AnalysisCompleteCallback | undefined): void {
@@ -177,30 +190,31 @@ export class AnalyzerService {
     setOptions(commandLineOptions: CommandLineOptions, reanalyze = true): void {
         this._commandLineOptions = commandLineOptions;
 
-        const configOptions = this._getConfigOptions(commandLineOptions);
+        const host = this._hostFactory();
+        const configOptions = this._getConfigOptions(host, commandLineOptions);
 
         if (configOptions.pythonPath) {
             // Make sure we have default python environment set.
-            configOptions.ensureDefaultPythonVersion(configOptions.pythonPath, this._console);
+            configOptions.ensureDefaultPythonVersion(host, this._console);
         }
 
-        configOptions.ensureDefaultPythonPlatform(this._console);
+        configOptions.ensureDefaultPythonPlatform(host, this._console);
 
         this._backgroundAnalysisProgram.setConfigOptions(configOptions);
 
         this._executionRootPath = normalizePath(
             combinePaths(commandLineOptions.executionRoot, configOptions.projectRoot)
         );
-        this._applyConfigOptions(reanalyze);
+        this._applyConfigOptions(host, reanalyze);
     }
 
     setFileOpened(path: string, version: number | null, contents: string) {
-        this._backgroundAnalysisProgram.setFileOpened(path, version, contents);
+        this._backgroundAnalysisProgram.setFileOpened(path, version, contents, this._isTracked(path));
         this._scheduleReanalysis(false);
     }
 
     updateOpenFileContents(path: string, version: number | null, contents: TextDocumentContentChangeEvent[]) {
-        this._backgroundAnalysisProgram.updateOpenFileContents(path, version, contents);
+        this._backgroundAnalysisProgram.updateOpenFileContents(path, version, contents, this._isTracked(path));
         this._scheduleReanalysis(false);
     }
 
@@ -355,9 +369,10 @@ export class AnalyzerService {
         filePath: string,
         position: Position,
         newName: string,
+        isDefaultWorkspace: boolean,
         token: CancellationToken
     ): FileEditAction[] | undefined {
-        return this._program.renameSymbolAtPosition(filePath, position, newName, token);
+        return this._program.renameSymbolAtPosition(filePath, position, newName, isDefaultWorkspace, token);
     }
 
     getCallForPosition(filePath: string, position: Position, token: CancellationToken): CallHierarchyItem | undefined {
@@ -420,7 +435,7 @@ export class AnalyzerService {
     }
 
     test_getConfigOptions(commandLineOptions: CommandLineOptions): ConfigOptions {
-        return this._getConfigOptions(commandLineOptions);
+        return this._getConfigOptions(this._backgroundAnalysisProgram.host, commandLineOptions);
     }
 
     test_getFileNamesFromFileSpecs(): string[] {
@@ -429,7 +444,7 @@ export class AnalyzerService {
 
     // Calculates the effective options based on the command-line options,
     // an optional config file, and default values.
-    private _getConfigOptions(commandLineOptions: CommandLineOptions): ConfigOptions {
+    private _getConfigOptions(host: Host, commandLineOptions: CommandLineOptions): ConfigOptions {
         let projectRoot = commandLineOptions.executionRoot;
         let configFilePath: string | undefined;
         let pyprojectFilePath: string | undefined;
@@ -495,6 +510,13 @@ export class AnalyzerService {
         const configOptions = new ConfigOptions(projectRoot, this._typeCheckingMode);
         const defaultExcludes = ['**/node_modules', '**/__pycache__', '.git'];
 
+        if (commandLineOptions.pythonPath) {
+            this._console.info(
+                `Setting pythonPath for service "${this._instanceName}": ` + `"${commandLineOptions.pythonPath}"`
+            );
+            configOptions.pythonPath = commandLineOptions.pythonPath;
+        }
+
         // The pythonPlatform and pythonVersion from the command-line can be overridden
         // by the config file, so initialize them upfront.
         configOptions.defaultPythonPlatform = commandLineOptions.pythonPlatform;
@@ -540,8 +562,8 @@ export class AnalyzerService {
                 configJsonObj,
                 this._typeCheckingMode,
                 this._console,
+                host,
                 commandLineOptions.diagnosticSeverityOverrides,
-                commandLineOptions.pythonPath,
                 commandLineOptions.fileSpecs.length > 0
             );
 
@@ -590,13 +612,6 @@ export class AnalyzerService {
             } else {
                 reportDuplicateSetting('venvPath', configOptions.venvPath);
             }
-        }
-
-        if (commandLineOptions.pythonPath) {
-            this._console.info(
-                `Setting pythonPath for service "${this._instanceName}": ` + `"${commandLineOptions.pythonPath}"`
-            );
-            configOptions.pythonPath = commandLineOptions.pythonPath;
         }
 
         if (commandLineOptions.typeshedPath) {
@@ -655,7 +670,7 @@ export class AnalyzerService {
                     );
                 } else {
                     const importFailureInfo: string[] = [];
-                    if (findPythonSearchPaths(this._fs, configOptions, importFailureInfo) === undefined) {
+                    if (findPythonSearchPaths(this._fs, configOptions, host, importFailureInfo) === undefined) {
                         this._console.error(
                             `site-packages directory cannot be located for venvPath ` +
                                 `${configOptions.venvPath} and venv ${configOptions.venv}.`
@@ -729,7 +744,7 @@ export class AnalyzerService {
     // Forces the service to stop all analysis, discard all its caches,
     // and research for files.
     restart() {
-        this._applyConfigOptions();
+        this._applyConfigOptions(this._hostFactory());
 
         this._backgroundAnalysisProgram.restart();
     }
@@ -797,7 +812,7 @@ export class AnalyzerService {
             if (!this._fs.existsSync(stubPath)) {
                 this._fs.mkdirSync(stubPath);
             }
-        } catch (e) {
+        } catch (e: any) {
             const errMsg = `Could not create typings directory '${stubPath}'`;
             this._console.error(errMsg);
             throw new Error(errMsg);
@@ -809,7 +824,7 @@ export class AnalyzerService {
             if (!this._fs.existsSync(typingsSubdirPath)) {
                 this._fs.mkdirSync(typingsSubdirPath);
             }
-        } catch (e) {
+        } catch (e: any) {
             const errMsg = `Could not create typings subdirectory '${typingsSubdirPath}'`;
             this._console.error(errMsg);
             throw new Error(errMsg);
@@ -856,7 +871,7 @@ export class AnalyzerService {
                 if (configObj && configObj.tool && (configObj.tool as TOML.JsonMap).pyright) {
                     return (configObj.tool as TOML.JsonMap).pyright as object;
                 }
-            } catch (e) {
+            } catch (e: any) {
                 this._console.error(`Pyproject file parse attempt ${attemptCount} error: ${JSON.stringify(e)}`);
                 throw e;
             }
@@ -887,7 +902,7 @@ export class AnalyzerService {
             let parseFailed = false;
             try {
                 return parseCallback(fileContents, parseAttemptCount + 1);
-            } catch (e) {
+            } catch (e: any) {
                 parseFailed = true;
             }
 
@@ -904,6 +919,8 @@ export class AnalyzerService {
                 return undefined;
             }
         }
+
+        return undefined;
     }
 
     private _getFileNamesFromFileSpecs(): string[] {
@@ -1008,16 +1025,36 @@ export class AnalyzerService {
         this._requireTrackedFileUpdate = false;
     }
 
-    private _isInExcludePath(path: string, excludePaths: FileSpec[]) {
-        return !!excludePaths.find((excl) => excl.regExp.test(path));
-    }
-
     private _matchFiles(include: FileSpec[], exclude: FileSpec[]): string[] {
-        const includeFileRegex = /\.pyi?$/;
         const envMarkers = [['bin', 'activate'], ['Scripts', 'activate'], ['pyvenv.cfg']];
         const results: string[] = [];
+        const startTime = Date.now();
+        const longOperationLimitInSec = 10;
+        let loggedLongOperationError = false;
 
         const visitDirectoryUnchecked = (absolutePath: string, includeRegExp: RegExp) => {
+            if (!loggedLongOperationError) {
+                const secondsSinceStart = (Date.now() - startTime) * 0.001;
+
+                // If this is taking a long time, log an error to help the user
+                // diagnose and mitigate the problem.
+                if (secondsSinceStart >= longOperationLimitInSec) {
+                    this._console.error(
+                        `Enumeration of workspace source files is taking longer than ${longOperationLimitInSec} seconds.\n` +
+                            'This may be because:\n' +
+                            '* You have opened your home directory or entire hard drive as a workspace\n' +
+                            '* Your workspace contains a very large number of directories and files\n' +
+                            '* Your workspace contains a symlink to a directory with many files\n' +
+                            '* Your workspace is remote, and file enumeration is slow\n' +
+                            'To reduce this time, open a workspace directory with fewer files ' +
+                            'or add a pyrightconfig.json configuration file with an "exclude" section to exclude ' +
+                            'subdirectories from your workspace. For more details, refer to ' +
+                            'https://github.com/microsoft/pyright/blob/main/docs/configuration.md.'
+                    );
+                    loggedLongOperationError = true;
+                }
+            }
+
             if (this._configOptions.autoExcludeVenv) {
                 if (envMarkers.some((f) => this._fs.existsSync(combinePaths(absolutePath, ...f)))) {
                     this._console.info(`Auto-excluding ${absolutePath}`);
@@ -1030,10 +1067,8 @@ export class AnalyzerService {
             for (const file of files) {
                 const filePath = combinePaths(absolutePath, file);
 
-                if (includeRegExp.test(filePath)) {
-                    if (!this._isInExcludePath(filePath, exclude) && includeFileRegex.test(filePath)) {
-                        results.push(filePath);
-                    }
+                if (this._matchIncludeFileSpec(includeRegExp, exclude, filePath)) {
+                    results.push(filePath);
                 }
             }
 
@@ -1069,12 +1104,12 @@ export class AnalyzerService {
         };
 
         include.forEach((includeSpec) => {
-            let foundFileSpec = false;
-
             if (!this._isInExcludePath(includeSpec.wildcardRoot, exclude)) {
+                let foundFileSpec = false;
+
                 const stat = tryStat(this._fs, includeSpec.wildcardRoot);
                 if (stat?.isFile()) {
-                    if (includeFileRegex.test(includeSpec.wildcardRoot)) {
+                    if (this._shouldIncludeFile(includeSpec.wildcardRoot)) {
                         results.push(includeSpec.wildcardRoot);
                         foundFileSpec = true;
                     }
@@ -1082,10 +1117,10 @@ export class AnalyzerService {
                     visitDirectory(includeSpec.wildcardRoot, includeSpec.regExp);
                     foundFileSpec = true;
                 }
-            }
 
-            if (!foundFileSpec) {
-                this._console.error(`File or directory "${includeSpec.wildcardRoot}" does not exist.`);
+                if (!foundFileSpec) {
+                    this._console.error(`File or directory "${includeSpec.wildcardRoot}" does not exist.`);
+                }
             }
         });
 
@@ -1126,8 +1161,8 @@ export class AnalyzerService {
                         return;
                     }
 
-                    // Wholesale ignore events that appear to be from tmp file modification.
-                    if (path.endsWith('.tmp') || path.endsWith('.git')) {
+                    // Wholesale ignore events that appear to be from tmp file / .git modification.
+                    if (path.endsWith('.tmp') || path.endsWith('.git') || path.includes(_gitDirectory)) {
                         return;
                     }
 
@@ -1189,6 +1224,7 @@ export class AnalyzerService {
         const watchList = findPythonSearchPaths(
             this._fs,
             this._backgroundAnalysisProgram.configOptions,
+            this._backgroundAnalysisProgram.host,
             importFailureInfo,
             true,
             this._executionRootPath
@@ -1310,19 +1346,26 @@ export class AnalyzerService {
         if (this._configFilePath) {
             this._console.info(`Reloading configuration file at ${this._configFilePath}`);
 
+            const host = this._backgroundAnalysisProgram.host;
+
             // We can't just reload config file when it is changed; we need to consider
             // command line options as well to construct new config Options.
-            const configOptions = this._getConfigOptions(this._commandLineOptions!);
+            const configOptions = this._getConfigOptions(host, this._commandLineOptions!);
             this._backgroundAnalysisProgram.setConfigOptions(configOptions);
 
-            this._applyConfigOptions();
+            this._applyConfigOptions(host);
         }
     }
 
-    private _applyConfigOptions(reanalyze = true) {
+    private _applyConfigOptions(host: Host, reanalyze = true) {
         // Allocate a new import resolver because the old one has information
         // cached based on the previous config options.
-        const importResolver = this._importResolverFactory(this._fs, this._backgroundAnalysisProgram.configOptions);
+        const importResolver = this._importResolverFactory(
+            this._fs,
+            this._backgroundAnalysisProgram.configOptions,
+            host
+        );
+
         this._backgroundAnalysisProgram.setImportResolver(importResolver);
 
         if (this._commandLineOptions?.fromVsCodeExtension || this._configOptions.verboseOutput) {
@@ -1393,7 +1436,7 @@ export class AnalyzerService {
             }
 
             // This creates a cancellation source only if it actually gets used.
-            this._backgroundAnalysisCancellationSource = createBackgroundThreadCancellationTokenSource();
+            this._backgroundAnalysisCancellationSource = this._cancellationProvider.createCancellationTokenSource();
             const moreToAnalyze = this._backgroundAnalysisProgram.startAnalysis(
                 this._backgroundAnalysisCancellationSource.token
             );
@@ -1415,5 +1458,33 @@ export class AnalyzerService {
                 elapsedTime: 0,
             });
         }
+    }
+
+    private _shouldIncludeFile(filePath: string) {
+        return _includeFileRegex.test(filePath);
+    }
+
+    private _isInExcludePath(path: string, excludePaths: FileSpec[]) {
+        return !!excludePaths.find((excl) => excl.regExp.test(path));
+    }
+
+    private _matchIncludeFileSpec(includeRegExp: RegExp, exclude: FileSpec[], filePath: string) {
+        if (includeRegExp.test(filePath)) {
+            if (!this._isInExcludePath(filePath, exclude) && this._shouldIncludeFile(filePath)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private _isTracked(filePath: string): boolean {
+        for (const includeSpec of this._configOptions.include) {
+            if (this._matchIncludeFileSpec(includeSpec.regExp, this._configOptions.exclude, filePath)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

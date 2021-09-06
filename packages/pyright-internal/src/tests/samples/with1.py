@@ -87,11 +87,11 @@ class Class4:
         return True
 
 
-def test2():
+async def test2():
     a1 = Class4()
 
-    # This should generate an error because __aenter__
-    # needs to be used with async with.
+    # This should generate two errors because Class4 does not
+    # implement __enter__ or __exit__.
     with a1 as foo:
         pass
 

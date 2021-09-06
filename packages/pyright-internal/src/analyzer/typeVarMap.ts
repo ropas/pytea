@@ -27,10 +27,10 @@ export interface TypeVarMapEntry {
 
     // The final type must "fit" between the narrow and
     // wide type bound.
-    narrowBound?: Type;
-    wideBound?: Type;
+    narrowBound?: Type | undefined;
+    wideBound?: Type | undefined;
 
-    retainLiteral?: boolean;
+    retainLiteral?: boolean | undefined;
 }
 
 export interface ParamSpecMapEntry {
@@ -269,6 +269,12 @@ export class TypeVarMap {
                 return 0.5;
             }
 
+            case TypeCategory.TypeVar: {
+                // A bare TypeVar is less desirable (and therefore considered
+                // more complex) than a concrete type.
+                return 1;
+            }
+
             case TypeCategory.Union: {
                 let minScore = 1;
 
@@ -292,10 +298,6 @@ export class TypeVarMap {
                 // Score a class as 0.5 plus half of the average complexity
                 // score of its type arguments.
                 return this._getComplexityScoreForClass(type, recursionCount + 1);
-            }
-
-            case TypeCategory.Object: {
-                return this._getComplexityScoreForClass(type.classType, recursionCount + 1);
             }
         }
 

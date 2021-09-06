@@ -213,37 +213,37 @@
       "$id": "#/properties/reportOptionalSubscript",
       "$ref": "#/definitions/diagnostic",
       "title": "Controls reporting of attempts to subscript (index) a variable with Optional type",
-      "default": "none"
+      "default": "error"
     },
     "reportOptionalMemberAccess": {
       "$id": "#/properties/reportOptionalMemberAccess",
       "$ref": "#/definitions/diagnostic",
       "title": "Controls reporting of attempts to access a member of a variable with Optional type",
-      "default": "none"
+      "default": "error"
     },
     "reportOptionalCall": {
       "$id": "#/properties/reportOptionalCall",
       "$ref": "#/definitions/diagnostic",
       "title": "Controls reporting of attempts to call a variable with Optional type",
-      "default": "none"
+      "default": "error"
     },
     "reportOptionalIterable": {
       "$id": "#/properties/reportOptionalIterable",
       "$ref": "#/definitions/diagnostic",
       "title": "Controls reporting of attempts to use an Optional type as an iterable value",
-      "default": "none"
+      "default": "error"
     },
     "reportOptionalContextManager": {
       "$id": "#/properties/reportOptionalContextManager",
       "$ref": "#/definitions/diagnostic",
       "title": "Controls reporting of attempts to use an Optional type as a parameter to a with statement",
-      "default": "none"
+      "default": "error"
     },
     "reportOptionalOperand": {
       "$id": "#/properties/reportOptionalOperand",
       "$ref": "#/definitions/diagnostic",
       "title": "Controls reporting of attempts to use an Optional type as an operand for a binary or unary operator",
-      "default": "none"
+      "default": "error"
     },
     "reportTypedDictNotRequiredAccess": {
       "$id": "#/properties/reportTypedDictNotRequiredAccess",
@@ -305,6 +305,12 @@
       "title": "Controls reporting of function overloads that overlap in signature and obscure each other or do not agree on return type",
       "default": "none"
     },
+    "reportUninitializedInstanceVariable": {
+      "$id": "#/properties/reportUninitializedInstanceVariable",
+      "$ref": "#/definitions/diagnostic",
+      "title": "Controls reporting of instance variables that are not initialized in the constructor",
+      "default": "none"
+    },
     "reportInvalidStringEscapeSequence": {
       "$id": "#/properties/reportInvalidStringEscapeSequence",
       "$ref": "#/definitions/diagnostic",
@@ -362,7 +368,7 @@
     "reportUnnecessaryIsInstance": {
       "$id": "#/properties/reportUnnecessaryIsInstance",
       "$ref": "#/definitions/diagnostic",
-      "title": "Controls reporting calls to 'isinstance' or 'issubclass' where the result is statically determined to be always true or false",
+      "title": "Controls reporting calls to 'isinstance' or 'issubclass' where the result is statically determined to be always true",
       "default": "none"
     },
     "reportUnnecessaryCast": {
@@ -411,6 +417,12 @@
       "$id": "#/properties/reportInvalidStubStatement",
       "$ref": "#/definitions/diagnostic",
       "title": "Controls reporting of type stub statements that do not conform to PEP 484",
+      "default": "none"
+    },
+    "reportIncompleteStub": {
+      "$id": "#/properties/reportIncompleteStub",
+      "$ref": "#/definitions/diagnostic",
+      "title": "Controls reporting of incomplete type stubs that declare a module-level __getattr__ function",
       "default": "none"
     },
     "reportUnsupportedDunderAll": {

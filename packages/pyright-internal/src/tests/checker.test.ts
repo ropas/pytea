@@ -22,6 +22,11 @@ test('BadToken1', () => {
     TestUtils.validateResults(analysisResults, 1);
 });
 
+test('Unicode1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['unicode1.py']);
+    TestUtils.validateResults(analysisResults, 1);
+});
+
 test('CircularBaseClass', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['circularBaseClass.py']);
 
@@ -96,6 +101,12 @@ test('AbstractClass7', () => {
     TestUtils.validateResults(analysisResults, 1);
 });
 
+test('AbstractClass8', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['abstractClass8.py']);
+
+    TestUtils.validateResults(analysisResults, 1);
+});
+
 test('Constants1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['constants1.py']);
 
@@ -117,7 +128,7 @@ test('NoReturn2', () => {
 test('With1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['with1.py']);
 
-    TestUtils.validateResults(analysisResults, 3);
+    TestUtils.validateResults(analysisResults, 4);
 });
 
 test('With2', () => {
@@ -184,7 +195,7 @@ test('UnnecessaryIsInstance1', () => {
     // Turn on errors.
     configOptions.diagnosticRuleSet.reportUnnecessaryIsInstance = 'error';
     analysisResults = TestUtils.typeAnalyzeSampleFiles(['unnecessaryIsInstance1.py'], configOptions);
-    TestUtils.validateResults(analysisResults, 5);
+    TestUtils.validateResults(analysisResults, 4);
 });
 
 test('UnnecessaryIsSubclass1', () => {
@@ -196,7 +207,7 @@ test('UnnecessaryIsSubclass1', () => {
     // Turn on errors.
     configOptions.diagnosticRuleSet.reportUnnecessaryIsInstance = 'error';
     analysisResults = TestUtils.typeAnalyzeSampleFiles(['unnecessaryIsSubclass1.py'], configOptions);
-    TestUtils.validateResults(analysisResults, 3);
+    TestUtils.validateResults(analysisResults, 2);
 });
 
 test('UnnecessaryCast', () => {

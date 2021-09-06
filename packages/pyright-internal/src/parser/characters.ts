@@ -23,6 +23,10 @@ enum CharCategory {
 
     // Character can appear only within identifier, not at beginning
     IdentifierChar = 2,
+
+    // Character is a surrogate, meaning that additional character
+    // needs to be consulted.
+    SurrogateChar = 3,
 }
 
 // Table of first 256 character codes (the most common cases).
@@ -30,14 +34,18 @@ const _identifierCharFastTableSize = 256;
 const _identifierCharFastTable: CharCategory[] = new Array(_identifierCharFastTableSize);
 
 // Map of remaining characters that can appear within identifier.
-const _identifierCharMap: { [code: number]: CharCategory } = {};
+type CharCategoryMap = { [code: number]: CharCategory };
+const _identifierCharMap: CharCategoryMap = {};
+
+// Secondary character map based on the primary (surrogate) character.
+const _surrogateCharMap: { [code: number]: CharCategoryMap } = {};
 
 // We do lazy initialization of this map because it's rarely used.
 let _identifierCharMapInitialized = false;
 
-export function isIdentifierStartChar(ch: number) {
-    if (ch < _identifierCharFastTableSize) {
-        return _identifierCharFastTable[ch] === CharCategory.StartIdentifierChar;
+export function isIdentifierStartChar(char: number, nextChar?: number) {
+    if (char < _identifierCharFastTableSize) {
+        return _identifierCharFastTable[char] === CharCategory.StartIdentifierChar;
     }
 
     // Lazy initialize the char map. We'll rarely get here.
@@ -46,14 +54,21 @@ export function isIdentifierStartChar(ch: number) {
         _identifierCharMapInitialized = true;
     }
 
-    return _identifierCharMap[ch] === CharCategory.StartIdentifierChar;
+    let charCategory: CharCategory;
+    if (nextChar !== undefined) {
+        charCategory = _lookUpSurrogate(char, nextChar);
+    } else {
+        charCategory = _identifierCharMap[char];
+    }
+
+    return charCategory === CharCategory.StartIdentifierChar;
 }
 
-export function isIdentifierChar(ch: number) {
-    if (ch < _identifierCharFastTableSize) {
+export function isIdentifierChar(char: number, nextChar?: number) {
+    if (char < _identifierCharFastTableSize) {
         return (
-            _identifierCharFastTable[ch] === CharCategory.StartIdentifierChar ||
-            _identifierCharFastTable[ch] === CharCategory.IdentifierChar
+            _identifierCharFastTable[char] === CharCategory.StartIdentifierChar ||
+            _identifierCharFastTable[char] === CharCategory.IdentifierChar
         );
     }
 
@@ -63,10 +78,28 @@ export function isIdentifierChar(ch: number) {
         _identifierCharMapInitialized = true;
     }
 
+    if (nextChar !== undefined) {
+        return _lookUpSurrogate(char, nextChar);
+    }
+
     return (
-        _identifierCharMap[ch] === CharCategory.StartIdentifierChar ||
-        _identifierCharMap[ch] === CharCategory.IdentifierChar
+        _identifierCharMap[char] === CharCategory.StartIdentifierChar ||
+        _identifierCharMap[char] === CharCategory.IdentifierChar
     );
+}
+
+export function isSurrogateChar(char: number) {
+    if (char < _identifierCharFastTableSize) {
+        return false;
+    }
+
+    // Lazy initialize the char map. We'll rarely get here.
+    if (!_identifierCharMapInitialized) {
+        _buildIdentifierLookupTable(false);
+        _identifierCharMapInitialized = true;
+    }
+
+    return _identifierCharMap[char] === CharCategory.SurrogateChar;
 }
 
 export function isWhiteSpace(ch: number): boolean {
@@ -97,6 +130,19 @@ export function isBinary(ch: number): boolean {
     return ch === Char._0 || ch === Char._1 || ch === Char.Underscore;
 }
 
+function _lookUpSurrogate(char: number, nextChar: number) {
+    if (_identifierCharMap[char] !== CharCategory.SurrogateChar) {
+        return CharCategory.NotIdentifierChar;
+    }
+
+    const surrogateTable = _surrogateCharMap[char];
+    if (!surrogateTable) {
+        return CharCategory.NotIdentifierChar;
+    }
+
+    return surrogateTable[nextChar];
+}
+
 // Underscore is explicitly allowed to start an identifier.
 // Characters with the Other_ID_Start property.
 const _specialStartIdentifierChars: unicode.UnicodeRangeTable = [
@@ -119,20 +165,17 @@ const _startIdentifierCharRanges = [
     unicode.unicodeNl,
 ];
 
+const _startCharSurrogateRanges = [
+    unicode.unicodeLuSurrogate,
+    unicode.unicodeLlSurrogate,
+    unicode.unicodeLoSurrogate,
+    unicode.unicodeLmSurrogate,
+    unicode.unicodeNlSurrogate,
+];
+
 // Characters with the Other_ID_Start property.
 const _specialIdentifierChars: unicode.UnicodeRangeTable = [
-    0x00b7,
-    0x0387,
-    0x1369,
-    0x136a,
-    0x136b,
-    0x136c,
-    0x136d,
-    0x136e,
-    0x136f,
-    0x1370,
-    0x1371,
-    0x19da,
+    0x00b7, 0x0387, 0x1369, 0x136a, 0x136b, 0x136c, 0x136d, 0x136e, 0x136f, 0x1370, 0x1371, 0x19da,
 ];
 
 const _identifierCharRanges = [
@@ -143,10 +186,18 @@ const _identifierCharRanges = [
     unicode.unicodePc,
 ];
 
+const _identifierCharSurrogateRanges = [
+    unicode.unicodeMnSurrogate,
+    unicode.unicodeMcSurrogate,
+    unicode.unicodeNdSurrogate,
+];
+
 function _buildIdentifierLookupTableFromUnicodeRangeTable(
     table: unicode.UnicodeRangeTable,
     category: CharCategory,
-    fastTableOnly: boolean
+    fastTableOnly: boolean,
+    fastTable: CharCategoryMap,
+    fullTable: CharCategoryMap
 ) {
     for (let entryIndex = 0; entryIndex < table.length; entryIndex++) {
         const entry = table[entryIndex];
@@ -162,9 +213,9 @@ function _buildIdentifierLookupTableFromUnicodeRangeTable(
 
         for (let i = rangeStart; i <= rangeEnd; i++) {
             if (i < _identifierCharFastTableSize) {
-                _identifierCharFastTable[i] = category;
+                fastTable[i] = category;
             } else {
-                _identifierCharMap[i] = category;
+                fullTable[i] = category;
             }
         }
 
@@ -174,17 +225,61 @@ function _buildIdentifierLookupTableFromUnicodeRangeTable(
     }
 }
 
+function _buildIdentifierLookupTableFromSurrogateRangeTable(
+    surrogateTable: unicode.UnicodeSurrogateRangeTable,
+    category: CharCategory
+) {
+    for (const surrogateChar in surrogateTable) {
+        if (!_surrogateCharMap[surrogateChar]) {
+            _surrogateCharMap[surrogateChar] = {};
+            _identifierCharMap[surrogateChar] = CharCategory.SurrogateChar;
+        }
+
+        _buildIdentifierLookupTableFromUnicodeRangeTable(
+            surrogateTable[surrogateChar],
+            category,
+            /* fastTableOnly */ false,
+            _surrogateCharMap[surrogateChar],
+            _surrogateCharMap[surrogateChar]
+        );
+    }
+}
+
 // Build a lookup table for to speed up tokenization of identifiers.
 function _buildIdentifierLookupTable(fastTableOnly: boolean) {
     _identifierCharFastTable.fill(CharCategory.NotIdentifierChar);
 
     _identifierCharRanges.forEach((table) => {
-        _buildIdentifierLookupTableFromUnicodeRangeTable(table, CharCategory.IdentifierChar, fastTableOnly);
+        _buildIdentifierLookupTableFromUnicodeRangeTable(
+            table,
+            CharCategory.IdentifierChar,
+            fastTableOnly,
+            _identifierCharFastTable,
+            _identifierCharMap
+        );
     });
 
     _startIdentifierCharRanges.forEach((table) => {
-        _buildIdentifierLookupTableFromUnicodeRangeTable(table, CharCategory.StartIdentifierChar, fastTableOnly);
+        _buildIdentifierLookupTableFromUnicodeRangeTable(
+            table,
+            CharCategory.StartIdentifierChar,
+            fastTableOnly,
+            _identifierCharFastTable,
+            _identifierCharMap
+        );
     });
+
+    // Populate the surrogate tables for characters that require two
+    // character codes.
+    if (!fastTableOnly) {
+        for (const surrogateTable of _identifierCharSurrogateRanges) {
+            _buildIdentifierLookupTableFromSurrogateRangeTable(surrogateTable, CharCategory.IdentifierChar);
+        }
+
+        for (const surrogateTable of _startCharSurrogateRanges) {
+            _buildIdentifierLookupTableFromSurrogateRangeTable(surrogateTable, CharCategory.StartIdentifierChar);
+        }
+    }
 }
 
 _buildIdentifierLookupTable(true);

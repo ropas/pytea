@@ -1,11 +1,14 @@
 import sys
-from typing import IO, Any, Callable, Iterator, Optional, Sequence, Text, Union, overload
+from typing import IO, Any, Callable, Iterable, Iterator, Pattern, Sequence, Text, Type, TypeVar, Union, overload
 
+from yaml.constructor import BaseConstructor
 from yaml.dumper import *  # noqa: F403
 from yaml.error import *  # noqa: F403
 from yaml.events import *  # noqa: F403
 from yaml.loader import *  # noqa: F403
 from yaml.nodes import *  # noqa: F403
+from yaml.representer import BaseRepresenter
+from yaml.resolver import BaseResolver
 from yaml.tokens import *  # noqa: F403
 
 from . import resolver as resolver  # Help mypy a bit; this is implied by loader and dumper
@@ -21,18 +24,22 @@ _Yaml = Any
 __with_libyaml__: Any
 __version__: str
 
+_T = TypeVar("_T")
+_Constructor = TypeVar("_Constructor", bound=BaseConstructor)
+_Representer = TypeVar("_Representer", bound=BaseRepresenter)
+
 def scan(stream, Loader=...): ...
 def parse(stream, Loader=...): ...
 def compose(stream, Loader=...): ...
 def compose_all(stream, Loader=...): ...
-def load(stream: Union[bytes, IO[bytes], Text, IO[Text]], Loader=...) -> Any: ...
-def load_all(stream: Union[bytes, IO[bytes], Text, IO[Text]], Loader=...) -> Iterator[Any]: ...
-def full_load(stream: Union[bytes, IO[bytes], Text, IO[Text]]) -> Any: ...
-def full_load_all(stream: Union[bytes, IO[bytes], Text, IO[Text]]) -> Iterator[Any]: ...
-def safe_load(stream: Union[bytes, IO[bytes], Text, IO[Text]]) -> Any: ...
-def safe_load_all(stream: Union[bytes, IO[bytes], Text, IO[Text]]) -> Iterator[Any]: ...
-def unsafe_load(stream: Union[bytes, IO[bytes], Text, IO[Text]]) -> Any: ...
-def unsafe_load_all(stream: Union[bytes, IO[bytes], Text, IO[Text]]) -> Iterator[Any]: ...
+def load(stream: bytes | IO[bytes] | Text | IO[Text], Loader=...) -> Any: ...
+def load_all(stream: bytes | IO[bytes] | Text | IO[Text], Loader=...) -> Iterator[Any]: ...
+def full_load(stream: bytes | IO[bytes] | Text | IO[Text]) -> Any: ...
+def full_load_all(stream: bytes | IO[bytes] | Text | IO[Text]) -> Iterator[Any]: ...
+def safe_load(stream: bytes | IO[bytes] | Text | IO[Text]) -> Any: ...
+def safe_load_all(stream: bytes | IO[bytes] | Text | IO[Text]) -> Iterator[Any]: ...
+def unsafe_load(stream: bytes | IO[bytes] | Text | IO[Text]) -> Any: ...
+def unsafe_load_all(stream: bytes | IO[bytes] | Text | IO[Text]) -> Iterator[Any]: ...
 def emit(events, stream=..., Dumper=..., canonical=..., indent=..., width=..., allow_unicode=..., line_break=...): ...
 @overload
 def serialize_all(
@@ -60,7 +67,7 @@ def serialize_all(
     width=...,
     allow_unicode=...,
     line_break=...,
-    encoding: Optional[_Str] = ...,
+    encoding: _Str | None = ...,
     explicit_start=...,
     explicit_end=...,
     version=...,
@@ -94,7 +101,7 @@ def serialize(
     width=...,
     allow_unicode=...,
     line_break=...,
-    encoding: Optional[_Str] = ...,
+    encoding: _Str | None = ...,
     explicit_start=...,
     explicit_end=...,
     version=...,
@@ -131,7 +138,7 @@ def dump_all(
     width=...,
     allow_unicode=...,
     line_break=...,
-    encoding: Optional[_Str] = ...,
+    encoding: _Str | None = ...,
     explicit_start=...,
     explicit_end=...,
     version=...,
@@ -171,7 +178,7 @@ def dump(
     width=...,
     allow_unicode=...,
     line_break=...,
-    encoding: Optional[_Str] = ...,
+    encoding: _Str | None = ...,
     explicit_start=...,
     explicit_end=...,
     version=...,
@@ -209,7 +216,7 @@ def safe_dump_all(
     width=...,
     allow_unicode=...,
     line_break=...,
-    encoding: Optional[_Str] = ...,
+    encoding: _Str | None = ...,
     explicit_start=...,
     explicit_end=...,
     version=...,
@@ -247,19 +254,51 @@ def safe_dump(
     width=...,
     allow_unicode=...,
     line_break=...,
-    encoding: Optional[_Str] = ...,
+    encoding: _Str | None = ...,
     explicit_start=...,
     explicit_end=...,
     version=...,
     tags=...,
     sort_keys: bool = ...,
 ) -> _Yaml: ...
-def add_implicit_resolver(tag, regexp, first=..., Loader=..., Dumper=...): ...
-def add_path_resolver(tag, path, kind=..., Loader=..., Dumper=...): ...
-def add_constructor(tag: _Str, constructor: Callable[[Loader, Node], Any], Loader: Loader = ...): ...
-def add_multi_constructor(tag_prefix, multi_constructor, Loader=...): ...
-def add_representer(data_type, representer, Dumper=...): ...
-def add_multi_representer(data_type, multi_representer, Dumper=...): ...
+def add_implicit_resolver(
+    tag: _Str,
+    regexp: Pattern[str],
+    first: Iterable[Any] | None = ...,
+    Loader: Type[BaseResolver] | None = ...,
+    Dumper: Type[BaseResolver] = ...,
+) -> None: ...
+def add_path_resolver(
+    tag: _Str,
+    path: Iterable[Any],
+    kind: Type[Any] | None = ...,
+    Loader: Type[BaseResolver] | None = ...,
+    Dumper: Type[BaseResolver] = ...,
+) -> None: ...
+@overload
+def add_constructor(
+    tag: _Str, constructor: Callable[[Loader | FullLoader | UnsafeLoader, Node], Any], Loader: None = ...
+) -> None: ...
+@overload
+def add_constructor(tag: _Str, constructor: Callable[[_Constructor, Node], Any], Loader: Type[_Constructor]) -> None: ...
+@overload
+def add_multi_constructor(
+    tag_prefix: _Str, multi_constructor: Callable[[Loader | FullLoader | UnsafeLoader, _Str, Node], Any], Loader: None = ...
+) -> None: ...
+@overload
+def add_multi_constructor(
+    tag_prefix: _Str, multi_constructor: Callable[[_Constructor, _Str, Node], Any], Loader: Type[_Constructor]
+) -> None: ...
+@overload
+def add_representer(data_type: Type[_T], representer: Callable[[Dumper, _T], Node]) -> None: ...
+@overload
+def add_representer(data_type: Type[_T], representer: Callable[[_Representer, _T], Node], Dumper: Type[_Representer]) -> None: ...
+@overload
+def add_multi_representer(data_type: Type[_T], multi_representer: Callable[[Dumper, _T], Node]) -> None: ...
+@overload
+def add_multi_representer(
+    data_type: Type[_T], multi_representer: Callable[[_Representer, _T], Node], Dumper: Type[_Representer]
+) -> None: ...
 
 class YAMLObjectMetaclass(type):
     def __init__(self, name, bases, kwds) -> None: ...

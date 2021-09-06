@@ -14,7 +14,15 @@ import Char from 'typescript-char';
 
 import { TextRange } from '../common/textRange';
 import { TextRangeCollection } from '../common/textRangeCollection';
-import { isBinary, isDecimal, isHex, isIdentifierChar, isIdentifierStartChar, isOctal } from './characters';
+import {
+    isBinary,
+    isDecimal,
+    isHex,
+    isIdentifierChar,
+    isIdentifierStartChar,
+    isOctal,
+    isSurrogateChar,
+} from './characters';
 import { CharacterStream } from './characterStream';
 import {
     Comment,
@@ -35,46 +43,47 @@ import {
     TokenType,
 } from './tokenizerTypes';
 
-const _keywords: { [key: string]: KeywordType } = {
-    and: KeywordType.And,
-    as: KeywordType.As,
-    assert: KeywordType.Assert,
-    async: KeywordType.Async,
-    await: KeywordType.Await,
-    break: KeywordType.Break,
-    case: KeywordType.Case,
-    class: KeywordType.Class,
-    continue: KeywordType.Continue,
-    __debug__: KeywordType.Debug,
-    def: KeywordType.Def,
-    del: KeywordType.Del,
-    elif: KeywordType.Elif,
-    else: KeywordType.Else,
-    except: KeywordType.Except,
-    finally: KeywordType.Finally,
-    for: KeywordType.For,
-    from: KeywordType.From,
-    global: KeywordType.Global,
-    if: KeywordType.If,
-    import: KeywordType.Import,
-    in: KeywordType.In,
-    is: KeywordType.Is,
-    lambda: KeywordType.Lambda,
-    match: KeywordType.Match,
-    nonlocal: KeywordType.Nonlocal,
-    not: KeywordType.Not,
-    or: KeywordType.Or,
-    pass: KeywordType.Pass,
-    raise: KeywordType.Raise,
-    return: KeywordType.Return,
-    try: KeywordType.Try,
-    while: KeywordType.While,
-    with: KeywordType.With,
-    yield: KeywordType.Yield,
-    False: KeywordType.False,
-    None: KeywordType.None,
-    True: KeywordType.True,
-};
+// This must be a Map, as operations like {}["constructor"] succeed.
+const _keywords: Map<string, KeywordType> = new Map([
+    ['and', KeywordType.And],
+    ['as', KeywordType.As],
+    ['assert', KeywordType.Assert],
+    ['async', KeywordType.Async],
+    ['await', KeywordType.Await],
+    ['break', KeywordType.Break],
+    ['case', KeywordType.Case],
+    ['class', KeywordType.Class],
+    ['continue', KeywordType.Continue],
+    ['__debug__', KeywordType.Debug],
+    ['def', KeywordType.Def],
+    ['del', KeywordType.Del],
+    ['elif', KeywordType.Elif],
+    ['else', KeywordType.Else],
+    ['except', KeywordType.Except],
+    ['finally', KeywordType.Finally],
+    ['for', KeywordType.For],
+    ['from', KeywordType.From],
+    ['global', KeywordType.Global],
+    ['if', KeywordType.If],
+    ['import', KeywordType.Import],
+    ['in', KeywordType.In],
+    ['is', KeywordType.Is],
+    ['lambda', KeywordType.Lambda],
+    ['match', KeywordType.Match],
+    ['nonlocal', KeywordType.Nonlocal],
+    ['not', KeywordType.Not],
+    ['or', KeywordType.Or],
+    ['pass', KeywordType.Pass],
+    ['raise', KeywordType.Raise],
+    ['return', KeywordType.Return],
+    ['try', KeywordType.Try],
+    ['while', KeywordType.While],
+    ['with', KeywordType.With],
+    ['yield', KeywordType.Yield],
+    ['False', KeywordType.False],
+    ['None', KeywordType.None],
+    ['True', KeywordType.True],
+]);
 
 const _operatorInfo: { [key: number]: OperatorFlags } = {
     [OperatorType.Add]: OperatorFlags.Unary | OperatorFlags.Binary,
@@ -123,6 +132,8 @@ const _operatorInfo: { [key: number]: OperatorFlags } = {
 };
 
 const _byteOrderMarker = 0xfeff;
+
+const _maxStringTokenLength = 32 * 1024;
 
 export interface TokenizerOutput {
     // List of all tokens.
@@ -624,18 +635,34 @@ export class Tokenizer {
     }
 
     private _tryIdentifier(): boolean {
+        const swallowRemainingChars = () => {
+            while (true) {
+                if (isIdentifierChar(this._cs.currentChar)) {
+                    this._cs.moveNext();
+                } else if (isIdentifierChar(this._cs.currentChar, this._cs.nextChar)) {
+                    this._cs.moveNext();
+                    this._cs.moveNext();
+                } else {
+                    break;
+                }
+            }
+        };
+
         const start = this._cs.position;
         if (isIdentifierStartChar(this._cs.currentChar)) {
             this._cs.moveNext();
-            while (isIdentifierChar(this._cs.currentChar)) {
-                this._cs.moveNext();
-            }
+            swallowRemainingChars();
+        } else if (isIdentifierStartChar(this._cs.currentChar, this._cs.nextChar)) {
+            this._cs.moveNext();
+            this._cs.moveNext();
+            swallowRemainingChars();
         }
+
         if (this._cs.position > start) {
             const value = this._cs.getText().substr(start, this._cs.position - start);
-            if (_keywords[value] !== undefined) {
+            if (_keywords.has(value)) {
                 this._tokens.push(
-                    KeywordToken.create(start, this._cs.position - start, _keywords[value], this._getComments())
+                    KeywordToken.create(start, this._cs.position - start, _keywords.get(value)!, this._getComments())
                 );
             } else {
                 this._tokens.push(IdentifierToken.create(start, this._cs.position - start, value, this._getComments()));
@@ -912,7 +939,13 @@ export class Tokenizer {
             ) {
                 break;
             }
-            this._cs.moveNext();
+
+            if (isSurrogateChar(this._cs.currentChar)) {
+                this._cs.moveNext();
+                this._cs.moveNext();
+            } else {
+                this._cs.moveNext();
+            }
         }
         const length = this._cs.position - start;
         if (length > 0) {
@@ -1068,47 +1101,47 @@ export class Tokenizer {
     private _skipToEndOfStringLiteral(flags: StringTokenFlags): StringScannerOutput {
         const quoteChar = flags & StringTokenFlags.SingleQuote ? Char.SingleQuote : Char.DoubleQuote;
         const isTriplicate = (flags & StringTokenFlags.Triplicate) !== 0;
-        const escapedValueParts: string[] = [];
+        let escapedValueParts: number[] = [];
 
         while (true) {
             if (this._cs.isEndOfStream()) {
                 // Hit the end of file without a termination.
                 flags |= StringTokenFlags.Unterminated;
-                return { escapedValue: escapedValueParts.join(''), flags };
+                return { escapedValue: String.fromCharCode.apply(undefined, escapedValueParts), flags };
             }
 
             if (this._cs.currentChar === Char.Backslash) {
-                escapedValueParts.push(String.fromCharCode(this._cs.currentChar));
+                escapedValueParts.push(this._cs.currentChar);
 
                 // Move past the escape (backslash) character.
                 this._cs.moveNext();
 
                 if (this._cs.getCurrentChar() === Char.CarriageReturn || this._cs.getCurrentChar() === Char.LineFeed) {
                     if (this._cs.getCurrentChar() === Char.CarriageReturn && this._cs.nextChar === Char.LineFeed) {
-                        escapedValueParts.push(String.fromCharCode(this._cs.currentChar));
+                        escapedValueParts.push(this._cs.currentChar);
                         this._cs.moveNext();
                     }
-                    escapedValueParts.push(String.fromCharCode(this._cs.currentChar));
+                    escapedValueParts.push(this._cs.currentChar);
                     this._cs.moveNext();
                     this._addLineRange();
                 } else {
-                    escapedValueParts.push(String.fromCharCode(this._cs.currentChar));
+                    escapedValueParts.push(this._cs.currentChar);
                     this._cs.moveNext();
                 }
             } else if (this._cs.currentChar === Char.LineFeed || this._cs.currentChar === Char.CarriageReturn) {
                 if (!isTriplicate) {
                     // Unterminated single-line string
                     flags |= StringTokenFlags.Unterminated;
-                    return { escapedValue: escapedValueParts.join(''), flags };
+                    return { escapedValue: String.fromCharCode.apply(undefined, escapedValueParts), flags };
                 }
 
                 // Skip over the new line (either one or two characters).
                 if (this._cs.currentChar === Char.CarriageReturn && this._cs.nextChar === Char.LineFeed) {
-                    escapedValueParts.push(String.fromCharCode(this._cs.currentChar));
+                    escapedValueParts.push(this._cs.currentChar);
                     this._cs.moveNext();
                 }
 
-                escapedValueParts.push(String.fromCharCode(this._cs.currentChar));
+                escapedValueParts.push(this._cs.currentChar);
                 this._cs.moveNext();
                 this._addLineRange();
             } else if (!isTriplicate && this._cs.currentChar === quoteChar) {
@@ -1123,12 +1156,21 @@ export class Tokenizer {
                 this._cs.advance(3);
                 break;
             } else {
-                escapedValueParts.push(String.fromCharCode(this._cs.currentChar));
+                escapedValueParts.push(this._cs.currentChar);
                 this._cs.moveNext();
             }
         }
 
-        return { escapedValue: escapedValueParts.join(''), flags };
+        // String.fromCharCode.apply crashes (stack overflow) if passed an array
+        // that is too long. Cut off the extra characters in this case to avoid
+        // the crash. It's unlikely that the full string value will be used as
+        // a string literal, an f-string, or a docstring, so this should be fine.
+        if (escapedValueParts.length > _maxStringTokenLength) {
+            escapedValueParts = escapedValueParts.slice(0, _maxStringTokenLength);
+            flags |= StringTokenFlags.ExceedsMaxSize;
+        }
+
+        return { escapedValue: String.fromCharCode.apply(undefined, escapedValueParts), flags };
     }
 
     private _skipFloatingPointCandidate(): boolean {

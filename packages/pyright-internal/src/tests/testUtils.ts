@@ -21,7 +21,8 @@ import { cloneDiagnosticRuleSet, ConfigOptions, ExecutionEnvironment } from '../
 import { fail } from '../common/debug';
 import { Diagnostic, DiagnosticCategory } from '../common/diagnostic';
 import { DiagnosticSink, TextRangeDiagnosticSink } from '../common/diagnosticSink';
-import { createFromRealFileSystem } from '../common/fileSystem';
+import { FullAccessHost } from '../common/fullAccessHost';
+import { createFromRealFileSystem } from '../common/realFileSystem';
 import { ParseOptions, Parser, ParseResults } from '../parser/parser';
 
 // This is a bit gross, but it's necessary to allow the fallback typeshed
@@ -32,7 +33,7 @@ import { ParseOptions, Parser, ParseResults } from '../parser/parser';
 
 export interface FileAnalysisResult {
     filePath: string;
-    parseResults?: ParseResults;
+    parseResults?: ParseResults | undefined;
     errors: Diagnostic[];
     warnings: Diagnostic[];
     infos: Diagnostic[];
@@ -151,7 +152,9 @@ export function typeAnalyzeSampleFiles(
 ): FileAnalysisResult[] {
     // Always enable "test mode".
     configOptions.internalTestMode = true;
-    const importResolver = new ImportResolver(createFromRealFileSystem(), configOptions);
+
+    const fs = createFromRealFileSystem();
+    const importResolver = new ImportResolver(fs, configOptions, new FullAccessHost(fs));
 
     const program = new Program(importResolver, configOptions);
     const filePaths = fileNames.map((name) => resolveSampleFilePath(name));

@@ -21,10 +21,12 @@ class DataTuple(NamedTuple):
     # Unannotated variables should not be included.
     not_annotated = 5
 
-    name: Final[Optional[str]] = None
+    name: Optional[str] = None
+
+    name2: Final[Optional[str]] = None
 
 
-d1 = DataTuple(id=1, aid=Other())
+d1 = DataTuple(id=1, aid=Other(), name2="hi")
 d2 = DataTuple(id=1, aid=Other(), value="v")
 d3 = DataTuple(id=1, aid=Other(), name="hello")
 d4 = DataTuple(id=1, aid=Other(), name=None)

@@ -7,6 +7,7 @@
  * Utility routines for traversing a parse tree.
  */
 
+import * as AnalyzerNodeInfo from '../analyzer/analyzerNodeInfo';
 import { assertNever, fail } from '../common/debug';
 import { convertPositionToOffset } from '../common/positionUtils';
 import { Position } from '../common/textRange';
@@ -27,8 +28,8 @@ import {
     LambdaNode,
     ModuleNode,
     NameNode,
-    NumberNode,
     ParameterCategory,
+    ParameterNode,
     ParseNode,
     ParseNodeType,
     StatementNode,
@@ -143,13 +144,14 @@ export function printExpression(node: ExpressionNode, flags = PrintExpressionFla
         }
 
         case ParseNodeType.BinaryOperation: {
-            return (
+            const exprStr =
                 printExpression(node.leftExpression, flags) +
                 ' ' +
                 printOperator(node.operator) +
                 ' ' +
-                printExpression(node.rightExpression, flags)
-            );
+                printExpression(node.rightExpression, flags);
+
+            return node.parenthesized ? `(${exprStr})` : exprStr;
         }
 
         case ParseNodeType.Number: {
@@ -366,7 +368,7 @@ export function printExpression(node: ExpressionNode, flags = PrintExpressionFla
         }
 
         case ParseNodeType.Dictionary: {
-            return `{ ${node.entries.map((entry) => {
+            const dictContents = `${node.entries.map((entry) => {
                 if (entry.nodeType === ParseNodeType.DictionaryKeyEntry) {
                     return (
                         `${printExpression(entry.keyExpression, flags)}: ` +
@@ -375,7 +377,13 @@ export function printExpression(node: ExpressionNode, flags = PrintExpressionFla
                 } else {
                     return printExpression(entry, flags);
                 }
-            })} }`;
+            })}`;
+
+            if (dictContents) {
+                return `{ ${dictContents} }`;
+            }
+
+            return '{}';
         }
 
         case ParseNodeType.DictionaryExpandEntry: {
@@ -608,10 +616,12 @@ export function getEvaluationNodeForAssignmentExpression(
 
             case ParseNodeType.ListComprehension:
                 sawListComprehension = true;
+                curNode = getEvaluationScopeNode(curNode.parent!);
                 break;
-        }
 
-        curNode = curNode.parent;
+            default:
+                return undefined;
+        }
     }
 
     return undefined;
@@ -699,14 +709,18 @@ export function getTypeVarScopeNode(node: ParseNode, allowInFunctionSignature = 
         switch (curNode.nodeType) {
             case ParseNodeType.Function: {
                 if (prevNode === curNode.suite || allowInFunctionSignature) {
-                    return curNode;
+                    if (!curNode.decorators.some((decorator) => decorator === prevNode)) {
+                        return curNode;
+                    }
                 }
                 break;
             }
 
             case ParseNodeType.Class: {
                 if (prevNode === curNode.suite) {
-                    return curNode;
+                    if (!curNode.decorators.some((decorator) => decorator === prevNode)) {
+                        return curNode;
+                    }
                 }
                 break;
             }
@@ -795,6 +809,15 @@ export function isFinalAllowedForAssignmentTarget(targetNode: ExpressionNode): b
     return false;
 }
 
+export function isClassVarAllowedForAssignmentTarget(targetNode: ExpressionNode): boolean {
+    const classNode = getEnclosingClass(targetNode, /* stopAtFunction */ true);
+    if (!classNode) {
+        return false;
+    }
+
+    return true;
+}
+
 export function isNodeContainedWithin(node: ParseNode, potentialContainer: ParseNode): boolean {
     let curNode: ParseNode | undefined = node;
     while (curNode) {
@@ -858,13 +881,35 @@ export function isMatchingExpression(reference: ExpressionNode, expression: Expr
             return false;
         }
 
-        const referenceNumberNode = reference.items[0].valueExpression as NumberNode;
-        const subscriptNode = expression.items[0].valueExpression;
-        if (subscriptNode.nodeType !== ParseNodeType.Number || subscriptNode.isImaginary || !subscriptNode.isInteger) {
-            return false;
+        if (reference.items[0].valueExpression.nodeType === ParseNodeType.Number) {
+            const referenceNumberNode = reference.items[0].valueExpression;
+            const subscriptNode = expression.items[0].valueExpression;
+            if (
+                subscriptNode.nodeType !== ParseNodeType.Number ||
+                subscriptNode.isImaginary ||
+                !subscriptNode.isInteger
+            ) {
+                return false;
+            }
+
+            return referenceNumberNode.value === subscriptNode.value;
         }
 
-        return referenceNumberNode.value === subscriptNode.value;
+        if (reference.items[0].valueExpression.nodeType === ParseNodeType.StringList) {
+            const referenceStringListNode = reference.items[0].valueExpression;
+            const subscriptNode = expression.items[0].valueExpression;
+            if (
+                referenceStringListNode.strings.length === 1 &&
+                referenceStringListNode.strings[0].nodeType === ParseNodeType.String &&
+                subscriptNode.nodeType === ParseNodeType.StringList &&
+                subscriptNode.strings.length === 1 &&
+                subscriptNode.strings[0].nodeType === ParseNodeType.String
+            ) {
+                return referenceStringListNode.strings[0].value === subscriptNode.strings[0].value;
+            }
+        }
+
+        return false;
     }
 
     return false;
@@ -1144,13 +1189,13 @@ export function isAssignmentToDefaultsFollowingNamedTuple(callNode: ParseNode): 
             break;
         }
 
-        if (nextStatement.statements[0].nodeType === ParseNodeType.StringList) {
+        if (nextStatement.statements[0]?.nodeType === ParseNodeType.StringList) {
             // Skip over comments
             statementIndex++;
             continue;
         }
 
-        if (nextStatement.statements[0].nodeType === ParseNodeType.Assignment) {
+        if (nextStatement.statements[0]?.nodeType === ParseNodeType.Assignment) {
             const assignNode = nextStatement.statements[0];
             if (
                 assignNode.leftExpression.nodeType === ParseNodeType.MemberAccess &&
@@ -1190,12 +1235,12 @@ export class NameNodeWalker extends ParseTreeWalker {
         super();
     }
 
-    visitName(node: NameNode) {
+    override visitName(node: NameNode) {
         this._callback(node, this._subscriptIndex, this._baseExpression);
         return true;
     }
 
-    visitIndex(node: IndexNode) {
+    override visitIndex(node: IndexNode) {
         this.walk(node.baseExpression);
 
         const prevSubscriptIndex = this._subscriptIndex;
@@ -1212,6 +1257,19 @@ export class NameNodeWalker extends ParseTreeWalker {
 
         return false;
     }
+}
+
+export function getEnclosingParameter(node: ParseNode): ParameterNode | undefined {
+    let curNode: ParseNode | undefined = node;
+
+    while (curNode) {
+        if (curNode.nodeType === ParseNodeType.Parameter) {
+            return curNode;
+        }
+        curNode = curNode.parent;
+    }
+
+    return undefined;
 }
 
 export function getCallNodeAndActiveParameterIndex(
@@ -1545,4 +1603,120 @@ export function printParseNodeType(type: ParseNodeType) {
     }
 
     assertNever(type);
+}
+
+export function isWriteAccess(node: NameNode) {
+    let prevNode: ParseNode = node;
+    let curNode: ParseNode | undefined = prevNode.parent;
+
+    while (curNode) {
+        switch (curNode.nodeType) {
+            case ParseNodeType.Assignment: {
+                return prevNode === curNode.leftExpression;
+            }
+
+            case ParseNodeType.AugmentedAssignment: {
+                return prevNode === curNode.leftExpression;
+            }
+
+            case ParseNodeType.AssignmentExpression: {
+                return prevNode === curNode.name;
+            }
+
+            case ParseNodeType.Del: {
+                return true;
+            }
+
+            case ParseNodeType.For: {
+                return prevNode === curNode.targetExpression;
+            }
+
+            case ParseNodeType.ImportAs: {
+                return (
+                    prevNode === curNode.alias ||
+                    (curNode.module.nameParts.length > 0 && prevNode === curNode.module.nameParts[0])
+                );
+            }
+
+            case ParseNodeType.ImportFromAs: {
+                return prevNode === curNode.alias || (!curNode.alias && prevNode === curNode.name);
+            }
+
+            case ParseNodeType.MemberAccess: {
+                if (prevNode !== curNode.memberName) {
+                    return false;
+                }
+                break;
+            }
+
+            case ParseNodeType.Except: {
+                return prevNode === curNode.name;
+            }
+
+            case ParseNodeType.With: {
+                return curNode.withItems.some((item) => item === prevNode);
+            }
+
+            case ParseNodeType.ListComprehensionFor: {
+                return prevNode === curNode.targetExpression;
+            }
+
+            case ParseNodeType.TypeAnnotation: {
+                if (prevNode === curNode.typeAnnotation) {
+                    return false;
+                }
+                break;
+            }
+
+            case ParseNodeType.Function:
+            case ParseNodeType.Class:
+            case ParseNodeType.Module: {
+                return false;
+            }
+        }
+
+        prevNode = curNode;
+        curNode = curNode.parent;
+    }
+
+    return false;
+}
+
+export function getModuleNode(node: ParseNode) {
+    let current: ParseNode | undefined = node;
+    while (current && current.nodeType !== ParseNodeType.Module) {
+        current = current.parent;
+    }
+
+    return current;
+}
+
+export function getFileInfoFromNode(node: ParseNode) {
+    const current = getModuleNode(node);
+    return current ? AnalyzerNodeInfo.getFileInfo(current) : undefined;
+}
+
+export function isFunctionSuiteEmpty(node: FunctionNode) {
+    let isEmpty = true;
+
+    node.suite.statements.forEach((statement) => {
+        if (statement.nodeType === ParseNodeType.Error) {
+            return;
+        } else if (statement.nodeType === ParseNodeType.StatementList) {
+            statement.statements.forEach((subStatement) => {
+                // Allow docstrings, ellipsis, and pass statements.
+                if (
+                    subStatement.nodeType !== ParseNodeType.Ellipsis &&
+                    subStatement.nodeType !== ParseNodeType.StringList &&
+                    subStatement.nodeType !== ParseNodeType.Pass
+                ) {
+                    isEmpty = false;
+                }
+            });
+        } else {
+            isEmpty = false;
+        }
+    });
+
+    return isEmpty;
 }

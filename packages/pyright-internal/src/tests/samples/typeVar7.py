@@ -49,7 +49,7 @@ class ClassA(Generic[_T1, _T2]):
         # This should generate an error.
         _ = a(3.3)
 
-        # This should generate an error.
+        # This should generate two errors.
         _ = a[0]
 
         # This should generate an error.
@@ -68,7 +68,7 @@ class ClassA(Generic[_T1, _T2]):
         # This should generate an error.
         _ = await a
 
-        # This should generate an error.
+        # This should generate two errors.
         for _ in a:
             pass
 
@@ -83,13 +83,13 @@ class ClassA(Generic[_T1, _T2]):
         return a
 
     async def func2(self, a: _T2, b: _T1) -> _T1:
-        # This should generate an error.
+        # This should generate two errors.
         _ = a.var2
 
         # This should generate an error.
         _ = a(3.3)
 
-        # This should generate an error.
+        # This should generate two errors.
         _ = a[0]
 
         # This should generate an error.
@@ -132,7 +132,7 @@ def custom_add(a: _T3, b: _T4) -> float:
     if isinstance(a, str):
         return 0
     c = a + b
-    t1: Literal["float | int"] = reveal_type(c)
+    t1: Literal["float* | int*"] = reveal_type(c)
     return c
 
 

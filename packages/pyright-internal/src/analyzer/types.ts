@@ -27,9 +27,9 @@ export const enum TypeCategory {
     // Special "None" type defined in Python.
     None,
 
-    // Used in type constraints to indicate that all possible
-    // union types have been filtered, and execution should never
-    // get to this point.
+    // Used in type narrowing to indicate that all possible
+    // subtypes in a union have been eliminated, and execution
+    // should never get to this point.
     Never,
 
     // Callable type with typed input parameters and return parameter.
@@ -42,9 +42,6 @@ export const enum TypeCategory {
     // Class definition, including associated instance methods,
     // class methods, static methods, properties, and variables.
     Class,
-
-    // Class instance.
-    Object,
 
     // Module instance.
     Module,
@@ -68,6 +65,9 @@ export const enum TypeFlags {
     // This type refers to a type that is wrapped an "Annotated"
     // (PEP 593) annotation.
     Annotated = 1 << 2,
+
+    // This type is a non-callable special type like "Union".
+    NonCallable = 1 << 3,
 }
 
 export type UnionableType =
@@ -78,7 +78,6 @@ export type UnionableType =
     | FunctionType
     | OverloadedFunctionType
     | ClassType
-    | ObjectType
     | ModuleType
     | TypeVarType;
 
@@ -101,15 +100,20 @@ export type InheritanceChain = (ClassType | UnknownType)[];
 interface TypeAliasInfo {
     name: string;
     fullName: string;
-    typeParameters?: TypeVarType[];
-    typeArguments?: Type[];
+    typeParameters?: TypeVarType[] | undefined;
+    typeArguments?: Type[] | undefined;
     typeVarScopeId: TypeVarScopeId;
 }
 
 interface TypeBase {
     category: TypeCategory;
     flags: TypeFlags;
-    typeAliasInfo?: TypeAliasInfo;
+
+    // Used only for type aliases
+    typeAliasInfo?: TypeAliasInfo | undefined;
+
+    // Used only for conditional (constrained) types
+    condition?: TypeCondition[] | undefined;
 }
 
 export namespace TypeBase {
@@ -123,6 +127,14 @@ export namespace TypeBase {
 
     export function isAnnotated(type: TypeBase) {
         return (type.flags & TypeFlags.Annotated) !== 0;
+    }
+
+    export function isNonCallable(type: TypeBase) {
+        return (type.flags & TypeFlags.NonCallable) !== 0;
+    }
+
+    export function setNonCallable(type: TypeBase) {
+        return (type.flags |= TypeFlags.NonCallable);
     }
 
     export function cloneForTypeAlias(
@@ -149,6 +161,18 @@ export namespace TypeBase {
     export function cloneForAnnotated(type: Type) {
         const typeClone = { ...type };
         typeClone.flags |= TypeFlags.Annotated;
+        return typeClone;
+    }
+
+    export function cloneForCondition(type: Type, condition: TypeCondition[] | undefined) {
+        // Handle the common case where there are no conditions. In this case,
+        // cloning isn't necessary.
+        if (type.condition === undefined && condition === undefined) {
+            return type;
+        }
+
+        const typeClone = { ...type };
+        typeClone.condition = condition;
         return typeClone;
     }
 }
@@ -188,7 +212,7 @@ export namespace UnknownType {
 export interface ModuleType extends TypeBase {
     category: TypeCategory.Module;
     fields: SymbolTable;
-    docString?: string;
+    docString?: string | undefined;
 
     // A "loader" module includes symbols that were injected by
     // the module loader. We keep these separate so we don't
@@ -229,9 +253,11 @@ export namespace ModuleType {
 
 export interface DataClassEntry {
     name: string;
-    alias?: string;
-    hasDefault?: boolean;
-    defaultValueExpression?: ExpressionNode;
+    isClassVar: boolean;
+    isKeywordOnly: boolean;
+    alias?: string | undefined;
+    hasDefault?: boolean | undefined;
+    defaultValueExpression?: ExpressionNode | undefined;
     includeInInit: boolean;
     type: Type;
 }
@@ -281,11 +307,6 @@ export const enum ClassTypeFlags {
     // @abstractmethod decorators.
     SupportsAbstractMethods = 1 << 9,
 
-    // The class has at least one abstract method or derives
-    // from a base class that is abstract without providing
-    // non-abstract overrides for all abstract methods.
-    HasAbstractMethods = 1 << 10,
-
     // Derives from property class and has the semantics of
     // a property (with optional setter, deleter).
     PropertyClass = 1 << 11,
@@ -332,6 +353,12 @@ export const enum ClassTypeFlags {
     // For dataclasses, should __init__ method always be generated
     // with keyword-only parameters?
     DataClassKeywordOnlyParams = 1 << 21,
+
+    // Properties that are defined using the @classmethod decorator.
+    ClassProperty = 1 << 22,
+
+    // Class is declared within a type stub file.
+    DefinedInStub = 1 << 23,
 }
 
 export interface DataClassBehaviors {
@@ -350,18 +377,20 @@ interface ClassDetails {
     typeSourceId: TypeSourceId;
     baseClasses: Type[];
     mro: Type[];
-    declaredMetaclass?: ClassType | UnknownType;
-    effectiveMetaclass?: ClassType | UnknownType;
+    declaredMetaclass?: ClassType | UnknownType | undefined;
+    effectiveMetaclass?: ClassType | UnknownType | undefined;
     fields: SymbolTable;
     typeParameters: TypeVarType[];
-    typeVarScopeId?: TypeVarScopeId;
-    docString?: string;
-    dataClassEntries?: DataClassEntry[];
-    dataClassBehaviors?: DataClassBehaviors;
-    typedDictEntries?: Map<string, TypedDictEntry>;
+    typeVarScopeId?: TypeVarScopeId | undefined;
+    docString?: string | undefined;
+    dataClassEntries?: DataClassEntry[] | undefined;
+    dataClassBehaviors?: DataClassBehaviors | undefined;
+    typedDictEntries?: Map<string, TypedDictEntry> | undefined;
+    inheritedSlotsNames?: string[];
+    localSlotsNames?: string[];
 
     // Transforms to apply if this class is used as a metaclass.
-    metaclassDataClassTransform?: DataClassBehaviors;
+    metaclassDataClassTransform?: DataClassBehaviors | undefined;
 }
 
 export interface ClassType extends TypeBase {
@@ -372,48 +401,58 @@ export interface ClassType extends TypeBase {
     // A generic class that has been completely or partially
     // specialized will have type arguments that correspond to
     // some or all of the type parameters.
-    typeArguments?: Type[];
+    typeArguments?: Type[] | undefined;
+
+    // A bool value that has been returned by a user-defined
+    // type guard (see PEP 647) will have additional type information
+    // that indicates how a type should be narrowed. This field will
+    // be used only in a bool class.
+    typeGuardType?: Type | undefined;
 
     // If a generic container class (like a list or dict) is known
     // to contain no elements, its type arguments may be "Unknown".
     // This value allows us to elide the Unknown when it's safe to
     // do so.
-    isEmptyContainer?: boolean;
+    isEmptyContainer?: boolean | undefined;
 
     // For tuples, the class definition calls for a single type parameter but
     // the spec allows the programmer to provide variadic type arguments.
     // To make these compatible, we need to derive a single typeArgument value
     // based on the variadic arguments.
-    tupleTypeArguments?: Type[];
+    tupleTypeArguments?: Type[] | undefined;
 
     // We sometimes package multiple types into a tuple internally
     // for matching against a variadic type variable. We need to be
     // able to distinguish this case from normal tuples.
-    isTupleForUnpackedVariadicTypeVar?: boolean;
+    isTupleForUnpackedVariadicTypeVar?: boolean | undefined;
 
     // If type arguments are present, were they explicit (i.e.
     // provided explicitly in the code)?
-    isTypeArgumentExplicit?: boolean;
+    isTypeArgumentExplicit?: boolean | undefined;
 
-    skipAbstractClassTest: boolean;
+    // This class type represents the class and any classes that
+    // derive from it, as opposed to the original class only. This
+    // distinction is important in certain scenarios like instantiation
+    // of abstract or protocol classes.
+    includeSubclasses?: boolean;
 
     // Some types can be further constrained to have
     // literal types (e.g. true or 'string' or 3).
-    literalValue?: LiteralValue;
+    literalValue?: LiteralValue | undefined;
 
     // The typing module defines aliases for builtin types
     // (e.g. Tuple, List, Dict). This field holds the alias
     // name.
-    aliasName?: string;
+    aliasName?: string | undefined;
 
     // Used for "narrowing" of typed dicts where some entries
     // that are not required have been confirmed to be present
     // through the use of a guard expression.
-    typedDictNarrowedEntries?: Map<string, TypedDictEntry>;
+    typedDictNarrowedEntries?: Map<string, TypedDictEntry> | undefined;
 }
 
 export namespace ClassType {
-    export function create(
+    export function createInstantiable(
         name: string,
         fullName: string,
         moduleName: string,
@@ -441,18 +480,40 @@ export namespace ClassType {
                 typeParameters: [],
                 docString,
             },
-            skipAbstractClassTest: false,
             flags: TypeFlags.Instantiable,
         };
 
         return newClass;
     }
 
+    export function cloneAsInstance(classType: ClassType) {
+        if (TypeBase.isInstance(classType)) {
+            return classType;
+        }
+
+        const objectType = { ...classType };
+        objectType.flags &= ~(TypeFlags.Instantiable | TypeFlags.NonCallable);
+        objectType.flags |= TypeFlags.Instance;
+        objectType.includeSubclasses = true;
+        return objectType;
+    }
+
+    export function cloneAsInstantiable(objectType: ClassType) {
+        if (TypeBase.isInstantiable(objectType)) {
+            return objectType;
+        }
+
+        const classType = { ...objectType };
+        classType.flags &= ~TypeFlags.Instance;
+        classType.flags |= TypeFlags.Instantiable;
+        return classType;
+    }
+
     export function cloneForSpecialization(
         classType: ClassType,
         typeArguments: Type[] | undefined,
         isTypeArgumentExplicit: boolean,
-        skipAbstractClassTest = false,
+        includeSubclasses = false,
         tupleTypeArguments?: Type[],
         isEmptyContainer?: boolean
     ): ClassType {
@@ -464,7 +525,9 @@ export namespace ClassType {
             : undefined;
 
         newClassType.isTypeArgumentExplicit = isTypeArgumentExplicit;
-        newClassType.skipAbstractClassTest = skipAbstractClassTest;
+        if (includeSubclasses) {
+            newClassType.includeSubclasses = true;
+        }
         newClassType.tupleTypeArguments = tupleTypeArguments
             ? tupleTypeArguments.map((t) => (isNever(t) ? UnknownType.create() : t))
             : undefined;
@@ -501,6 +564,12 @@ export namespace ClassType {
         const newClassType = { ...classType };
         newClassType.details = { ...newClassType.details };
         newClassType.details.typeParameters = typeParams;
+        return newClassType;
+    }
+
+    export function cloneForTypeGuard(classType: ClassType, typeGuardType: Type): ClassType {
+        const newClassType = { ...classType };
+        newClassType.typeGuardType = typeGuardType;
         return newClassType;
     }
 
@@ -551,10 +620,6 @@ export namespace ClassType {
         return true;
     }
 
-    export function hasAbstractMethods(classType: ClassType) {
-        return !!(classType.details.flags & ClassTypeFlags.HasAbstractMethods) && !classType.skipAbstractClassTest;
-    }
-
     export function supportsAbstractMethods(classType: ClassType) {
         return !!(classType.details.flags & ClassTypeFlags.SupportsAbstractMethods);
     }
@@ -599,12 +664,20 @@ export namespace ClassType {
         return !!(classType.details.flags & ClassTypeFlags.PropertyClass);
     }
 
+    export function isClassProperty(classType: ClassType) {
+        return !!(classType.details.flags & ClassTypeFlags.ClassProperty);
+    }
+
     export function isFinal(classType: ClassType) {
         return !!(classType.details.flags & ClassTypeFlags.Final);
     }
 
     export function isProtocolClass(classType: ClassType) {
         return !!(classType.details.flags & ClassTypeFlags.ProtocolClass);
+    }
+
+    export function isDefinedInStub(classType: ClassType) {
+        return !!(classType.details.flags & ClassTypeFlags.DefinedInStub);
     }
 
     export function isPseudoGenericClass(classType: ClassType) {
@@ -758,7 +831,7 @@ export namespace ClassType {
         }
 
         for (const baseClass of subclassType.details.baseClasses) {
-            if (isClass(baseClass)) {
+            if (isInstantiableClass(baseClass)) {
                 if (isDerivedFrom(baseClass, parentClassType, inheritanceChain)) {
                     if (inheritanceChain) {
                         inheritanceChain.push(subclassType);
@@ -777,33 +850,16 @@ export namespace ClassType {
     }
 }
 
-export interface ObjectType extends TypeBase {
-    category: TypeCategory.Object;
-
-    classType: ClassType;
-}
-
-export namespace ObjectType {
-    export function create(classType: ClassType) {
-        const newObjectType: ObjectType = {
-            category: TypeCategory.Object,
-            classType,
-            flags: TypeFlags.Instance,
-        };
-        return newObjectType;
-    }
-}
-
 export interface FunctionParameter {
     category: ParameterCategory;
-    name?: string;
-    isNameSynthesized?: boolean;
-    isTypeInferred?: boolean;
-    hasDefault?: boolean;
-    defaultValueExpression?: ExpressionNode;
-    defaultType?: Type;
-    hasDeclaredType?: boolean;
-    typeAnnotation?: ExpressionNode;
+    name?: string | undefined;
+    isNameSynthesized?: boolean | undefined;
+    isTypeInferred?: boolean | undefined;
+    hasDefault?: boolean | undefined;
+    defaultValueExpression?: ExpressionNode | undefined;
+    defaultType?: Type | undefined;
+    hasDeclaredType?: boolean | undefined;
+    typeAnnotation?: ExpressionNode | undefined;
     type: Type;
 }
 
@@ -877,24 +933,24 @@ interface FunctionDetails {
     moduleName: string;
     flags: FunctionTypeFlags;
     parameters: FunctionParameter[];
-    declaredReturnType?: Type;
-    declaration?: FunctionDeclaration;
-    typeVarScopeId?: TypeVarScopeId;
-    builtInName?: string;
-    docString?: string;
+    declaredReturnType?: Type | undefined;
+    declaration?: FunctionDeclaration | undefined;
+    typeVarScopeId?: TypeVarScopeId | undefined;
+    builtInName?: string | undefined;
+    docString?: string | undefined;
 
     // Transforms to apply if this function is used
     // as a decorator.
-    decoratorDataClassBehaviors?: DataClassBehaviors;
+    decoratorDataClassBehaviors?: DataClassBehaviors | undefined;
 
     // Parameter specification used only for Callable types created
     // with a ParamSpec representing the parameters.
-    paramSpec?: TypeVarType;
+    paramSpec?: TypeVarType | undefined;
 }
 
 export interface SpecializedFunctionTypes {
     parameterTypes: Type[];
-    returnType?: Type;
+    returnType?: Type | undefined;
 }
 
 export interface FunctionType extends TypeBase {
@@ -904,39 +960,41 @@ export interface FunctionType extends TypeBase {
 
     // A function type can be specialized (i.e. generic type
     // variables replaced by a concrete type).
-    specializedTypes?: SpecializedFunctionTypes;
+    specializedTypes?: SpecializedFunctionTypes | undefined;
 
     // Filled in lazily
-    inferredReturnType?: Type;
+    inferredReturnType?: Type | undefined;
 
     // If this is a bound function where the first parameter
     // was stripped from the original unbound function, the
     // (specialized) type of that stripped parameter.
-    strippedFirstParamType?: Type;
+    strippedFirstParamType?: Type | undefined;
 
     // If this is a bound function where the first parameter
     // was stripped from the original unbound function,
     // the class or object to which the function was bound.
-    boundToType?: ClassType | ObjectType;
+    boundToType?: ClassType | undefined;
 
     // The type var scope for the class that the function was bound to
-    boundTypeVarScopeId?: TypeVarScopeId;
+    boundTypeVarScopeId?: TypeVarScopeId | undefined;
 }
 
 export interface ParamSpecEntry {
     category: ParameterCategory;
-    name?: string;
+    name?: string | undefined;
     hasDefault: boolean;
     type: Type;
 }
 
 export interface ParamSpecValue {
-    parameters?: ParamSpecEntry[];
+    concrete?: {
+        flags: FunctionTypeFlags;
+        parameters: ParamSpecEntry[];
+    };
 
     // If the param spec is assigned to another param spec,
-    // this will contain that type, and the params array will
-    // be empty.
-    paramSpec?: TypeVarType;
+    // this will contain that type, and concrete will be undefined.
+    paramSpec?: TypeVarType | undefined;
 }
 
 export namespace FunctionType {
@@ -988,7 +1046,7 @@ export namespace FunctionType {
     export function clone(
         type: FunctionType,
         stripFirstParam = false,
-        boundToType?: ClassType | ObjectType,
+        boundToType?: ClassType,
         boundTypeVarScopeId?: TypeVarScopeId
     ): FunctionType {
         const newFunction = create(
@@ -1047,7 +1105,7 @@ export namespace FunctionType {
     export function cloneAsInstance(type: FunctionType) {
         assert(TypeBase.isInstantiable(type));
         const newInstance: FunctionType = { ...type };
-        newInstance.flags &= ~TypeFlags.Instantiable;
+        newInstance.flags &= ~(TypeFlags.Instantiable | TypeFlags.NonCallable);
         newInstance.flags |= TypeFlags.Instance;
         return newInstance;
     }
@@ -1055,7 +1113,7 @@ export namespace FunctionType {
     export function cloneAsInstantiable(type: FunctionType) {
         assert(TypeBase.isInstance(type));
         const newInstance: FunctionType = { ...type };
-        newInstance.flags &= ~TypeFlags.Instance;
+        newInstance.flags &= ~(TypeFlags.Instance | TypeFlags.NonCallable);
         newInstance.flags |= TypeFlags.Instantiable;
         return newInstance;
     }
@@ -1109,10 +1167,10 @@ export namespace FunctionType {
         delete newFunction.details.paramSpec;
 
         if (paramTypes) {
-            if (paramTypes.parameters) {
+            if (paramTypes.concrete) {
                 newFunction.details.parameters = [
                     ...type.details.parameters,
-                    ...paramTypes.parameters.map((specEntry) => {
+                    ...paramTypes.concrete.parameters.map((specEntry) => {
                         return {
                             category: specEntry.category,
                             name: specEntry.name,
@@ -1124,9 +1182,16 @@ export namespace FunctionType {
                     }),
                 ];
 
+                newFunction.details.flags =
+                    (paramTypes.concrete.flags &
+                        (FunctionTypeFlags.ClassMethod |
+                            FunctionTypeFlags.StaticMethod |
+                            FunctionTypeFlags.ConstructorMethod)) |
+                    FunctionTypeFlags.SynthesizedMethod;
+
                 // Update the specialized parameter types as well.
                 if (newFunction.specializedTypes) {
-                    paramTypes.parameters.forEach((paramInfo) => {
+                    paramTypes.concrete.parameters.forEach((paramInfo) => {
                         newFunction.specializedTypes!.parameterTypes.push(paramInfo.type);
                     });
                 }
@@ -1151,14 +1216,14 @@ export namespace FunctionType {
         // Make a shallow clone of the details.
         newFunction.details = { ...type.details };
 
-        if (paramTypes.parameters) {
+        if (paramTypes.concrete) {
             // Remove the last two parameters, which are the *args and **kwargs.
             newFunction.details.parameters = newFunction.details.parameters.slice(
                 0,
                 newFunction.details.parameters.length - 2
             );
 
-            paramTypes.parameters.forEach((specEntry) => {
+            paramTypes.concrete.parameters.forEach((specEntry) => {
                 newFunction.details.parameters.push({
                     category: specEntry.category,
                     name: specEntry.name,
@@ -1370,35 +1435,38 @@ export namespace AnyType {
     }
 }
 
-// References a single constraint within a constrained TypeVar.
-export interface SubtypeConstraint {
+// References a single condition associated with a constrained TypeVar.
+export interface TypeCondition {
     typeVarName: string;
     constraintIndex: number;
 }
 
-export namespace SubtypeConstraint {
-    export function combine(constraints1: SubtypeConstraints, constraints2: SubtypeConstraints): SubtypeConstraints {
-        if (!constraints1) {
-            return constraints2;
+export namespace TypeCondition {
+    export function combine(
+        conditions1: TypeCondition[] | undefined,
+        conditions2: TypeCondition[] | undefined
+    ): TypeCondition[] | undefined {
+        if (!conditions1) {
+            return conditions2;
         }
 
-        if (!constraints2) {
-            return constraints1;
+        if (!conditions2) {
+            return conditions1;
         }
 
         // Deduplicate the lists.
-        const combined = [...constraints1];
-        constraints2.forEach((c1) => {
+        const combined = [...conditions1];
+        conditions2.forEach((c1) => {
             if (!combined.some((c2) => _compare(c1, c2) === 0)) {
                 combined.push(c1);
             }
         });
 
-        // Always keep the constraints sorted for easier comparison.
+        // Always keep the conditions sorted for easier comparison.
         return combined.sort(_compare);
     }
 
-    function _compare(c1: SubtypeConstraint, c2: SubtypeConstraint) {
+    function _compare(c1: TypeCondition, c2: TypeCondition) {
         if (c1.typeVarName < c2.typeVarName) {
             return -1;
         } else if (c1.typeVarName > c2.typeVarName) {
@@ -1412,36 +1480,42 @@ export namespace SubtypeConstraint {
         return 0;
     }
 
-    export function isSame(constraints1: SubtypeConstraints, constraints2: SubtypeConstraints): boolean {
-        if (!constraints1) {
-            return !constraints2;
+    export function isSame(
+        conditions1: TypeCondition[] | undefined,
+        conditions2: TypeCondition[] | undefined
+    ): boolean {
+        if (!conditions1) {
+            return !conditions2;
         }
 
-        if (!constraints2 || constraints1.length !== constraints2.length) {
+        if (!conditions2 || conditions1.length !== conditions2.length) {
             return false;
         }
 
         return (
-            constraints1.find(
+            conditions1.find(
                 (c1, index) =>
-                    c1.typeVarName !== constraints2[index].typeVarName ||
-                    c1.constraintIndex !== constraints2[index].constraintIndex
+                    c1.typeVarName !== conditions2[index].typeVarName ||
+                    c1.constraintIndex !== conditions2[index].constraintIndex
             ) === undefined
         );
     }
 
-    // Determines if the two constraints can be used at the same time. If
+    // Determines if the two conditions can be used at the same time. If
     // one constraint list contains a constraint for a type variable, and the
     // same constraint is not in the other constraint list, the two are considered
     // incompatible.
-    export function isCompatible(constraints1: SubtypeConstraints, constraints2: SubtypeConstraints): boolean {
-        if (!constraints1 || !constraints2) {
+    export function isCompatible(
+        conditions1: TypeCondition[] | undefined,
+        conditions2: TypeCondition[] | undefined
+    ): boolean {
+        if (!conditions1 || !conditions2) {
             return true;
         }
 
-        for (const c1 of constraints1) {
+        for (const c1 of conditions1) {
             let foundTypeVarMatch = false;
-            const exactMatch = constraints2.find((c2) => {
+            const exactMatch = conditions2.find((c2) => {
                 if (c1.typeVarName === c2.typeVarName) {
                     foundTypeVarMatch = true;
                     return c1.constraintIndex === c2.constraintIndex;
@@ -1458,18 +1532,11 @@ export namespace SubtypeConstraint {
     }
 }
 
-export type SubtypeConstraints = SubtypeConstraint[] | undefined;
-export interface ConstrainedSubtype {
-    type: Type;
-    constraints: SubtypeConstraints;
-}
-
 export interface UnionType extends TypeBase {
     category: TypeCategory.Union;
     subtypes: UnionableType[];
-    constraints?: SubtypeConstraints[];
-    literalStrMap?: Map<string, UnionableType>;
-    literalIntMap?: Map<number, UnionableType>;
+    literalStrMap?: Map<string, UnionableType> | undefined;
+    literalIntMap?: Map<number, UnionableType> | undefined;
 }
 
 export namespace UnionType {
@@ -1483,64 +1550,52 @@ export namespace UnionType {
         return newUnionType;
     }
 
-    export function addType(unionType: UnionType, newType: UnionableType, constraints: SubtypeConstraints) {
+    export function addType(unionType: UnionType, newType: UnionableType) {
         // If we're adding a string literal type, add it to the
         // literal string map to speed up some operations. It's not
         // uncommon for unions to contain hundreds of string literals.
         if (
-            isObject(newType) &&
-            ClassType.isBuiltIn(newType.classType, 'str') &&
-            newType.classType.literalValue !== undefined &&
-            !constraints
+            isClassInstance(newType) &&
+            ClassType.isBuiltIn(newType, 'str') &&
+            newType.literalValue !== undefined &&
+            newType.condition === undefined
         ) {
             if (unionType.literalStrMap === undefined) {
                 unionType.literalStrMap = new Map<string, UnionableType>();
             }
-            unionType.literalStrMap.set(newType.classType.literalValue as string, newType);
+            unionType.literalStrMap.set(newType.literalValue as string, newType);
         } else if (
-            isObject(newType) &&
-            ClassType.isBuiltIn(newType.classType, 'int') &&
-            newType.classType.literalValue !== undefined &&
-            !constraints
+            isClassInstance(newType) &&
+            ClassType.isBuiltIn(newType, 'int') &&
+            newType.literalValue !== undefined &&
+            newType.condition === undefined
         ) {
             if (unionType.literalIntMap === undefined) {
                 unionType.literalIntMap = new Map<number, UnionableType>();
             }
-            unionType.literalIntMap.set(newType.classType.literalValue as number, newType);
-        }
-
-        if (constraints) {
-            if (!unionType.constraints) {
-                unionType.constraints = Array.from({ length: unionType.subtypes.length });
-            }
-            unionType.constraints.push(constraints);
+            unionType.literalIntMap.set(newType.literalValue as number, newType);
         }
 
         unionType.flags &= newType.flags;
         unionType.subtypes.push(newType);
     }
 
-    export function containsType(
-        unionType: UnionType,
-        subtype: Type,
-        constraints: SubtypeConstraints,
-        recursionCount = 0
-    ): boolean {
+    export function containsType(unionType: UnionType, subtype: Type, recursionCount = 0): boolean {
         // Handle string literals as a special case because unions can sometimes
         // contain hundreds of string literal types.
-        if (isObject(subtype)) {
+        if (isClassInstance(subtype) && subtype.condition === undefined) {
             if (
-                ClassType.isBuiltIn(subtype.classType, 'str') &&
-                subtype.classType.literalValue !== undefined &&
+                ClassType.isBuiltIn(subtype, 'str') &&
+                subtype.literalValue !== undefined &&
                 unionType.literalStrMap !== undefined
             ) {
-                return unionType.literalStrMap.has(subtype.classType.literalValue as string);
+                return unionType.literalStrMap.has(subtype.literalValue as string);
             } else if (
-                ClassType.isBuiltIn(subtype.classType, 'int') &&
-                subtype.classType.literalValue !== undefined &&
+                ClassType.isBuiltIn(subtype, 'int') &&
+                subtype.literalValue !== undefined &&
                 unionType.literalIntMap !== undefined
             ) {
-                return unionType.literalIntMap.has(subtype.classType.literalValue as number);
+                return unionType.literalIntMap.has(subtype.literalValue as number);
             }
         }
 
@@ -1561,41 +1616,51 @@ export const enum Variance {
 export interface TypeVarDetails {
     name: string;
     constraints: Type[];
-    boundType?: Type;
+    boundType?: Type | undefined;
     variance: Variance;
     isParamSpec: boolean;
     isVariadic: boolean;
 
     // Internally created (e.g. for pseudo-generic classes)
     isSynthesized: boolean;
-    isSynthesizedSelfCls?: boolean;
-    synthesizedIndex?: number;
+    isSynthesizedSelfCls?: boolean | undefined;
+    synthesizedIndex?: number | undefined;
 
     // Used for recursive type aliases.
-    recursiveTypeAliasName?: string;
-    recursiveTypeAliasScopeId?: TypeVarScopeId;
+    recursiveTypeAliasName?: string | undefined;
+    recursiveTypeAliasScopeId?: TypeVarScopeId | undefined;
+    illegalRecursionDetected?: boolean | undefined;
 
     // Type parameters for a recursive type alias.
-    recursiveTypeParameters?: TypeVarType[];
+    recursiveTypeParameters?: TypeVarType[] | undefined;
 }
+
+export type ParamSpecAccess = 'args' | 'kwargs';
 
 export interface TypeVarType extends TypeBase {
     category: TypeCategory.TypeVar;
     details: TypeVarDetails;
 
     // An ID that uniquely identifies the scope in which this TypeVar is defined.
-    scopeId?: TypeVarScopeId;
+    scopeId?: TypeVarScopeId | undefined;
 
     // A human-readable name of the function, class, or type alias that
     // provides the scope for this type variable. This might not be unique,
     // so it should be used only for error messages.
-    scopeName?: string;
+    scopeName?: string | undefined;
 
     // String formatted as <name>.<scopeId>.
-    nameWithScope?: string;
+    nameWithScope?: string | undefined;
 
     // Is this variadic TypeVar unpacked (i.e. Unpack or * operator applied)?
-    isVariadicUnpacked?: boolean;
+    isVariadicUnpacked?: boolean | undefined;
+
+    // Is this variadic TypeVar included in a Union[]? This allows us to
+    // differentiate between Unpack[Vs] and Union[Unpack[Vs]].
+    isVariadicInUnion?: boolean | undefined;
+
+    // Represents access to "args" or "kwargs" of a ParamSpec.
+    paramSpecAccess?: ParamSpecAccess;
 }
 
 export namespace TypeVarType {
@@ -1610,7 +1675,7 @@ export namespace TypeVarType {
     export function cloneAsInstance(type: TypeVarType) {
         assert(TypeBase.isInstantiable(type));
         const newInstance: TypeVarType = { ...type };
-        newInstance.flags &= ~TypeFlags.Instantiable;
+        newInstance.flags &= ~(TypeFlags.Instantiable | TypeFlags.NonCallable);
         newInstance.flags |= TypeFlags.Instance;
         return newInstance;
     }
@@ -1618,7 +1683,7 @@ export namespace TypeVarType {
     export function cloneAsInstantiable(type: TypeVarType) {
         assert(TypeBase.isInstance(type));
         const newInstance: TypeVarType = { ...type };
-        newInstance.flags &= ~TypeFlags.Instance;
+        newInstance.flags &= ~(TypeFlags.Instance | TypeFlags.NonCallable);
         newInstance.flags |= TypeFlags.Instantiable;
         return newInstance;
     }
@@ -1631,10 +1696,11 @@ export namespace TypeVarType {
         return newInstance;
     }
 
-    export function cloneForUnpacked(type: TypeVarType) {
+    export function cloneForUnpacked(type: TypeVarType, isInUnion = false) {
         assert(type.details.isVariadic);
         const newInstance: TypeVarType = { ...type };
         newInstance.isVariadicUnpacked = true;
+        newInstance.isVariadicInUnion = isInUnion;
         return newInstance;
     }
 
@@ -1642,6 +1708,7 @@ export namespace TypeVarType {
         assert(type.details.isVariadic);
         const newInstance: TypeVarType = { ...type };
         newInstance.isVariadicUnpacked = false;
+        newInstance.isVariadicInUnion = false;
         return newInstance;
     }
 
@@ -1663,6 +1730,12 @@ export namespace TypeVarType {
         newInstance.details.variance = Variance.Invariant;
         newInstance.details.boundType = undefined;
         newInstance.details.constraints = [];
+        return newInstance;
+    }
+
+    export function cloneForParamSpecAccess(type: TypeVarType, access: ParamSpecAccess | undefined) {
+        const newInstance: TypeVarType = { ...type };
+        newInstance.paramSpecAccess = access;
         return newInstance;
     }
 
@@ -1756,8 +1829,12 @@ export function isClass(type: Type): type is ClassType {
     return type.category === TypeCategory.Class;
 }
 
-export function isObject(type: Type): type is ObjectType {
-    return type.category === TypeCategory.Object;
+export function isInstantiableClass(type: Type): type is ClassType {
+    return type.category === TypeCategory.Class && TypeBase.isInstantiable(type);
+}
+
+export function isClassInstance(type: Type): type is ClassType {
+    return type.category === TypeCategory.Class && TypeBase.isInstance(type);
 }
 
 export function isModule(type: Type): type is ModuleType {
@@ -1812,6 +1889,10 @@ export function getTypeAliasInfo(type: Type) {
 // type arguments for "pseudo-generic" classes (non-generic classes whose init
 // methods are not annotated and are therefore treated as generic) are ignored.
 export function isTypeSame(type1: Type, type2: Type, ignorePseudoGeneric = false, recursionCount = 0): boolean {
+    if (type1 === type2) {
+        return true;
+    }
+
     if (type1.category !== type2.category) {
         return false;
     }
@@ -1820,12 +1901,20 @@ export function isTypeSame(type1: Type, type2: Type, ignorePseudoGeneric = false
         return true;
     }
 
+    if (type1.flags !== type2.flags) {
+        return false;
+    }
+
     switch (type1.category) {
         case TypeCategory.Class: {
             const classType2 = type2 as ClassType;
 
             // If the details are not the same it's not the same class.
             if (!ClassType.isSameGenericClass(type1, classType2, recursionCount + 1)) {
+                return false;
+            }
+
+            if (!TypeCondition.isSame(type1.condition, type2.condition)) {
                 return false;
             }
 
@@ -1872,12 +1961,6 @@ export function isTypeSame(type1: Type, type2: Type, ignorePseudoGeneric = false
             }
 
             return true;
-        }
-
-        case TypeCategory.Object: {
-            const objType2 = type2 as ObjectType;
-
-            return isTypeSame(type1.classType, objType2.classType, ignorePseudoGeneric, recursionCount + 1);
         }
 
         case TypeCategory.Function: {
@@ -1968,11 +2051,8 @@ export function isTypeSame(type1: Type, type2: Type, ignorePseudoGeneric = false
             // The types do not have a particular order, so we need to
             // do the comparison in an order-independent manner.
             return (
-                findSubtype(
-                    type1,
-                    (subtype, constraints) =>
-                        !UnionType.containsType(unionType2, subtype, constraints, recursionCount + 1)
-                ) === undefined
+                findSubtype(type1, (subtype) => !UnionType.containsType(unionType2, subtype, recursionCount + 1)) ===
+                undefined
             );
         }
 
@@ -1981,6 +2061,22 @@ export function isTypeSame(type1: Type, type2: Type, ignorePseudoGeneric = false
 
             if (type1.scopeId !== type2TypeVar.scopeId) {
                 return false;
+            }
+
+            // Handle the case where this is a generic recursive type alias. Make
+            // sure that the type argument types match.
+            const type1TypeArgs = type1?.typeAliasInfo?.typeArguments || [];
+            const type2TypeArgs = type2?.typeAliasInfo?.typeArguments || [];
+            const typeArgCount = Math.max(type1TypeArgs.length, type2TypeArgs.length);
+
+            for (let i = 0; i < typeArgCount; i++) {
+                // Assume that missing type args are "Any".
+                const typeArg1 = i < type1TypeArgs.length ? type1TypeArgs[i] : AnyType.create();
+                const typeArg2 = i < type2TypeArgs.length ? type2TypeArgs[i] : AnyType.create();
+
+                if (!isTypeSame(typeArg1, typeArg2, ignorePseudoGeneric, recursionCount + 1)) {
+                    return false;
+                }
             }
 
             if (type1.details === type2TypeVar.details) {
@@ -2078,115 +2174,79 @@ export function removeNoneFromUnion(type: Type): Type {
     return removeFromUnion(type, (t: Type) => isNone(t));
 }
 
-export function removeFromUnion(type: Type, removeFilter: (type: Type, constraints: SubtypeConstraints) => boolean) {
+export function removeFromUnion(type: Type, removeFilter: (type: Type) => boolean) {
     if (isUnion(type)) {
-        const remainingTypes: ConstrainedSubtype[] = [];
-        type.subtypes.forEach((subtype, index) => {
-            const constraints = type.constraints ? type.constraints[index] : undefined;
-            if (!removeFilter(subtype, constraints)) {
-                remainingTypes.push({ type: subtype, constraints });
-            }
-        });
+        const remainingTypes = type.subtypes.filter((t) => !removeFilter(t));
         if (remainingTypes.length < type.subtypes.length) {
-            return combineConstrainedTypes(remainingTypes);
+            return combineTypes(remainingTypes);
         }
     }
 
     return type;
 }
 
-export function findSubtype(
-    type: Type,
-    filter: (type: UnionableType | NeverType, constraints: SubtypeConstraints) => boolean
-) {
+export function findSubtype(type: Type, filter: (type: UnionableType | NeverType) => boolean) {
     if (isUnion(type)) {
         return type.subtypes.find((subtype, index) => {
-            return filter(subtype, type.constraints ? type.constraints[index] : undefined);
+            return filter(subtype);
         });
     }
 
-    return filter(type, undefined) ? type : undefined;
-}
-
-// Determines whether the specified type is a type that can be
-// combined with other types for a union.
-export function isUnionableType(subtypes: Type[]): boolean {
-    let typeFlags = TypeFlags.Instance | TypeFlags.Instantiable;
-
-    for (const subtype of subtypes) {
-        typeFlags &= subtype.flags;
-    }
-
-    // All subtypes need to be instantiable. Some types (like Any
-    // and None) are both instances and instantiable. It's OK to
-    // include some of these, but at least one subtype needs to
-    // be definitively instantiable (not an instance).
-    return (typeFlags & TypeFlags.Instantiable) !== 0 && (typeFlags & TypeFlags.Instance) === 0;
-}
-
-export function combineTypes(types: Type[], maxSubtypeCount?: number): Type {
-    return combineConstrainedTypes(
-        types.map((type) => {
-            return { type, constraints: undefined };
-        }),
-        maxSubtypeCount
-    );
+    return filter(type) ? type : undefined;
 }
 
 // Combines multiple types into a single type. If the types are
 // the same, only one is returned. If they differ, they
 // are combined into a UnionType. NeverTypes are filtered out.
 // If no types remain in the end, a NeverType is returned.
-export function combineConstrainedTypes(subtypes: ConstrainedSubtype[], maxSubtypeCount?: number): Type {
+export function combineTypes(subtypes: Type[], maxSubtypeCount?: number): Type {
     // Filter out any "Never" types.
-    subtypes = subtypes.filter((subtype) => subtype.type.category !== TypeCategory.Never);
+    subtypes = subtypes.filter((subtype) => subtype.category !== TypeCategory.Never);
     if (subtypes.length === 0) {
         return NeverType.create();
     }
 
     // Handle the common case where there is only one type.
-    if (subtypes.length === 1 && !subtypes[0].constraints && !isUnpackedVariadicTypeVar(subtypes[0].type)) {
-        return subtypes[0].type;
+    // Also handle the common case where there are multiple copies of the same type.
+    let allSubtypesAreSame = true;
+    for (let index = 1; index < subtypes.length; index++) {
+        if (subtypes[index] !== subtypes[0]) {
+            allSubtypesAreSame = false;
+            break;
+        }
+    }
+
+    if (allSubtypesAreSame) {
+        return subtypes[0];
     }
 
     // Expand all union types.
-    let expandedTypes: ConstrainedSubtype[] = [];
-    for (const constrainedType of subtypes) {
-        if (isUnion(constrainedType.type)) {
-            const unionType = constrainedType.type;
-            unionType.subtypes.forEach((subtype, index) => {
-                expandedTypes.push({
-                    type: subtype,
-                    constraints: SubtypeConstraint.combine(
-                        unionType.constraints ? unionType.constraints[index] : undefined,
-                        constrainedType.constraints
-                    ),
-                });
-            });
+    let expandedTypes: Type[] = [];
+    for (const subtype of subtypes) {
+        if (isUnion(subtype)) {
+            expandedTypes.push(...subtype.subtypes);
         } else {
-            expandedTypes.push({ type: constrainedType.type, constraints: constrainedType.constraints });
+            expandedTypes.push(subtype);
         }
     }
 
     // Sort all of the literal and empty types to the end.
-    expandedTypes = expandedTypes.sort((constrainedType1, constrainedType2) => {
-        const type1 = constrainedType1.type;
-        const type2 = constrainedType2.type;
+    expandedTypes = expandedTypes.sort((type1, type2) => {
         if (
-            (isObject(type1) && type1.classType.literalValue !== undefined) ||
-            (isClass(type1) && type1.literalValue !== undefined)
+            (isClassInstance(type1) && type1.literalValue !== undefined) ||
+            (isInstantiableClass(type1) && type1.literalValue !== undefined)
         ) {
             return 1;
         } else if (
-            (isObject(type2) && type2.classType.literalValue !== undefined) ||
-            (isClass(type2) && type2.literalValue !== undefined)
+            (isClassInstance(type2) && type2.literalValue !== undefined) ||
+            (isInstantiableClass(type2) && type2.literalValue !== undefined)
         ) {
             return -1;
         }
 
-        if (isObject(type1) && type1.classType.isEmptyContainer) {
+        if (isClassInstance(type1) && type1.isEmptyContainer) {
             return 1;
-        } else if (isObject(type2) && type2.classType.isEmptyContainer) {
+        } else if (isClassInstance(type2) && type2.isEmptyContainer) {
             return -1;
         }
 
@@ -2202,12 +2262,12 @@ export function combineConstrainedTypes(subtypes: ConstrainedSubtype[], maxSubty
     const newUnionType = UnionType.create();
     let hitMaxSubtypeCount = false;
 
-    expandedTypes.forEach((constrainedType, index) => {
+    expandedTypes.forEach((subtype, index) => {
         if (index === 0) {
-            UnionType.addType(newUnionType, constrainedType.type as UnionableType, constrainedType.constraints);
+            UnionType.addType(newUnionType, subtype as UnionableType);
         } else {
             if (maxSubtypeCount === undefined || newUnionType.subtypes.length < maxSubtypeCount) {
-                _addTypeIfUnique(newUnionType, constrainedType.type as UnionableType, constrainedType.constraints);
+                _addTypeIfUnique(newUnionType, subtype as UnionableType);
             } else {
                 hitMaxSubtypeCount = true;
             }
@@ -2218,13 +2278,8 @@ export function combineConstrainedTypes(subtypes: ConstrainedSubtype[], maxSubty
         return AnyType.create();
     }
 
-    // If only one type remains and there are no constraints and no variadic
-    // type var, convert it from a union to a simple type.
-    if (
-        newUnionType.subtypes.length === 1 &&
-        !newUnionType.constraints &&
-        !isUnpackedVariadicTypeVar(newUnionType.subtypes[0])
-    ) {
+    // If only one type remains, convert it from a union to a simple type.
+    if (newUnionType.subtypes.length === 1) {
         return newUnionType.subtypes[0];
     }
 
@@ -2240,42 +2295,42 @@ export function isSameWithoutLiteralValue(destType: Type, srcType: Type): boolea
         return true;
     }
 
-    if (isClass(srcType) && srcType.literalValue !== undefined) {
+    if (isInstantiableClass(srcType) && srcType.literalValue !== undefined) {
         // Strip the literal.
         srcType = ClassType.cloneWithLiteral(srcType, undefined);
         return isTypeSame(destType, srcType);
     }
 
-    if (isObject(srcType) && srcType.classType.literalValue !== undefined) {
+    if (isClassInstance(srcType) && srcType.literalValue !== undefined) {
         // Strip the literal.
-        srcType = ObjectType.create(ClassType.cloneWithLiteral(srcType.classType, undefined));
+        srcType = ClassType.cloneWithLiteral(srcType, undefined);
         return isTypeSame(destType, srcType);
     }
 
     return false;
 }
 
-function _addTypeIfUnique(unionType: UnionType, typeToAdd: UnionableType, constraintsToAdd: SubtypeConstraints) {
+function _addTypeIfUnique(unionType: UnionType, typeToAdd: UnionableType) {
     // Handle the addition of a string literal in a special manner to
     // avoid n^2 behavior in unions that contain hundreds of string
     // literal types. Skip this for constrained types.
-    if (!constraintsToAdd && isObject(typeToAdd)) {
+    if (isClassInstance(typeToAdd) && typeToAdd.condition === undefined) {
         if (
-            ClassType.isBuiltIn(typeToAdd.classType, 'str') &&
-            typeToAdd.classType.literalValue !== undefined &&
+            ClassType.isBuiltIn(typeToAdd, 'str') &&
+            typeToAdd.literalValue !== undefined &&
             unionType.literalStrMap !== undefined
         ) {
-            if (!unionType.literalStrMap.has(typeToAdd.classType.literalValue as string)) {
-                UnionType.addType(unionType, typeToAdd, constraintsToAdd);
+            if (!unionType.literalStrMap.has(typeToAdd.literalValue as string)) {
+                UnionType.addType(unionType, typeToAdd);
             }
             return;
         } else if (
-            ClassType.isBuiltIn(typeToAdd.classType, 'int') &&
-            typeToAdd.classType.literalValue !== undefined &&
+            ClassType.isBuiltIn(typeToAdd, 'int') &&
+            typeToAdd.literalValue !== undefined &&
             unionType.literalIntMap !== undefined
         ) {
-            if (!unionType.literalIntMap.has(typeToAdd.classType.literalValue as number)) {
-                UnionType.addType(unionType, typeToAdd, constraintsToAdd);
+            if (!unionType.literalIntMap.has(typeToAdd.literalValue as number)) {
+                UnionType.addType(unionType, typeToAdd);
             }
             return;
         }
@@ -2283,11 +2338,6 @@ function _addTypeIfUnique(unionType: UnionType, typeToAdd: UnionableType, constr
 
     for (let i = 0; i < unionType.subtypes.length; i++) {
         const type = unionType.subtypes[i];
-        const constraints = unionType.constraints ? unionType.constraints[i] : undefined;
-
-        if (!SubtypeConstraint.isSame(constraints, constraintsToAdd)) {
-            continue;
-        }
 
         // Does this type already exist in the types array?
         if (isTypeSame(type, typeToAdd)) {
@@ -2296,21 +2346,23 @@ function _addTypeIfUnique(unionType: UnionType, typeToAdd: UnionableType, constr
 
         // If the typeToAdd is a literal value and there's already
         // a non-literal type that matches, don't add the literal value.
-        if (isObject(type) && isObject(typeToAdd)) {
+        if (isClassInstance(type) && isClassInstance(typeToAdd)) {
             if (isSameWithoutLiteralValue(type, typeToAdd)) {
-                if (type.classType.literalValue === undefined) {
+                if (type.literalValue === undefined) {
                     return;
                 }
             }
 
             // If we're adding Literal[False] or Literal[True] to its
             // opposite, combine them into a non-literal 'bool' type.
-            if (ClassType.isBuiltIn(type.classType, 'bool') && ClassType.isBuiltIn(typeToAdd.classType, 'bool')) {
-                if (
-                    typeToAdd.classType.literalValue !== undefined &&
-                    !typeToAdd.classType.literalValue === type.classType.literalValue
-                ) {
-                    unionType.subtypes[i] = ObjectType.create(ClassType.cloneWithLiteral(type.classType, undefined));
+            if (
+                ClassType.isBuiltIn(type, 'bool') &&
+                !type.condition &&
+                ClassType.isBuiltIn(typeToAdd, 'bool') &&
+                !typeToAdd.condition
+            ) {
+                if (typeToAdd.literalValue !== undefined && !typeToAdd.literalValue === type.literalValue) {
+                    unionType.subtypes[i] = ClassType.cloneWithLiteral(type, undefined);
                     return;
                 }
             }
@@ -2318,12 +2370,12 @@ function _addTypeIfUnique(unionType: UnionType, typeToAdd: UnionableType, constr
 
         // If the typeToAdd is an empty container and there's already
         // non-empty container of the same type, don't add the empty container.
-        if (isObject(typeToAdd) && typeToAdd.classType.isEmptyContainer) {
-            if (isObject(type) && ClassType.isSameGenericClass(type.classType, typeToAdd.classType)) {
+        if (isClassInstance(typeToAdd) && typeToAdd.isEmptyContainer) {
+            if (isClassInstance(type) && ClassType.isSameGenericClass(type, typeToAdd)) {
                 return;
             }
         }
     }
 
-    UnionType.addType(unionType, typeToAdd, constraintsToAdd);
+    UnionType.addType(unionType, typeToAdd);
 }

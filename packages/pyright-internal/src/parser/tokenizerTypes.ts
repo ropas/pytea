@@ -162,6 +162,7 @@ export const enum StringTokenFlags {
 
     // Error conditions
     Unterminated = 1 << 16,
+    ExceedsMaxSize = 1 << 17,
 }
 
 export interface Comment extends TextRange {
@@ -186,7 +187,7 @@ export interface TokenBase extends TextRange {
     readonly type: TokenType;
 
     // Comments prior to the token.
-    readonly comments?: Comment[];
+    readonly comments?: Comment[] | undefined;
 }
 
 export interface Token extends TokenBase {}

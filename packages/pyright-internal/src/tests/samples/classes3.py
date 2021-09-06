@@ -3,7 +3,10 @@
 
 
 class TestClass:
-    pass
+    # These should be accessible within the class body
+    print(__doc__)
+    print(__module__)
+    print(__name__)
 
 
 base = TestClass.__base__
@@ -25,6 +28,20 @@ dummy = TestClass.__dummy__
 
 instance = TestClass()
 
-# This should generate an error because "__name__"
-# isn't visible to instances.
+instance.__doc__
+instance.__module__
+
+# These should generate an error because they are not visible to instances.
 instance.__name__
+instance.__qualname__
+
+
+class Meta(type):
+    def method1(self) -> str:
+        return self.__name__
+
+
+class NonMeta:
+    def method1(self) -> str:
+        # This should generate an error
+        return self.__name__

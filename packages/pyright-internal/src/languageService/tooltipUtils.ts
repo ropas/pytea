@@ -17,13 +17,13 @@ import {
     getModuleDocString,
     getOverloadedFunctionDocStringsInherited,
     getPropertyDocStringInherited,
-    getVariableInStubFileDocStrings,
+    getVariableDocString,
 } from '../analyzer/typeDocStringUtils';
 import { TypeEvaluator } from '../analyzer/typeEvaluator';
 import {
     FunctionType,
-    isClass,
     isFunction,
+    isInstantiableClass,
     isModule,
     isOverloadedFunction,
     OverloadedFunctionType,
@@ -37,7 +37,9 @@ export function getOverloadedFunctionTooltip(
     columnThreshold = 70
 ) {
     let content = '';
-    const overloads = type.overloads.map((o) => o.details.name + evaluator.printType(o, /* expandTypeAlias */ false));
+    const overloads = type.overloads
+        .filter((o) => FunctionType.isOverloaded(o))
+        .map((o) => o.details.name + evaluator.printType(o, /* expandTypeAlias */ false));
 
     for (let i = 0; i < overloads.length; i++) {
         if (i !== 0 && overloads[i].length > columnThreshold && overloads[i - 1].length <= columnThreshold) {
@@ -76,7 +78,7 @@ export function getDocumentationPartsForTypeAndDecl(
         if (doc) {
             return [doc];
         }
-    } else if (isClass(type)) {
+    } else if (isInstantiableClass(type)) {
         const doc = getClassDocString(type, resolvedDecl, sourceMapper);
         if (doc) {
             return [doc];
@@ -100,8 +102,10 @@ export function getDocumentationPartsForTypeAndDecl(
             classResults?.classType
         );
     } else if (resolvedDecl?.type === DeclarationType.Variable) {
-        // See whether a variable symbol on the stub is actually a variable. If not, take the doc string.
-        return getVariableInStubFileDocStrings(resolvedDecl, sourceMapper);
+        const doc = getVariableDocString(resolvedDecl, sourceMapper);
+        if (doc) {
+            return [doc];
+        }
     } else if (resolvedDecl?.type === DeclarationType.Function) {
         // @property functions
         const doc = getPropertyDocStringInherited(resolvedDecl, sourceMapper, evaluator);
@@ -111,4 +115,19 @@ export function getDocumentationPartsForTypeAndDecl(
     }
 
     return [];
+}
+
+export function getAutoImportText(name: string, from?: string, alias?: string): string {
+    let text: string | undefined;
+    if (!from) {
+        text = `import ${name}`;
+    } else {
+        text = `from ${from} import ${name}`;
+    }
+
+    if (alias) {
+        text = `${text} as ${alias}`;
+    }
+
+    return text;
 }

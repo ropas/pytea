@@ -15,7 +15,7 @@ import {
     normalizePath,
     normalizeSlashes,
 } from '../../../common/pathUtils';
-import { libFolder } from '../vfs/factory';
+import { distlibFolder, libFolder } from '../vfs/factory';
 import { fileMetadataNames, FourSlashData, FourSlashFile, Marker, MetadataOptionNames, Range } from './fourSlashTypes';
 
 /**
@@ -61,6 +61,12 @@ export function parseTestData(basePath: string, contents: string, fileName: stri
         if (toBoolean(currentFileOptions[MetadataOptionNames.library])) {
             currentFileName = normalizePath(
                 combinePaths(libFolder, getRelativePath(currentFileName, normalizedBasePath))
+            );
+        }
+
+        if (toBoolean(currentFileOptions[MetadataOptionNames.distLibrary])) {
+            currentFileName = normalizePath(
+                combinePaths(distlibFolder, getRelativePath(currentFileName, normalizedBasePath))
             );
         }
 
@@ -142,7 +148,7 @@ interface LocationInformation {
 }
 
 interface RangeLocationInformation extends LocationInformation {
-    marker?: Marker;
+    marker?: Marker | undefined;
 }
 
 const enum State {
@@ -167,7 +173,7 @@ function recordObjectMarker(
     try {
         // Attempt to parse the marker value as JSON
         markerValue = JSON.parse('{ ' + text + ' }');
-    } catch (e) {
+    } catch (e: any) {
         reportError(fileName, location.sourceLine, location.sourceColumn, `Unable to parse marker text ${e.message}`);
     }
 

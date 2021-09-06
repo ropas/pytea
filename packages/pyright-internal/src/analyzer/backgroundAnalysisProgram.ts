@@ -24,9 +24,7 @@ import { Indices, MaxAnalysisTime, Program } from './program';
 
 export class BackgroundAnalysisProgram {
     private _program: Program;
-    private _backgroundAnalysis?: BackgroundAnalysisBase;
-    private _onAnalysisCompletion?: AnalysisCompleteCallback;
-    private _maxAnalysisTime?: MaxAnalysisTime;
+    private _onAnalysisCompletion: AnalysisCompleteCallback | undefined;
     private _indices: Indices | undefined;
 
     constructor(
@@ -34,12 +32,18 @@ export class BackgroundAnalysisProgram {
         private _configOptions: ConfigOptions,
         private _importResolver: ImportResolver,
         extension?: LanguageServiceExtension,
-        backgroundAnalysis?: BackgroundAnalysisBase,
-        maxAnalysisTime?: MaxAnalysisTime
+        private _backgroundAnalysis?: BackgroundAnalysisBase,
+        private _maxAnalysisTime?: MaxAnalysisTime,
+        private _disableChecker?: boolean
     ) {
-        this._program = new Program(this._importResolver, this._configOptions, this._console, extension);
-        this._backgroundAnalysis = backgroundAnalysis;
-        this._maxAnalysisTime = maxAnalysisTime;
+        this._program = new Program(
+            this._importResolver,
+            this._configOptions,
+            this._console,
+            extension,
+            undefined,
+            this._disableChecker
+        );
     }
 
     get configOptions() {
@@ -54,6 +58,10 @@ export class BackgroundAnalysisProgram {
         return this._program;
     }
 
+    get host() {
+        return this._importResolver.host;
+    }
+
     get backgroundAnalysis() {
         return this._backgroundAnalysis;
     }
@@ -66,14 +74,10 @@ export class BackgroundAnalysisProgram {
 
     setImportResolver(importResolver: ImportResolver) {
         this._importResolver = importResolver;
+        this._backgroundAnalysis?.setImportResolver(importResolver);
+
         this._program.setImportResolver(importResolver);
-
         this._configOptions.getExecutionEnvironments().forEach((e) => this._ensurePartialStubPackages(e));
-
-        // Do nothing for background analysis.
-        // Background analysis updates importer when configOptions is changed rather than
-        // having two APIs to reduce the chance of the program and importer pointing to
-        // two different configOptions.
     }
 
     setTrackedFiles(filePaths: string[]) {
@@ -87,14 +91,19 @@ export class BackgroundAnalysisProgram {
         this._program.setAllowedThirdPartyImports(importNames);
     }
 
-    setFileOpened(filePath: string, version: number | null, contents: string) {
-        this._backgroundAnalysis?.setFileOpened(filePath, version, [{ text: contents }]);
-        this._program.setFileOpened(filePath, version, [{ text: contents }]);
+    setFileOpened(filePath: string, version: number | null, contents: string, isTracked: boolean) {
+        this._backgroundAnalysis?.setFileOpened(filePath, version, [{ text: contents }], isTracked);
+        this._program.setFileOpened(filePath, version, [{ text: contents }], isTracked);
     }
 
-    updateOpenFileContents(path: string, version: number | null, contents: TextDocumentContentChangeEvent[]) {
-        this._backgroundAnalysis?.setFileOpened(path, version, contents);
-        this._program.setFileOpened(path, version, contents);
+    updateOpenFileContents(
+        path: string,
+        version: number | null,
+        contents: TextDocumentContentChangeEvent[],
+        isTracked: boolean
+    ) {
+        this._backgroundAnalysis?.setFileOpened(path, version, contents, isTracked);
+        this._program.setFileOpened(path, version, contents, isTracked);
         this.markFilesDirty([path], true);
     }
 
@@ -156,7 +165,7 @@ export class BackgroundAnalysisProgram {
             return;
         }
 
-        this._backgroundAnalysis?.startIndexing(this._configOptions, this._getIndices());
+        this._backgroundAnalysis?.startIndexing(this._configOptions, this.host.kind, this._getIndices());
     }
 
     refreshIndexing() {
@@ -164,7 +173,7 @@ export class BackgroundAnalysisProgram {
             return;
         }
 
-        this._backgroundAnalysis?.refreshIndexing(this._configOptions, this._indices);
+        this._backgroundAnalysis?.refreshIndexing(this._configOptions, this.host.kind, this._indices);
     }
 
     cancelIndexing() {

@@ -1,16 +1,21 @@
 # This sample checks that isinstance and issubclass don't
 # allow the second argument to be a Protocol class.
 
-from typing import Any, Callable, Iterable, Literal, Sized, Type, TypeVar, Union
+from typing import Any, Callable, Literal, Protocol, Type, TypeVar, Union
 from types import FunctionType, LambdaType
 
 
-# This should generate an error because Sized is a Protocol.
-isinstance(4, Sized)
+class MyProtocol(Protocol):
+    pass
+
+
+# This should generate an error because Sized is a Protocol that
+# is not runtime checkable.
+isinstance(4, MyProtocol)
 
 
 # This should generate an error because Iterable is a Protocol.
-issubclass(str, (str, Iterable))
+issubclass(str, (str, MyProtocol))
 
 
 class CustomClass:
@@ -37,6 +42,6 @@ _T = TypeVar("_T", bound=CustomClass)
 
 def func(cls: Type[_T], val: _T):
     if issubclass(cls, CustomClass):
-        t1: Literal["Type[_T@func]"] = reveal_type(cls)
+        t1: Literal["Type[CustomClass]*"] = reveal_type(cls)
     else:
         t2: Literal["Never"] = reveal_type(cls)

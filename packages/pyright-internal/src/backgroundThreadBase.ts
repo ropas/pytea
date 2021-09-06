@@ -12,8 +12,9 @@ import { OperationCanceledException, setCancellationFolderName } from './common/
 import { ConfigOptions } from './common/configOptions';
 import { LogLevel } from './common/console';
 import * as debug from './common/debug';
-import { createFromRealFileSystem, FileSystem } from './common/fileSystem';
+import { FileSystem } from './common/fileSystem';
 import { FileSpec } from './common/pathUtils';
+import { createFromRealFileSystem } from './common/realFileSystem';
 import { PyrightFileSystem } from './pyrightFileSystem';
 
 export class BackgroundThreadBase {
@@ -91,7 +92,7 @@ export function run(code: () => any, port: MessagePort) {
     try {
         const result = code();
         port.postMessage({ kind: 'ok', data: result });
-    } catch (e) {
+    } catch (e: any) {
         if (OperationCanceledException.is(e)) {
             port.postMessage({ kind: 'cancelled', data: e.message });
             return;
@@ -126,8 +127,8 @@ export function getBackgroundWaiter<T>(port: MessagePort): Promise<T> {
 
 export interface InitializationData {
     rootDirectory: string;
-    cancellationFolderName?: string;
-    runner?: string;
+    cancellationFolderName: string | undefined;
+    runner: string | undefined;
 }
 
 export interface RequestResponse {

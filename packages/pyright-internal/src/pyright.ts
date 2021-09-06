@@ -16,7 +16,6 @@ import { timingStats } from './common/timing';
 import chalk from 'chalk';
 import commandLineArgs from 'command-line-args';
 import { CommandLineOptions, OptionDefinition } from 'command-line-args';
-import * as process from 'process';
 
 import { PackageTypeVerifier } from './analyzer/packageTypeVerifier';
 import { AnalyzerService } from './analyzer/service';
@@ -25,11 +24,13 @@ import { StderrConsole } from './common/console';
 import { Diagnostic, DiagnosticCategory } from './common/diagnostic';
 import { FileDiagnostics } from './common/diagnosticSink';
 import { combinePaths, normalizePath } from './common/pathUtils';
-import { createFromRealFileSystem } from './common/fileSystem';
+import { createFromRealFileSystem } from './common/realFileSystem';
 import { isEmptyRange, Range } from './common/textRange';
 import { versionFromString } from './common/pythonVersion';
 import { PyrightFileSystem } from './pyrightFileSystem';
 import { PackageTypeReport, TypeKnownStatus } from './analyzer/packageTypeReport';
+import { createDeferred } from './common/deferred';
+import { FullAccessHost } from './common/fullAccessHost';
 
 const toolName = 'pyright';
 
@@ -57,8 +58,8 @@ interface PyrightSymbolCount {
 interface PyrightTypeCompletenessReport {
     packageName: string;
     ignoreUnknownTypesFromImports: boolean;
-    packageRootDirectory?: string;
-    pyTypedPath?: string;
+    packageRootDirectory?: string | undefined;
+    pyTypedPath?: string | undefined;
     exportedSymbolCounts: PyrightSymbolCount;
     otherSymbolCounts: PyrightSymbolCount;
     missingFunctionDocStringCount: number;
@@ -80,15 +81,15 @@ interface PyrightPublicSymbolReport {
     isTypeKnown: boolean;
     isExported: boolean;
     diagnostics: PyrightJsonDiagnostic[];
-    alternateNames?: string[];
+    alternateNames?: string[] | undefined;
 }
 
 interface PyrightJsonDiagnostic {
     file: string;
     severity: 'error' | 'warning' | 'information';
     message: string;
-    range?: Range;
-    rule?: string;
+    range?: Range | undefined;
+    rule?: string | undefined;
 }
 
 interface PyrightJsonSummary {
@@ -117,7 +118,7 @@ const cancellationNone = Object.freeze({
     },
 });
 
-function processArgs() {
+async function processArgs(): Promise<ExitStatus> {
     const optionDefinitions: OptionDefinition[] = [
         { name: 'createstub', type: String },
         { name: 'dependencies', type: Boolean },
@@ -142,25 +143,25 @@ function processArgs() {
 
     try {
         args = commandLineArgs(optionDefinitions);
-    } catch (err) {
-        const argErr: { name: string; optionName: string } = err;
+    } catch (e: any) {
+        const argErr: { name: string; optionName: string } = e;
         if (argErr && argErr.optionName) {
             console.error(`Unexpected option ${argErr.optionName}.\n${toolName} --help for usage`);
-            process.exit(ExitStatus.ParameterError);
+            return ExitStatus.ParameterError;
         }
 
         console.error(`Unexpected error\n${toolName} --help for usage`);
-        process.exit(ExitStatus.ParameterError);
+        return ExitStatus.ParameterError;
     }
 
     if (args.help !== undefined) {
         printUsage();
-        process.exit(ExitStatus.NoErrors);
+        return ExitStatus.NoErrors;
     }
 
     if (args.version !== undefined) {
         printVersion();
-        process.exit(ExitStatus.NoErrors);
+        return ExitStatus.NoErrors;
     }
 
     if (args.outputjson) {
@@ -168,7 +169,7 @@ function processArgs() {
         for (const arg of incompatibleArgs) {
             if (args[arg] !== undefined) {
                 console.error(`'outputjson' option cannot be used with '${arg}' option`);
-                process.exit(ExitStatus.ParameterError);
+                return ExitStatus.ParameterError;
             }
         }
     }
@@ -178,7 +179,7 @@ function processArgs() {
         for (const arg of incompatibleArgs) {
             if (args[arg] !== undefined) {
                 console.error(`'verifytypes' option cannot be used with '${arg}' option`);
-                process.exit(ExitStatus.ParameterError);
+                return ExitStatus.ParameterError;
             }
         }
     }
@@ -188,7 +189,7 @@ function processArgs() {
         for (const arg of incompatibleArgs) {
             if (args[arg] !== undefined) {
                 console.error(`'createstub' option cannot be used with '${arg}' option`);
-                process.exit(ExitStatus.ParameterError);
+                return ExitStatus.ParameterError;
             }
         }
     }
@@ -214,7 +215,7 @@ function processArgs() {
             console.error(
                 `'${args.pythonplatform}' is not a supported Python platform; specify Darwin, Linux, or Windows`
             );
-            process.exit(ExitStatus.ParameterError);
+            return ExitStatus.ParameterError;
         }
     }
 
@@ -224,7 +225,7 @@ function processArgs() {
             options.pythonVersion = version;
         } else {
             console.error(`'${args.pythonversion}' is not a supported Python version; specify 3.3, 3.4, etc.`);
-            process.exit(ExitStatus.ParameterError);
+            return ExitStatus.ParameterError;
         }
     }
 
@@ -253,7 +254,7 @@ function processArgs() {
 
     // The package type verification uses a different path.
     if (args['verifytypes'] !== undefined) {
-        verifyPackageTypes(
+        return verifyPackageTypes(
             fileSystem,
             args['verifytypes'] || '',
             !!args.verbose,
@@ -262,21 +263,25 @@ function processArgs() {
         );
     } else if (args['ignoreexternal'] !== undefined) {
         console.error(`'--ignoreexternal' is valid only when used with '--verifytypes'`);
+        return ExitStatus.ParameterError;
     }
 
     const watch = args.watch !== undefined;
     options.watchForSourceChanges = watch;
     options.watchForConfigChanges = watch;
 
-    const service = new AnalyzerService('<default>', fileSystem, output);
+    const service = new AnalyzerService('<default>', fileSystem, output, () => new FullAccessHost(fileSystem));
+    const exitStatus = createDeferred<ExitStatus>();
 
     service.setCompletionCallback((results) => {
         if (results.fatalErrorOccurred) {
-            process.exit(ExitStatus.FatalError);
+            exitStatus.resolve(ExitStatus.FatalError);
+            return;
         }
 
         if (results.configParseErrorOccurred) {
-            process.exit(ExitStatus.ConfigFileParseError);
+            exitStatus.resolve(ExitStatus.ConfigFileParseError);
+            return;
         }
 
         let errorCount = 0;
@@ -306,9 +311,11 @@ function processArgs() {
                 }
 
                 console.error(`Error occurred when creating type stub: ` + errMessage);
-                process.exit(ExitStatus.FatalError);
+                exitStatus.resolve(ExitStatus.FatalError);
+                return;
             }
-            process.exit(ExitStatus.NoErrors);
+            exitStatus.resolve(ExitStatus.NoErrors);
+            return;
         }
 
         if (!args.outputjson) {
@@ -329,7 +336,8 @@ function processArgs() {
         }
 
         if (!watch) {
-            process.exit(errorCount > 0 ? ExitStatus.ErrorsReported : ExitStatus.NoErrors);
+            exitStatus.resolve(errorCount > 0 ? ExitStatus.ErrorsReported : ExitStatus.NoErrors);
+            return;
         } else if (!args.outputjson) {
             console.log('Watching for file changes...');
         }
@@ -338,11 +346,7 @@ function processArgs() {
     // This will trigger the analyzer.
     service.setOptions(options);
 
-    // Sleep indefinitely.
-    const brokenPromise = new Promise(() => {
-        // Do nothing.
-    });
-    brokenPromise.then().catch();
+    return await exitStatus.promise;
 }
 
 function verifyPackageTypes(
@@ -351,7 +355,7 @@ function verifyPackageTypes(
     verboseOutput: boolean,
     outputJson: boolean,
     ignoreUnknownTypesFromImports: boolean
-): never {
+): ExitStatus {
     try {
         const verifier = new PackageTypeVerifier(fileSystem);
 
@@ -364,9 +368,7 @@ function verifyPackageTypes(
             printTypeCompletenessReportText(jsonReport, verboseOutput);
         }
 
-        process.exit(
-            jsonReport.typeCompleteness!.completenessScore < 1 ? ExitStatus.ErrorsReported : ExitStatus.NoErrors
-        );
+        return jsonReport.typeCompleteness!.completenessScore < 1 ? ExitStatus.ErrorsReported : ExitStatus.NoErrors;
     } catch (err) {
         let errMessage = '';
         if (err instanceof Error) {
@@ -374,7 +376,7 @@ function verifyPackageTypes(
         }
 
         console.error(`Error occurred when verifying types: ` + errMessage);
-        process.exit(ExitStatus.FatalError);
+        return ExitStatus.FatalError;
     }
 }
 
@@ -583,28 +585,28 @@ function printUsage() {
             toolName +
             ' [options] files...\n' +
             '  Options:\n' +
-            '  --createstub IMPORT              Create type stub file(s) for import\n' +
-            '  --dependencies                   Emit import dependency information\n' +
-            '  -h,--help                        Show this help message\n' +
-            '  --ignoreexternal                 Ignore external imports for --verifytypes\n' +
-            '  --lib                            Use library code to infer types when stubs are missing\n' +
-            '  --outputjson                     Output results in JSON format\n' +
-            '  -p,--project FILE OR DIRECTORY   Use the configuration file at this location\n' +
-            '  --pythonplatform PLATFORM        Analyze for a specific platform (Darwin, Linux, Windows)\n' +
-            '  --pythonversion VERSION          Analyze for a specific version (3.3, 3.4, etc.)\n' +
-            '  --stats                          Print detailed performance stats\n' +
-            '  -t,--typeshed-path DIRECTORY     Use typeshed type stubs at this location\n' +
-            '  -v,--venv-path DIRECTORY         Directory that contains virtual environments\n' +
-            '  --verbose                        Emit verbose diagnostics\n' +
-            '  --verifytypes PACKAGE            Verify type completeness of a py.typed package\n' +
-            '  --version                        Print Pyright version\n' +
-            '  -w,--watch                       Continue to run and watch for changes\n'
+            '  --createstub <IMPORT>              Create type stub file(s) for import\n' +
+            '  --dependencies                     Emit import dependency information\n' +
+            '  -h,--help                          Show this help message\n' +
+            '  --ignoreexternal                   Ignore external imports for --verifytypes\n' +
+            '  --lib                              Use library code to infer types when stubs are missing\n' +
+            '  --outputjson                       Output results in JSON format\n' +
+            '  -p,--project <FILE OR DIRECTORY>   Use the configuration file at this location\n' +
+            '  --pythonplatform <PLATFORM>        Analyze for a specific platform (Darwin, Linux, Windows)\n' +
+            '  --pythonversion <VERSION>          Analyze for a specific version (3.3, 3.4, etc.)\n' +
+            '  --stats                            Print detailed performance stats\n' +
+            '  -t,--typeshed-path <DIRECTORY>     Use typeshed type stubs at this location\n' +
+            '  -v,--venv-path <DIRECTORY>         Directory that contains virtual environments\n' +
+            '  --verbose                          Emit verbose diagnostics\n' +
+            '  --verifytypes <PACKAGE>            Verify type completeness of a py.typed package\n' +
+            '  --version                          Print Pyright version\n' +
+            '  -w,--watch                         Continue to run and watch for changes\n'
     );
 }
 
 function getVersionString() {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const version = require('package.json').version;
+    const version = require('../package.json').version;
     return version.toString();
 }
 
@@ -743,11 +745,16 @@ function logDiagnosticToConsole(diag: PyrightJsonDiagnostic, prefix = '  ') {
     console.log(message);
 }
 
-export function main() {
+export async function main() {
     if (process.env.NODE_ENV === 'production') {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         require('source-map-support').install();
     }
 
-    processArgs();
+    const exitCode = await processArgs();
+    process.exitCode = exitCode;
+    // Don't call process.exit; stdout may not have been flushed which can break readers.
+    // https://github.com/nodejs/node/issues/6379
+    // https://github.com/nodejs/node/issues/6456
+    // https://github.com/nodejs/node/issues/19218
 }

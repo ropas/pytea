@@ -2,7 +2,7 @@
     "name": "vscode-pyright",
     "displayName": "Pyright",
     "description": "VS Code static type checking for Python",
-    "version": "1.1.138",
+    "version": "1.1.166",
     "private": true,
     "license": "MIT",
     "author": {
@@ -14,7 +14,7 @@
         "url": "https://github.com/Microsoft/pyright"
     },
     "engines": {
-        "vscode": "^1.52.0"
+        "vscode": "^1.57.0"
     },
     "keywords": [
         "python"
@@ -24,8 +24,7 @@
     ],
     "activationEvents": [
         "onLanguage:python",
-        "workspaceContains:pyrightconfig.json",
-        "workspaceContains:mspythonconfig.json"
+        "workspaceContains:pyrightconfig.json"
     ],
     "icon": "images/pyright-icon.png",
     "main": "./dist/extension.js",
@@ -260,7 +259,7 @@
                         "reportOptionalSubscript": {
                             "type": "string",
                             "description": "Diagnostics for an attempt to subscript (index) a variable with an Optional type.",
-                            "default": "none",
+                            "default": "error",
                             "enum": [
                                 "none",
                                 "information",
@@ -271,7 +270,7 @@
                         "reportOptionalMemberAccess": {
                             "type": "string",
                             "description": "Diagnostics for an attempt to access a member of a variable with an Optional type.",
-                            "default": "none",
+                            "default": "error",
                             "enum": [
                                 "none",
                                 "information",
@@ -282,7 +281,7 @@
                         "reportOptionalCall": {
                             "type": "string",
                             "description": "Diagnostics for an attempt to call a variable with an Optional type.",
-                            "default": "none",
+                            "default": "error",
                             "enum": [
                                 "none",
                                 "information",
@@ -293,7 +292,7 @@
                         "reportOptionalIterable": {
                             "type": "string",
                             "description": "Diagnostics for an attempt to use an Optional type as an iterable value (e.g. within a for statement).",
-                            "default": "none",
+                            "default": "error",
                             "enum": [
                                 "none",
                                 "information",
@@ -304,7 +303,7 @@
                         "reportOptionalContextManager": {
                             "type": "string",
                             "description": "Diagnostics for an attempt to use an Optional type as a context manager (as a parameter to a with statement).",
-                            "default": "none",
+                            "default": "error",
                             "enum": [
                                 "none",
                                 "information",
@@ -315,7 +314,7 @@
                         "reportOptionalOperand": {
                             "type": "string",
                             "description": "Diagnostics for an attempt to use an Optional type as an operand to a binary or unary operator (like '+', '==', 'or', 'not').",
-                            "default": "none",
+                            "default": "error",
                             "enum": [
                                 "none",
                                 "information",
@@ -433,6 +432,17 @@
                                 "error"
                             ]
                         },
+                        "reportUninitializedInstanceVariable": {
+                            "type": "string",
+                            "description": "Diagnostics for instance variables that are not declared or initialized within class body or `__init__` method.",
+                            "default": "none",
+                            "enum": [
+                                "none",
+                                "information",
+                                "warning",
+                                "error"
+                            ]
+                        },
                         "reportInvalidStringEscapeSequence": {
                             "type": "string",
                             "description": "Diagnostics for invalid escape sequences used within string literals. The Python specification indicates that such sequences will generate a syntax error in future versions.",
@@ -534,7 +544,7 @@
                         },
                         "reportUnnecessaryIsInstance": {
                             "type": "string",
-                            "description": "Diagnostics for 'isinstance' or 'issubclass' calls where the result is statically determined to be always true or always false. Such calls are often indicative of a programming error.",
+                            "description": "Diagnostics for 'isinstance' or 'issubclass' calls where the result is statically determined to be always true. Such calls are often indicative of a programming error.",
                             "default": "none",
                             "enum": [
                                 "none",
@@ -600,7 +610,18 @@
                         },
                         "reportInvalidStubStatement": {
                             "type": "string",
-                            "description": "Diagnostics for type stub statements that do not conform to PEP 484",
+                            "description": "Diagnostics for type stub statements that do not conform to PEP 484.",
+                            "default": "none",
+                            "enum": [
+                                "none",
+                                "information",
+                                "warning",
+                                "error"
+                            ]
+                        },
+                        "reportIncompleteStub": {
+                            "type": "string",
+                            "description": "Diagnostics for the use of a module-level “__getattr__” function, indicating that the stub is incomplete.",
                             "default": "none",
                             "enum": [
                                 "none",
@@ -733,10 +754,6 @@
             {
                 "fileMatch": "pyrightconfig.json",
                 "url": "./schemas/pyrightconfig.schema.json"
-            },
-            {
-                "fileMatch": "mspythonconfig.json",
-                "url": "./schemas/pyrightconfig.schema.json"
             }
         ]
     },
@@ -750,25 +767,22 @@
         "webpack-dev": "npm run clean && webpack --mode development --watch --progress"
     },
     "dependencies": {
-        "@iarna/toml": "2.2.5",
         "vscode-jsonrpc": "6.0.0",
         "vscode-languageclient": "7.0.0",
         "vscode-languageserver": "7.0.0",
         "vscode-languageserver-protocol": "3.16.0"
     },
     "devDependencies": {
-        "@types/node": "^12.20.10",
-        "@types/vscode": "~1.52.0",
-        "chalk": "^4.1.1",
-        "copy-webpack-plugin": "^8.1.1",
-        "detect-indent": "^6.0.0",
-        "fs-extra": "^9.1.0",
+        "@types/copy-webpack-plugin": "^8.0.1",
+        "@types/node": "^12.20.21",
+        "@types/vscode": "~1.57.0",
+        "copy-webpack-plugin": "^9.0.1",
+        "detect-indent": "^6.1.0",
         "shx": "^0.3.3",
-        "ts-loader": "^9.1.0",
-        "tsconfig-paths-webpack-plugin": "^3.5.1",
-        "typescript": "^4.2.4",
-        "vsce": "^1.87.1",
-        "webpack": "^5.35.0",
-        "webpack-cli": "^4.6.0"
+        "ts-loader": "^9.2.5",
+        "typescript": "~4.3.5",
+        "vsce": "^1.96.1",
+        "webpack": "^5.51.1",
+        "webpack-cli": "^4.8.0"
     }
 }

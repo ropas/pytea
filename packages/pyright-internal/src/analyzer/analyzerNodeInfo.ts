@@ -18,12 +18,18 @@ import {
     ListComprehensionNode,
     ModuleNode,
     ParseNode,
+    StringNode,
 } from '../parser/parseNodes';
 import { AnalyzerFileInfo } from './analyzerFileInfo';
 import { FlowFlags, FlowNode } from './codeFlow';
 import { Declaration } from './declaration';
 import { ImportResult } from './importResult';
 import { Scope } from './scope';
+
+export interface DunderAllInfo {
+    names: string[];
+    stringNodes: StringNode[];
+}
 
 interface AnalyzerNodeInfo {
     //---------------------------------------------------------------
@@ -52,12 +58,12 @@ interface AnalyzerNodeInfo {
     // Info about the source file, used only on module nodes.
     fileInfo?: AnalyzerFileInfo;
 
-    // Map of expressions used within an execution scope (module,
+    // Set of expressions used within an execution scope (module,
     // function or lambda) that requires code flow analysis.
-    codeFlowExpressions?: Map<string, string>;
+    codeFlowExpressions?: Set<string>;
 
     // List of __all__ symbols in the module.
-    dunderAllNames?: string[];
+    dunderAllInfo?: DunderAllInfo | undefined;
 }
 
 export type ScopedNode = ModuleNode | ClassNode | FunctionNode | LambdaNode | ListComprehensionNode;
@@ -133,24 +139,24 @@ export function setFileInfo(node: ModuleNode, fileInfo: AnalyzerFileInfo) {
     analyzerNode.fileInfo = fileInfo;
 }
 
-export function getCodeFlowExpressions(node: ExecutionScopeNode): Map<string, string> | undefined {
+export function getCodeFlowExpressions(node: ExecutionScopeNode): Set<string> | undefined {
     const analyzerNode = node as AnalyzerNodeInfo;
     return analyzerNode.codeFlowExpressions;
 }
 
-export function setCodeFlowExpressions(node: ExecutionScopeNode, map: Map<string, string>) {
+export function setCodeFlowExpressions(node: ExecutionScopeNode, expressions: Set<string>) {
     const analyzerNode = node as AnalyzerNodeInfo;
-    analyzerNode.codeFlowExpressions = map;
+    analyzerNode.codeFlowExpressions = expressions;
 }
 
-export function getDunderAllNames(node: ModuleNode): string[] | undefined {
+export function getDunderAllInfo(node: ModuleNode): DunderAllInfo | undefined {
     const analyzerNode = node as AnalyzerNodeInfo;
-    return analyzerNode.dunderAllNames;
+    return analyzerNode.dunderAllInfo;
 }
 
-export function setDunderAllNames(node: ModuleNode, names: string[] | undefined) {
+export function setDunderAllInfo(node: ModuleNode, names: DunderAllInfo | undefined) {
     const analyzerNode = node as AnalyzerNodeInfo;
-    analyzerNode.dunderAllNames = names;
+    analyzerNode.dunderAllInfo = names;
 }
 
 export function isCodeUnreachable(node: ParseNode): boolean {

@@ -1,6 +1,6 @@
 # This sample tests the Python 3.8 "positional-only parameter" feature.
 
-from typing import Any, Protocol
+from typing import Any, Dict, Protocol, Tuple
 
 
 def f0(a: int, b: int):
@@ -36,11 +36,11 @@ f0(2, 3)
 
 f1(2, 3)
 
-# This should generate 1 error because b
+# This should generate an error because b
 # is a position-only parameter.
 f1(2, b=3)
 
-# This should generate 2 errors because a and b
+# This should generate an error because a and b
 # are position-only parameters.
 f1(a=2, b=3)
 
@@ -60,14 +60,14 @@ f4(1, 2, c=3)
 f4(1, b=2, c=3)
 
 # This should generate an error because c is a
-# name-only parameter.
+# keyword-only parameter.
 f4(1, 2, 3)
 
 # This should generate an error because a is a
 # positional-only parameter.
 f4(a=1, b=2, c=3)
 
-# This will generate 2 errors because of the bad
+# This will an error because of the bad
 # declaration. Test to make sure we don't crash.
 f5(1, b=2, c=3)
 
@@ -120,3 +120,36 @@ class C2:
 
 # This should generate an error
 c2: P2 = C2()
+
+
+def f8(a: int, b: int = 3, /):
+    ...
+
+
+kwargs: Dict[str, Any] = {}
+
+# This should generate an error
+f8()
+
+# This should generate an error
+f8(**kwargs)
+
+
+f8(0, **kwargs)
+
+def f9(*, c: int):
+    pass
+
+# This should generate an error because it is missing a keyword
+# argument for keyword parameter "c".
+f9(*[1, 2, 3])
+
+
+# This should generate an error because "/" cannot be used after "*args"
+def f10(x, *args, /, y):
+    pass
+
+# This should generate an error because "*" cannot be used after "*args"
+def f11(x, *args, *, y):
+    pass
+

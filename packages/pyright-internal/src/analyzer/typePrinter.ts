@@ -11,17 +11,15 @@ import { ParameterCategory } from '../parser/parseNodes';
 import * as ParseTreeUtils from './parseTreeUtils';
 import {
     ClassType,
-    combineTypes,
     EnumLiteral,
     FunctionType,
     isAnyOrUnknown,
-    isClass,
-    isObject,
+    isClassInstance,
+    isInstantiableClass,
+    isNever,
     isParamSpec,
-    isUnion,
     isVariadicTypeVar,
     maxTypeRecursionCount,
-    ObjectType,
     removeNoneFromUnion,
     Type,
     TypeBase,
@@ -31,7 +29,7 @@ import {
 import { doForEachSubtype, isOptionalType, isTupleClass } from './typeUtils';
 
 const singleTickRegEx = /'/g;
-const tripleTickRegEx = /'''/g;
+const escapedDoubleQuoteRegEx = /\\"/g;
 
 export const enum PrintTypeFlags {
     None = 0,
@@ -54,6 +52,10 @@ export const enum PrintTypeFlags {
 
     // Expand type aliases to display their individual parts?
     ExpandTypeAlias = 1 << 5,
+
+    // Add "*" for types that are conditionally constrained when
+    // used with constrained TypeVars.
+    OmitConditionalConstraint = 1 << 6,
 }
 
 export type FunctionReturnTypeCallback = (type: FunctionType) => Type;
@@ -62,334 +64,318 @@ export function printType(
     type: Type,
     printTypeFlags: PrintTypeFlags,
     returnTypeCallback: FunctionReturnTypeCallback,
-    recursionCount = 0
+    recursionTypes: Type[] = []
 ): string {
     const parenthesizeUnion = (printTypeFlags & PrintTypeFlags.ParenthesizeUnion) !== 0;
     printTypeFlags &= ~PrintTypeFlags.ParenthesizeUnion;
 
-    if (recursionCount >= maxTypeRecursionCount) {
+    // If this is a type alias, see if we should use its name rather than
+    // the type it represents.
+    if (type.typeAliasInfo) {
+        let expandTypeAlias = true;
+        if ((printTypeFlags & PrintTypeFlags.ExpandTypeAlias) === 0) {
+            expandTypeAlias = false;
+        } else {
+            if (recursionTypes.find((t) => t === type)) {
+                expandTypeAlias = false;
+            }
+        }
+
+        if (!expandTypeAlias) {
+            try {
+                recursionTypes.push(type);
+                let aliasName = type.typeAliasInfo.name;
+                const typeParams = type.typeAliasInfo.typeParameters;
+
+                if (typeParams) {
+                    let argumentStrings: string[] | undefined;
+
+                    // If there is a type arguments array, it's a specialized type alias.
+                    if (type.typeAliasInfo.typeArguments) {
+                        if (
+                            (printTypeFlags & PrintTypeFlags.OmitTypeArgumentsIfAny) === 0 ||
+                            type.typeAliasInfo.typeArguments.some((typeArg) => !isAnyOrUnknown(typeArg))
+                        ) {
+                            argumentStrings = [];
+                            type.typeAliasInfo.typeArguments.forEach((typeArg, index) => {
+                                // Which type parameter does this map to?
+                                const typeParam =
+                                    index < typeParams.length ? typeParams[index] : typeParams[typeParams.length - 1];
+
+                                // If this type argument maps to a variadic type parameter, unpack it.
+                                if (
+                                    isVariadicTypeVar(typeParam) &&
+                                    isClassInstance(typeArg) &&
+                                    isTupleClass(typeArg) &&
+                                    typeArg.tupleTypeArguments
+                                ) {
+                                    typeArg.tupleTypeArguments.forEach((tupleTypeArg) => {
+                                        argumentStrings!.push(
+                                            printType(tupleTypeArg, printTypeFlags, returnTypeCallback, recursionTypes)
+                                        );
+                                    });
+                                } else {
+                                    argumentStrings!.push(
+                                        printType(typeArg, printTypeFlags, returnTypeCallback, recursionTypes)
+                                    );
+                                }
+                            });
+                        }
+                    } else {
+                        if (
+                            (printTypeFlags & PrintTypeFlags.OmitTypeArgumentsIfAny) === 0 ||
+                            typeParams.some((typeParam) => !isAnyOrUnknown(typeParam))
+                        ) {
+                            argumentStrings = [];
+                            typeParams.forEach((typeParam) => {
+                                argumentStrings!.push(
+                                    printType(typeParam, printTypeFlags, returnTypeCallback, recursionTypes)
+                                );
+                            });
+                        }
+                    }
+
+                    if (argumentStrings) {
+                        if (argumentStrings.length === 0) {
+                            aliasName += `[()]`;
+                        } else {
+                            aliasName += `[${argumentStrings.join(', ')}]`;
+                        }
+                    }
+                }
+
+                // If it's a TypeVar, don't use the alias name. Instead, use the full
+                // name, which may have a scope associated with it.
+                if (type.category !== TypeCategory.TypeVar) {
+                    return aliasName;
+                }
+            } finally {
+                recursionTypes.pop();
+            }
+        }
+    }
+
+    if (recursionTypes.find((t) => t === type) || recursionTypes.length > maxTypeRecursionCount) {
         return '...';
     }
 
-    // If this is a type alias, use its name rather than the type
-    // it represents.
-    if (type.typeAliasInfo && (printTypeFlags & PrintTypeFlags.ExpandTypeAlias) === 0) {
-        let aliasName = type.typeAliasInfo.name;
-        const typeParams = type.typeAliasInfo.typeParameters;
+    try {
+        recursionTypes.push(type);
 
-        if (typeParams) {
-            let argumentStrings: string[] | undefined;
+        const includeConditionalIndicator = (printTypeFlags & PrintTypeFlags.OmitConditionalConstraint) === 0;
+        const getConditionalIndicator = (subtype: Type) => {
+            return subtype.condition !== undefined && includeConditionalIndicator ? '*' : '';
+        };
 
-            // If there is a type arguments array, it's a specialized type alias.
-            if (type.typeAliasInfo.typeArguments) {
-                if (
-                    (printTypeFlags & PrintTypeFlags.OmitTypeArgumentsIfAny) === 0 ||
-                    type.typeAliasInfo.typeArguments.some((typeArg) => !isAnyOrUnknown(typeArg))
-                ) {
-                    argumentStrings = [];
-                    type.typeAliasInfo.typeArguments.forEach((typeArg, index) => {
-                        // Which type parameter does this map to?
-                        const typeParam =
-                            index < typeParams.length ? typeParams[index] : typeParams[typeParams.length - 1];
-
-                        // If this type argument maps to a variadic type parameter, unpack it.
-                        if (
-                            isVariadicTypeVar(typeParam) &&
-                            isObject(typeArg) &&
-                            isTupleClass(typeArg.classType) &&
-                            typeArg.classType.tupleTypeArguments
-                        ) {
-                            typeArg.classType.tupleTypeArguments.forEach((tupleTypeArg) => {
-                                argumentStrings!.push(
-                                    printType(tupleTypeArg, printTypeFlags, returnTypeCallback, recursionCount + 1)
-                                );
-                            });
-                        } else {
-                            argumentStrings!.push(
-                                printType(typeArg, printTypeFlags, returnTypeCallback, recursionCount + 1)
-                            );
-                        }
-                    });
-                }
-            } else {
-                if (
-                    (printTypeFlags & PrintTypeFlags.OmitTypeArgumentsIfAny) === 0 ||
-                    typeParams.some((typeParam) => !isAnyOrUnknown(typeParam))
-                ) {
-                    argumentStrings = [];
-                    typeParams.forEach((typeParam) => {
-                        argumentStrings!.push(
-                            printType(typeParam, printTypeFlags, returnTypeCallback, recursionCount + 1)
-                        );
-                    });
-                }
+        switch (type.category) {
+            case TypeCategory.Unbound: {
+                return 'Unbound';
             }
 
-            if (argumentStrings) {
-                if (argumentStrings.length === 0) {
-                    aliasName += `[()]`;
-                } else {
-                    aliasName += `[${argumentStrings.join(', ')}]`;
-                }
-            }
-        }
-
-        // If it's a TypeVar, don't use the alias name. Instead, use the full
-        // name, which may have a scope associated with it.
-        if (type.category !== TypeCategory.TypeVar) {
-            return aliasName;
-        }
-    }
-
-    switch (type.category) {
-        case TypeCategory.Unbound: {
-            return 'Unbound';
-        }
-
-        case TypeCategory.Unknown: {
-            return (printTypeFlags & PrintTypeFlags.PrintUnknownWithAny) !== 0 ? 'Any' : 'Unknown';
-        }
-
-        case TypeCategory.Module: {
-            return `Module("${type.moduleName}")`;
-        }
-
-        case TypeCategory.Class: {
-            if (type.literalValue !== undefined) {
-                return `Type[Literal[${printLiteralValue(type)}]]`;
-            }
-
-            return `Type[${printObjectTypeForClass(type, printTypeFlags, returnTypeCallback, recursionCount + 1)}]`;
-        }
-
-        case TypeCategory.Object: {
-            if (type.classType.literalValue !== undefined) {
-                return `Literal[${printLiteralValue(type.classType)}]`;
-            }
-
-            return printObjectTypeForClass(type.classType, printTypeFlags, returnTypeCallback, recursionCount + 1);
-        }
-
-        case TypeCategory.Function: {
-            // If it's a Callable with a ParamSpec, use the
-            // Callable notation.
-            const parts = printFunctionParts(type, printTypeFlags, returnTypeCallback, recursionCount);
-            if (type.details.paramSpec) {
-                if (type.details.parameters.length > 0) {
-                    // Remove the args and kwargs parameters from the end.
-                    const paramTypes = type.details.parameters.map((param) =>
-                        printType(param.type, printTypeFlags, returnTypeCallback)
-                    );
-                    return `Callable[Concatenate[${paramTypes.join(', ')}, ${type.details.paramSpec.details.name}], ${
-                        parts[1]
-                    }]`;
-                }
-                return `Callable[${type.details.paramSpec.details.name}, ${parts[1]}]`;
-            }
-
-            const paramSignature = `(${parts[0].join(', ')})`;
-            if (FunctionType.isParamSpecValue(type)) {
-                return paramSignature;
-            }
-            return `${paramSignature} -> ${parts[1]}`;
-        }
-
-        case TypeCategory.OverloadedFunction: {
-            const overloadedType = type;
-            const overloads = overloadedType.overloads.map((overload) =>
-                printType(overload, printTypeFlags, returnTypeCallback, recursionCount + 1)
-            );
-            return `Overload[${overloads.join(', ')}]`;
-        }
-
-        case TypeCategory.Union: {
-            // If the union has constraints, throw them out to avoid duplicate
-            // types (e.g. "float | float | float | int").
-            if (type.constraints) {
-                type = combineTypes(type.subtypes);
-            }
-
-            if (isOptionalType(type)) {
-                const optionalType = printType(
-                    removeNoneFromUnion(type),
-                    printTypeFlags,
-                    returnTypeCallback,
-                    recursionCount + 1
-                );
-
-                if (printTypeFlags & PrintTypeFlags.PEP604) {
-                    return optionalType + ' | None';
-                }
-
-                return 'Optional[' + optionalType + ']';
-            }
-
-            let subtypes: Type[] = [];
-            doForEachSubtype(type, (subtype) => {
-                subtypes.push(subtype);
-            });
-
-            // If one or more subtypes are pseudo-generic, remove any other pseudo-generics
-            // of the same type because we don't print type arguments for pseudo-generic
-            // types, and we'll end up displaying seemingly-duplicated types.
-            const isPseudoGeneric = (type: Type) =>
-                (isClass(type) && ClassType.isPseudoGenericClass(type)) ||
-                (isObject(type) && ClassType.isPseudoGenericClass(type.classType));
-            if (subtypes.some((t) => isPseudoGeneric(t))) {
-                const filteredSubtypes: Type[] = [];
-                subtypes.forEach((type) => {
-                    if (!isPseudoGeneric(type)) {
-                        filteredSubtypes.push(type);
-                    } else if (isClass(type)) {
-                        if (!filteredSubtypes.some((t) => isClass(t) && ClassType.isSameGenericClass(t, type))) {
-                            filteredSubtypes.push(type);
-                        }
-                    } else if (isObject(type)) {
-                        if (
-                            !filteredSubtypes.some(
-                                (t) => isObject(t) && ClassType.isSameGenericClass(t.classType, type.classType)
-                            )
-                        ) {
-                            filteredSubtypes.push(type);
-                        }
-                    }
-                });
-                subtypes = filteredSubtypes;
-            }
-
-            const isLiteralObject = (type: Type) => isObject(type) && type.classType.literalValue !== undefined;
-            const isLiteralClass = (type: Type) => isClass(type) && type.literalValue !== undefined;
-
-            const subtypeStrings: string[] = [];
-            while (subtypes.length > 0) {
-                const subtype = subtypes.shift()!;
-                if (isLiteralObject(subtype)) {
-                    // Combine all literal objects. Rather than printing Union[Literal[1],
-                    // Literal[2]], print Literal[1, 2].
-                    const literals = subtypes.filter((t) => isLiteralObject(t));
-                    literals.unshift(subtype);
-                    const literalValues = literals.map((t) => printLiteralValue((t as ObjectType).classType));
-                    subtypeStrings.push(`Literal[${literalValues.join(', ')}]`);
-
-                    // Remove the items we've handled.
-                    if (literals.length > 1) {
-                        subtypes = subtypes.filter((t) => !isLiteralObject(t));
-                    }
-                } else if (isLiteralClass(subtype)) {
-                    // Combine all literal classes.
-                    const literals = subtypes.filter((t) => isLiteralClass(t));
-                    literals.unshift(subtype);
-                    const literalValues = literals.map((t) => printLiteralValue(t as ClassType));
-                    subtypeStrings.push(`Type[Literal[${literalValues.join(', ')}]]`);
-
-                    // Remove the items we've handled.
-                    if (literals.length > 1) {
-                        subtypes = subtypes.filter((t) => !isLiteralClass(t));
-                    }
-                } else {
-                    subtypeStrings.push(printType(subtype, printTypeFlags, returnTypeCallback, recursionCount + 1));
-                }
-            }
-
-            // Remove any duplicates, which can happen if we're replacing
-            // Unknown with Any or are hiding type arguments.
-            const redundancyMap = new Map<string, string>();
-            const dedupedSubtypeStrings: string[] = [];
-            subtypeStrings.forEach((subtype) => {
-                if (!redundancyMap.has(subtype)) {
-                    dedupedSubtypeStrings.push(subtype);
-                    redundancyMap.set(subtype, subtype);
-                }
-            });
-
-            if (dedupedSubtypeStrings.length === 1) {
-                return dedupedSubtypeStrings[0];
-            }
-
-            if (printTypeFlags & PrintTypeFlags.PEP604) {
-                const unionString = dedupedSubtypeStrings.join(' | ');
-                if (parenthesizeUnion) {
-                    return `(${unionString})`;
-                }
-                return unionString;
-            }
-
-            return `Union[${dedupedSubtypeStrings.join(', ')}]`;
-        }
-
-        case TypeCategory.TypeVar: {
-            // If it's synthesized, don't expose the internal name we generated.
-            // This will confuse users. The exception is if it's a bound synthesized
-            // type, in which case we'll print the bound type. This is used for
-            // "self" and "cls" parameters.
-            if (type.details.isSynthesized) {
-                // If it's a synthesized type var used to implement recursive type
-                // aliases, return the type alias name.
-                if (type.details.recursiveTypeAliasName) {
-                    if ((printTypeFlags & PrintTypeFlags.ExpandTypeAlias) !== 0 && type.details.boundType) {
-                        return printType(
-                            type.details.boundType,
-                            printTypeFlags,
-                            returnTypeCallback,
-                            recursionCount + 1
-                        );
-                    }
-                    return type.details.recursiveTypeAliasName;
-                }
-
-                if (type.details.boundType) {
-                    const boundTypeString = printType(
-                        type.details.boundType,
-                        printTypeFlags & ~PrintTypeFlags.ExpandTypeAlias,
-                        returnTypeCallback,
-                        recursionCount + 1
-                    );
-
-                    if (TypeBase.isInstantiable(type)) {
-                        return `Type[${boundTypeString}]`;
-                    }
-
-                    return boundTypeString;
-                }
-
+            case TypeCategory.Unknown: {
                 return (printTypeFlags & PrintTypeFlags.PrintUnknownWithAny) !== 0 ? 'Any' : 'Unknown';
             }
 
-            if (type.details.isParamSpec) {
-                return `${TypeVarType.getReadableName(type)}`;
+            case TypeCategory.Module: {
+                return `Module("${type.moduleName}")`;
             }
 
-            let typeVarName = TypeVarType.getReadableName(type);
+            case TypeCategory.Class: {
+                if (TypeBase.isInstance(type)) {
+                    if (type.literalValue !== undefined) {
+                        return `Literal[${printLiteralValue(type)}]`;
+                    }
 
-            if (type.isVariadicUnpacked) {
-                typeVarName = `*${typeVarName}`;
+                    return `${printObjectTypeForClass(
+                        type,
+                        printTypeFlags,
+                        returnTypeCallback,
+                        recursionTypes
+                    )}${getConditionalIndicator(type)}`;
+                } else {
+                    if (type.literalValue !== undefined) {
+                        return `Type[Literal[${printLiteralValue(type)}]]${getConditionalIndicator(type)}`;
+                    }
+
+                    return `Type[${printObjectTypeForClass(
+                        type,
+                        printTypeFlags,
+                        returnTypeCallback,
+                        recursionTypes
+                    )}]${getConditionalIndicator(type)}`;
+                }
             }
 
-            if (TypeBase.isInstantiable(type)) {
-                return `Type[${typeVarName}]`;
+            case TypeCategory.Function: {
+                // If it's a Callable with a ParamSpec, use the
+                // Callable notation.
+                const parts = printFunctionParts(type, printTypeFlags, returnTypeCallback, recursionTypes);
+                if (type.details.paramSpec) {
+                    if (type.details.parameters.length > 0) {
+                        // Remove the args and kwargs parameters from the end.
+                        const paramTypes = type.details.parameters.map((param) =>
+                            printType(param.type, printTypeFlags, returnTypeCallback, recursionTypes)
+                        );
+                        return `Callable[Concatenate[${paramTypes.join(', ')}, ${TypeVarType.getReadableName(
+                            type.details.paramSpec
+                        )}], ${parts[1]}]`;
+                    }
+                    return `Callable[${TypeVarType.getReadableName(type.details.paramSpec)}, ${parts[1]}]`;
+                }
+
+                const paramSignature = `(${parts[0].join(', ')})`;
+                if (FunctionType.isParamSpecValue(type)) {
+                    return paramSignature;
+                }
+                return `${paramSignature} -> ${parts[1]}`;
             }
 
-            return typeVarName;
+            case TypeCategory.OverloadedFunction: {
+                const overloadedType = type;
+                const overloads = overloadedType.overloads.map((overload) =>
+                    printType(overload, printTypeFlags, returnTypeCallback, recursionTypes)
+                );
+                return `Overload[${overloads.join(', ')}]`;
+            }
+
+            case TypeCategory.Union: {
+                if (isOptionalType(type)) {
+                    const typeWithoutNone = removeNoneFromUnion(type);
+                    if (isNever(typeWithoutNone)) {
+                        return 'None';
+                    }
+
+                    const optionalType = printType(typeWithoutNone, printTypeFlags, returnTypeCallback, recursionTypes);
+
+                    if (printTypeFlags & PrintTypeFlags.PEP604) {
+                        return optionalType + ' | None';
+                    }
+
+                    return 'Optional[' + optionalType + ']';
+                }
+
+                const subtypeStrings = new Set<string>();
+                const literalObjectStrings = new Set<string>();
+                const literalClassStrings = new Set<string>();
+                doForEachSubtype(type, (subtype) => {
+                    if (isClassInstance(subtype) && subtype.literalValue !== undefined) {
+                        literalObjectStrings.add(printLiteralValue(subtype));
+                    } else if (isInstantiableClass(subtype) && subtype.literalValue !== undefined) {
+                        literalClassStrings.add(printLiteralValue(subtype));
+                    } else {
+                        subtypeStrings.add(printType(subtype, printTypeFlags, returnTypeCallback, recursionTypes));
+                    }
+                });
+
+                const dedupedSubtypeStrings: string[] = [];
+                subtypeStrings.forEach((s) => dedupedSubtypeStrings.push(s));
+
+                if (literalObjectStrings.size > 0) {
+                    const literalStrings: string[] = [];
+                    literalObjectStrings.forEach((s) => literalStrings.push(s));
+                    dedupedSubtypeStrings.push(`Literal[${literalStrings.join(', ')}]`);
+                }
+
+                if (literalClassStrings.size > 0) {
+                    const literalStrings: string[] = [];
+                    literalClassStrings.forEach((s) => literalStrings.push(s));
+                    dedupedSubtypeStrings.push(`Type[Literal[${literalStrings.join(', ')}]]`);
+                }
+
+                if (dedupedSubtypeStrings.length === 1) {
+                    return dedupedSubtypeStrings[0];
+                }
+
+                if (printTypeFlags & PrintTypeFlags.PEP604) {
+                    const unionString = dedupedSubtypeStrings.join(' | ');
+                    if (parenthesizeUnion) {
+                        return `(${unionString})`;
+                    }
+                    return unionString;
+                }
+
+                return `Union[${dedupedSubtypeStrings.join(', ')}]`;
+            }
+
+            case TypeCategory.TypeVar: {
+                // If it's synthesized, don't expose the internal name we generated.
+                // This will confuse users. The exception is if it's a bound synthesized
+                // type, in which case we'll print the bound type. This is used for
+                // "self" and "cls" parameters.
+                if (type.details.isSynthesized) {
+                    // If it's a synthesized type var used to implement recursive type
+                    // aliases, return the type alias name.
+                    if (type.details.recursiveTypeAliasName) {
+                        if ((printTypeFlags & PrintTypeFlags.ExpandTypeAlias) !== 0 && type.details.boundType) {
+                            return printType(
+                                type.details.boundType,
+                                printTypeFlags,
+                                returnTypeCallback,
+                                recursionTypes
+                            );
+                        }
+                        return type.details.recursiveTypeAliasName;
+                    }
+
+                    if (type.details.boundType) {
+                        const boundTypeString = printType(
+                            type.details.boundType,
+                            printTypeFlags & ~PrintTypeFlags.ExpandTypeAlias,
+                            returnTypeCallback,
+                            recursionTypes
+                        );
+
+                        if (TypeBase.isInstantiable(type)) {
+                            return `Type[${boundTypeString}]`;
+                        }
+
+                        return boundTypeString;
+                    }
+
+                    return (printTypeFlags & PrintTypeFlags.PrintUnknownWithAny) !== 0 ? 'Any' : 'Unknown';
+                }
+
+                if (type.details.isParamSpec) {
+                    if (type.paramSpecAccess) {
+                        return `${type.details.name}.${type.paramSpecAccess}`;
+                    }
+                    return `${TypeVarType.getReadableName(type)}`;
+                }
+
+                let typeVarName = TypeVarType.getReadableName(type);
+
+                if (type.isVariadicUnpacked) {
+                    typeVarName = `*${typeVarName}`;
+                }
+
+                if (TypeBase.isInstantiable(type)) {
+                    return `Type[${typeVarName}]`;
+                }
+
+                return typeVarName;
+            }
+
+            case TypeCategory.None: {
+                return `${TypeBase.isInstantiable(type) ? 'NoneType' : 'None'}${getConditionalIndicator(type)}`;
+            }
+
+            case TypeCategory.Never: {
+                return 'Never';
+            }
+
+            case TypeCategory.Any: {
+                const anyType = type;
+                return anyType.isEllipsis ? '...' : 'Any';
+            }
         }
 
-        case TypeCategory.None: {
-            return TypeBase.isInstantiable(type) ? 'NoneType' : 'None';
-        }
-
-        case TypeCategory.Never: {
-            return 'Never';
-        }
-
-        case TypeCategory.Any: {
-            const anyType = type;
-            return anyType.isEllipsis ? '...' : 'Any';
-        }
+        return '';
+    } finally {
+        recursionTypes.pop();
     }
-
-    return '';
 }
 
-export function printLiteralValue(type: ClassType): string {
+export function printLiteralValue(type: ClassType, quotation = "'"): string {
     const literalValue = type.literalValue;
     if (literalValue === undefined) {
         return '';
@@ -398,11 +384,19 @@ export function printLiteralValue(type: ClassType): string {
     let literalStr: string;
     if (typeof literalValue === 'string') {
         const prefix = type.details.name === 'bytes' ? 'b' : '';
-        literalStr = literalValue.toString();
-        if (literalStr.indexOf('\n') >= 0) {
-            literalStr = `${prefix}'''${literalStr.replace(tripleTickRegEx, "\\'\\'\\'")}'''`;
-        } else {
-            literalStr = `${prefix}'${literalStr.replace(singleTickRegEx, "\\'")}'`;
+
+        // JSON.stringify will perform proper escaping for " case.
+        // So, we only need to do our own escaping for ' case.
+        literalStr = JSON.stringify(literalValue).toString();
+        if (quotation !== '"') {
+            literalStr = `'${literalStr
+                .substring(1, literalStr.length - 1)
+                .replace(escapedDoubleQuoteRegEx, '"')
+                .replace(singleTickRegEx, "\\'")}'`;
+        }
+
+        if (prefix) {
+            literalStr = `${prefix}${literalStr}`;
         }
     } else if (typeof literalValue === 'boolean') {
         literalStr = literalValue ? 'True' : 'False';
@@ -419,7 +413,7 @@ export function printObjectTypeForClass(
     type: ClassType,
     printTypeFlags: PrintTypeFlags,
     returnTypeCallback: FunctionReturnTypeCallback,
-    recursionCount = 0
+    recursionTypes: Type[] = []
 ): string {
     let objName = type.aliasName || type.details.name;
 
@@ -443,12 +437,12 @@ export function printObjectTypeForClass(
                     if (
                         typeParam &&
                         typeParam.details.isVariadic &&
-                        isObject(typeArg) &&
-                        ClassType.isBuiltIn(typeArg.classType, 'tuple') &&
-                        typeArg.classType.tupleTypeArguments
+                        isClassInstance(typeArg) &&
+                        ClassType.isBuiltIn(typeArg, 'tuple') &&
+                        typeArg.tupleTypeArguments
                     ) {
                         // Expand the tuple type that maps to the variadic type parameter.
-                        if (typeArg.classType.tupleTypeArguments.length === 0) {
+                        if (typeArg.tupleTypeArguments.length === 0) {
                             if (!isAnyOrUnknown(typeArg)) {
                                 isAllAny = false;
                             }
@@ -456,12 +450,12 @@ export function printObjectTypeForClass(
                             typeArgStrings.push('()');
                         } else {
                             typeArgStrings.push(
-                                ...typeArg.classType.tupleTypeArguments!.map((typeArg) => {
+                                ...typeArg.tupleTypeArguments.map((typeArg) => {
                                     if (!isAnyOrUnknown(typeArg)) {
                                         isAllAny = false;
                                     }
 
-                                    return printType(typeArg, printTypeFlags, returnTypeCallback, recursionCount + 1);
+                                    return printType(typeArg, printTypeFlags, returnTypeCallback, recursionTypes);
                                 })
                             );
                         }
@@ -470,7 +464,7 @@ export function printObjectTypeForClass(
                             isAllAny = false;
                         }
 
-                        typeArgStrings.push(printType(typeArg, printTypeFlags, returnTypeCallback, recursionCount + 1));
+                        typeArgStrings.push(printType(typeArg, printTypeFlags, returnTypeCallback, recursionTypes));
                     }
                 });
 
@@ -492,7 +486,7 @@ export function printObjectTypeForClass(
                         '[' +
                         typeParams
                             .map((typeParam) => {
-                                return printType(typeParam, printTypeFlags, returnTypeCallback, recursionCount + 1);
+                                return printType(typeParam, printTypeFlags, returnTypeCallback, recursionTypes);
                             })
                             .join(', ') +
                         ']';
@@ -508,7 +502,7 @@ export function printFunctionParts(
     type: FunctionType,
     printTypeFlags: PrintTypeFlags,
     returnTypeCallback: FunctionReturnTypeCallback,
-    recursionCount = 0
+    recursionTypes: Type[] = []
 ): [string[], string] {
     const paramTypeStrings: string[] = [];
     type.details.parameters.forEach((param, index) => {
@@ -520,16 +514,16 @@ export function printFunctionParts(
         ) {
             const specializedParamType = FunctionType.getEffectiveParameterType(type, index);
             if (
-                isObject(specializedParamType) &&
-                ClassType.isBuiltIn(specializedParamType.classType, 'tuple') &&
-                specializedParamType.classType.tupleTypeArguments
+                isClassInstance(specializedParamType) &&
+                ClassType.isBuiltIn(specializedParamType, 'tuple') &&
+                specializedParamType.tupleTypeArguments
             ) {
-                specializedParamType.classType.tupleTypeArguments.forEach((paramType, paramIndex) => {
+                specializedParamType.tupleTypeArguments.forEach((paramType, paramIndex) => {
                     const paramString = `_p${(index + paramIndex).toString()}: ${printType(
                         paramType,
                         printTypeFlags,
                         returnTypeCallback,
-                        recursionCount + 1
+                        recursionTypes
                     )}`;
                     paramTypeStrings.push(paramString);
                 });
@@ -554,8 +548,8 @@ export function printFunctionParts(
             if (param.hasDeclaredType || param.isTypeInferred) {
                 const paramType = FunctionType.getEffectiveParameterType(type, index);
                 const paramTypeString =
-                    recursionCount < maxTypeRecursionCount
-                        ? printType(paramType, printTypeFlags, returnTypeCallback, recursionCount + 1)
+                    recursionTypes.length < maxTypeRecursionCount
+                        ? printType(paramType, printTypeFlags, returnTypeCallback, recursionTypes)
                         : '';
                 paramString += ': ' + paramTypeString;
 
@@ -593,19 +587,15 @@ export function printFunctionParts(
     });
 
     const returnType = returnTypeCallback(type);
-    let returnTypeString =
-        recursionCount < maxTypeRecursionCount
+    const returnTypeString =
+        recursionTypes.length < maxTypeRecursionCount
             ? printType(
                   returnType,
                   printTypeFlags | PrintTypeFlags.ParenthesizeUnion,
                   returnTypeCallback,
-                  recursionCount + 1
+                  recursionTypes
               )
             : '';
-
-    if (printTypeFlags & PrintTypeFlags.PEP604 && isUnion(returnType) && recursionCount > 0) {
-        returnTypeString = `(${returnTypeString})`;
-    }
 
     return [paramTypeStrings, returnTypeString];
 }

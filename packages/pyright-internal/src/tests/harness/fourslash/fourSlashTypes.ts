@@ -20,10 +20,15 @@ export const enum GlobalMetadataOptionNames {
 export const enum MetadataOptionNames {
     fileName = 'filename',
     library = 'library',
+    distLibrary = 'distlibrary',
 }
 
 /** List of allowed file metadata names */
-export const fileMetadataNames = [MetadataOptionNames.fileName, MetadataOptionNames.library];
+export const fileMetadataNames = [
+    MetadataOptionNames.fileName,
+    MetadataOptionNames.library,
+    MetadataOptionNames.distLibrary,
+];
 
 /** all the necessary information to set the right compiler settings */
 export interface CompilerSettings {
@@ -59,7 +64,7 @@ export interface FourSlashData {
      * is a range with `text in range` "selected".
      */
     ranges: Range[];
-    rangesByText?: MultiMap<Range>;
+    rangesByText?: MultiMap<Range> | undefined;
 }
 
 export interface Marker {
@@ -70,7 +75,7 @@ export interface Marker {
 
 export interface Range {
     fileName: string;
-    marker?: Marker;
+    marker?: Marker | undefined;
     pos: number;
     end: number;
 }

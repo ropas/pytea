@@ -46,7 +46,6 @@ import { Localizer } from '../localization/localize';
 import { ModuleNode } from '../parser/parseNodes';
 import { ModuleImport, ParseOptions, Parser, ParseResults } from '../parser/parser';
 import { Token } from '../parser/tokenizerTypes';
-import { PyrightFileSystem } from '../pyrightFileSystem';
 import { AnalyzerFileInfo, ImportLookup } from './analyzerFileInfo';
 import * as AnalyzerNodeInfo from './analyzerNodeInfo';
 import { Binder } from './binder';
@@ -62,14 +61,18 @@ import { SymbolTable } from './symbol';
 import { TestWalker } from './testWalker';
 import { TypeEvaluator } from './typeEvaluator';
 
+// Limit the number of import cycles tracked per source file.
 const _maxImportCyclesPerFile = 4;
+
+// Allow files up to 32MB in length.
+const _maxSourceFileSize = 32 * 1024 * 1024;
 
 interface ResolveImportResult {
     imports: ImportResult[];
-    builtinsImportResult?: ImportResult;
-    typingModulePath?: string;
-    typeshedModulePath?: string;
-    collectionsModulePath?: string;
+    builtinsImportResult?: ImportResult | undefined;
+    typingModulePath?: string | undefined;
+    typeshedModulePath?: string | undefined;
+    collectionsModulePath?: string | undefined;
 }
 
 export class SourceFile {
@@ -123,7 +126,7 @@ export class SourceFile {
 
     // Client's version of the file. Undefined implies that contents
     // need to be read from disk.
-    private _clientDocument?: TextDocument;
+    private _clientDocument: TextDocument | undefined;
 
     // Version of file contents that have been analyzed.
     private _analyzedFileContentsVersion = -1;
@@ -132,9 +135,9 @@ export class SourceFile {
     // the binder information hanging from it?
     private _parseTreeNeedsCleaning = false;
 
-    private _parseResults?: ParseResults;
-    private _moduleSymbolTable?: SymbolTable;
-    private _cachedIndexResults?: IndexResults;
+    private _parseResults: ParseResults | undefined;
+    private _moduleSymbolTable: SymbolTable | undefined;
+    private _cachedIndexResults: IndexResults | undefined;
 
     // Reentrancy check for binding.
     private _isBindingInProgress = false;
@@ -143,6 +146,8 @@ export class SourceFile {
     private _parseDiagnostics: Diagnostic[] = [];
     private _bindDiagnostics: Diagnostic[] = [];
     private _checkerDiagnostics: Diagnostic[] = [];
+    private _typeIgnoreLines: { [line: number]: boolean } = {};
+    private _typeIgnoreAll = false;
 
     // Settings that control which diagnostics should be output.
     private _diagnosticRuleSet = getBasicDiagnosticRuleSet();
@@ -151,7 +156,7 @@ export class SourceFile {
     private _circularDependencies: CircularDependency[] = [];
 
     // Did we hit the maximum import depth?
-    private _hitMaxImportDepth?: number;
+    private _hitMaxImportDepth: number | undefined;
 
     // Do we need to perform a binding step?
     private _isBindingNeeded = true;
@@ -163,11 +168,11 @@ export class SourceFile {
     private _indexingNeeded = true;
 
     // Information about implicit and explicit imports from this file.
-    private _imports?: ImportResult[];
-    private _builtinsImport?: ImportResult;
-    private _typingModulePath?: string;
-    private _typeshedModulePath?: string;
-    private _collectionsModulePath?: string;
+    private _imports: ImportResult[] | undefined;
+    private _builtinsImport: ImportResult | undefined;
+    private _typingModulePath: string | undefined;
+    private _typeshedModulePath: string | undefined;
+    private _collectionsModulePath: string | undefined;
 
     private _logTracker: LogTracker;
     readonly fileSystem: FileSystem;
@@ -199,6 +204,7 @@ export class SourceFile {
             if (
                 this._filePath.endsWith(normalizeSlashes('stdlib/collections/__init__.pyi')) ||
                 this._filePath.endsWith(normalizeSlashes('stdlib/asyncio/futures.pyi')) ||
+                this._filePath.endsWith(normalizeSlashes('stdlib/asyncio/tasks.pyi')) ||
                 this._filePath.endsWith(normalizeSlashes('stdlib/builtins.pyi')) ||
                 this._filePath.endsWith(normalizeSlashes('stdlib/_importlib_modulespec.pyi')) ||
                 this._filePath.endsWith(normalizeSlashes('stdlib/dataclasses.pyi')) ||
@@ -252,12 +258,11 @@ export class SourceFile {
 
         // Filter the diagnostics based on "type: ignore" lines.
         if (options.diagnosticRuleSet.enableTypeIgnoreComments) {
-            const typeIgnoreLines = this._parseResults ? this._parseResults.tokenizerOutput.typeIgnoreLines : {};
-            if (Object.keys(typeIgnoreLines).length > 0) {
+            if (Object.keys(this._typeIgnoreLines).length > 0) {
                 diagList = diagList.filter((d) => {
                     if (d.category !== DiagnosticCategory.UnusedCode) {
                         for (let line = d.range.start.line; line <= d.range.end.line; line++) {
-                            if (typeIgnoreLines[line]) {
+                            if (this._typeIgnoreLines[line]) {
                                 return false;
                             }
                         }
@@ -305,7 +310,7 @@ export class SourceFile {
         // If there is a "type: ignore" comment at the top of the file, clear
         // the diagnostic list.
         if (options.diagnosticRuleSet.enableTypeIgnoreComments) {
-            if (this._parseResults && this._parseResults.tokenizerOutput.typeIgnoreAll) {
+            if (this._typeIgnoreAll) {
                 diagList = [];
             }
         }
@@ -394,7 +399,7 @@ export class SourceFile {
         if (this._parseResults) {
             if (
                 this._parseResults.containsWildcardImport ||
-                AnalyzerNodeInfo.getDunderAllNames(this._parseResults.parseTree)
+                AnalyzerNodeInfo.getDunderAllInfo(this._parseResults.parseTree) !== undefined
             ) {
                 this._parseTreeNeedsCleaning = true;
                 this._isBindingNeeded = true;
@@ -421,7 +426,17 @@ export class SourceFile {
                 this._clientDocument = TextDocument.create(this._filePath, 'python', version, '');
             }
             this._clientDocument = TextDocument.update(this._clientDocument, contents, version);
-            this.markDirty();
+
+            const fileContents = this._clientDocument.getText();
+            const contentsHash = StringUtils.hashString(fileContents);
+
+            // Have the contents of the file changed?
+            if (fileContents.length !== this._lastFileContentLength || contentsHash !== this._lastFileContentHash) {
+                this.markDirty();
+            }
+
+            this._lastFileContentLength = fileContents.length;
+            this._lastFileContentHash = contentsHash;
         }
     }
 
@@ -512,6 +527,16 @@ export class SourceFile {
                 try {
                     const startTime = timingStats.readFileTime.totalTime;
                     timingStats.readFileTime.timeOperation(() => {
+                        // Check the file's length before attempting to read its full contents.
+                        const fileStat = this.fileSystem.statSync(this._filePath);
+                        if (fileStat.size > _maxSourceFileSize) {
+                            this._console.error(
+                                `File length of "${this._filePath}" is ${fileStat.size} ` +
+                                    `which exceeds the maximum supported file size of ${_maxSourceFileSize}`
+                            );
+                            throw new Error('File larger than max');
+                        }
+
                         // Read the file's contents.
                         fileContents = content ?? this.fileSystem.readFileSync(this._filePath, 'utf8');
 
@@ -547,6 +572,8 @@ export class SourceFile {
                 const parseResults = parser.parseSourceFile(fileContents!, parseOptions, diagSink);
                 assert(parseResults !== undefined && parseResults.tokenizerOutput !== undefined);
                 this._parseResults = parseResults;
+                this._typeIgnoreLines = this._parseResults.tokenizerOutput.typeIgnoreLines;
+                this._typeIgnoreAll = this._parseResults.tokenizerOutput.typeIgnoreAll;
 
                 // Resolve imports.
                 timingStats.resolveImportsTime.timeOperation(() => {
@@ -575,7 +602,7 @@ export class SourceFile {
                     configOptions.diagnosticRuleSet,
                     useStrict
                 );
-            } catch (e) {
+            } catch (e: any) {
                 const message: string =
                     (e.stack ? e.stack.toString() : undefined) ||
                     (typeof e.message === 'string' ? e.message : undefined) ||
@@ -941,7 +968,7 @@ export class SourceFile {
                     assert(moduleScope !== undefined);
                     this._moduleSymbolTable = moduleScope!.symbolTable;
                 });
-            } catch (e) {
+            } catch (e: any) {
                 const message: string =
                     (e.stack ? e.stack.toString() : undefined) ||
                     (typeof e.message === 'string' ? e.message : undefined) ||
@@ -988,7 +1015,7 @@ export class SourceFile {
                     const fileInfo = AnalyzerNodeInfo.getFileInfo(this._parseResults!.parseTree)!;
                     this._checkerDiagnostics = fileInfo.diagnosticSink.fetchAndClear();
                 });
-            } catch (e) {
+            } catch (e: any) {
                 const isCancellation = OperationCanceledException.is(e);
                 if (!isCancellation) {
                     const message: string =
@@ -1157,7 +1184,7 @@ export class SourceFile {
     }
 
     private _getPathForLogging(filepath: string) {
-        if (!(this.fileSystem instanceof PyrightFileSystem) || !this.fileSystem.isMappedFilePath(filepath)) {
+        if (!this.fileSystem.isMappedFilePath(filepath)) {
             return filepath;
         }
 

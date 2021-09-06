@@ -7,29 +7,25 @@
  * Class that holds the configuration options for the analyzer.
  */
 
-import * as child_process from 'child_process';
 import { isAbsolute } from 'path';
 
+import { getPathsFromPthFiles } from '../analyzer/pythonPathUtils';
 import * as pathConsts from '../common/pathConsts';
 import { DiagnosticSeverityOverridesMap } from './commandLineOptions';
 import { ConsoleInterface } from './console';
 import { DiagnosticRule } from './diagnosticRules';
 import { FileSystem } from './fileSystem';
+import { Host } from './host';
 import {
     combinePaths,
     ensureTrailingDirectorySeparator,
     FileSpec,
     getFileSpec,
+    isDirectory,
     normalizePath,
     resolvePaths,
 } from './pathUtils';
-import {
-    latestStablePythonVersion,
-    PythonVersion,
-    versionFromMajorMinor,
-    versionFromString,
-    versionToString,
-} from './pythonVersion';
+import { latestStablePythonVersion, PythonVersion, versionFromString, versionToString } from './pythonVersion';
 
 export enum PythonPlatform {
     Darwin = 'Darwin',
@@ -59,7 +55,7 @@ export class ExecutionEnvironment {
     pythonVersion: PythonVersion;
 
     // Default to no platform.
-    pythonPlatform?: string;
+    pythonPlatform?: string | undefined;
 
     // Default to no extra paths.
     extraPaths: string[] = [];
@@ -77,6 +73,10 @@ export interface DiagnosticRuleSet {
 
     // Should parameter type be omitted if it is not annotated?
     omitUnannotatedParamType: boolean;
+
+    // Indicate when a type is conditional based on a constrained
+    // type variable type?
+    omitConditionalConstraint: boolean;
 
     // Should Union and Optional types be printed in PEP 604 format?
     pep604Printing: boolean;
@@ -187,6 +187,10 @@ export interface DiagnosticRuleSet {
     // incompatible return types.
     reportOverlappingOverload: DiagnosticLevel;
 
+    // Report instance variables that are not initialized within
+    // the constructor.
+    reportUninitializedInstanceVariable: DiagnosticLevel;
+
     // Report usage of invalid escape sequences in string literals?
     reportInvalidStringEscapeSequence: DiagnosticLevel;
 
@@ -216,7 +220,7 @@ export interface DiagnosticRuleSet {
     reportCallInDefaultInitializer: DiagnosticLevel;
 
     // Report calls to isinstance or issubclass that are statically determined
-    // to always be true or false.
+    // to always be true.
     reportUnnecessaryIsInstance: DiagnosticLevel;
 
     // Report calls to cast that are statically determined
@@ -244,6 +248,9 @@ export interface DiagnosticRuleSet {
     // Report statements that are syntactically correct but
     // have no semantic meaning within a type stub file.
     reportInvalidStubStatement: DiagnosticLevel;
+
+    // Report usage of __getattr__ at the module level in a stub.
+    reportIncompleteStub: DiagnosticLevel;
 
     // Report operations on __all__ symbol that are not supported
     // by a static type checker.
@@ -308,6 +315,7 @@ export function getDiagLevelDiagnosticRules() {
         DiagnosticRule.reportIncompatibleMethodOverride,
         DiagnosticRule.reportIncompatibleVariableOverride,
         DiagnosticRule.reportOverlappingOverload,
+        DiagnosticRule.reportUninitializedInstanceVariable,
         DiagnosticRule.reportInvalidStringEscapeSequence,
         DiagnosticRule.reportUnknownParameterType,
         DiagnosticRule.reportUnknownArgumentType,
@@ -326,6 +334,7 @@ export function getDiagLevelDiagnosticRules() {
         DiagnosticRule.reportUndefinedVariable,
         DiagnosticRule.reportUnboundVariable,
         DiagnosticRule.reportInvalidStubStatement,
+        DiagnosticRule.reportIncompleteStub,
         DiagnosticRule.reportUnsupportedDunderAll,
         DiagnosticRule.reportUnusedCallResult,
         DiagnosticRule.reportUnusedCoroutine,
@@ -343,6 +352,7 @@ export function getOffDiagnosticRuleSet(): DiagnosticRuleSet {
         printUnknownAsAny: true,
         omitTypeArgsIfAny: true,
         omitUnannotatedParamType: true,
+        omitConditionalConstraint: true,
         pep604Printing: true,
         strictListInference: false,
         strictSetInference: false,
@@ -378,6 +388,7 @@ export function getOffDiagnosticRuleSet(): DiagnosticRuleSet {
         reportIncompatibleMethodOverride: 'none',
         reportIncompatibleVariableOverride: 'none',
         reportOverlappingOverload: 'none',
+        reportUninitializedInstanceVariable: 'none',
         reportInvalidStringEscapeSequence: 'none',
         reportUnknownParameterType: 'none',
         reportUnknownArgumentType: 'none',
@@ -396,6 +407,7 @@ export function getOffDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUnboundVariable: 'none',
         reportUndefinedVariable: 'warning',
         reportInvalidStubStatement: 'none',
+        reportIncompleteStub: 'none',
         reportUnsupportedDunderAll: 'none',
         reportUnusedCallResult: 'none',
         reportUnusedCoroutine: 'none',
@@ -409,6 +421,7 @@ export function getBasicDiagnosticRuleSet(): DiagnosticRuleSet {
         printUnknownAsAny: false,
         omitTypeArgsIfAny: false,
         omitUnannotatedParamType: true,
+        omitConditionalConstraint: false,
         pep604Printing: true,
         strictListInference: false,
         strictSetInference: false,
@@ -428,12 +441,12 @@ export function getBasicDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUnusedVariable: 'none',
         reportDuplicateImport: 'none',
         reportWildcardImportFromLibrary: 'warning',
-        reportOptionalSubscript: 'none',
-        reportOptionalMemberAccess: 'none',
-        reportOptionalCall: 'none',
-        reportOptionalIterable: 'none',
-        reportOptionalContextManager: 'none',
-        reportOptionalOperand: 'none',
+        reportOptionalSubscript: 'error',
+        reportOptionalMemberAccess: 'error',
+        reportOptionalCall: 'error',
+        reportOptionalIterable: 'error',
+        reportOptionalContextManager: 'error',
+        reportOptionalOperand: 'error',
         reportTypedDictNotRequiredAccess: 'error',
         reportUntypedFunctionDecorator: 'none',
         reportUntypedClassDecorator: 'none',
@@ -444,6 +457,7 @@ export function getBasicDiagnosticRuleSet(): DiagnosticRuleSet {
         reportIncompatibleMethodOverride: 'none',
         reportIncompatibleVariableOverride: 'none',
         reportOverlappingOverload: 'none',
+        reportUninitializedInstanceVariable: 'none',
         reportInvalidStringEscapeSequence: 'warning',
         reportUnknownParameterType: 'none',
         reportUnknownArgumentType: 'none',
@@ -462,6 +476,7 @@ export function getBasicDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUnboundVariable: 'error',
         reportUndefinedVariable: 'error',
         reportInvalidStubStatement: 'none',
+        reportIncompleteStub: 'none',
         reportUnsupportedDunderAll: 'warning',
         reportUnusedCallResult: 'none',
         reportUnusedCoroutine: 'error',
@@ -475,6 +490,7 @@ export function getStrictDiagnosticRuleSet(): DiagnosticRuleSet {
         printUnknownAsAny: false,
         omitTypeArgsIfAny: false,
         omitUnannotatedParamType: false,
+        omitConditionalConstraint: false,
         pep604Printing: true,
         strictListInference: true,
         strictSetInference: true,
@@ -510,6 +526,7 @@ export function getStrictDiagnosticRuleSet(): DiagnosticRuleSet {
         reportIncompatibleMethodOverride: 'error',
         reportIncompatibleVariableOverride: 'error',
         reportOverlappingOverload: 'error',
+        reportUninitializedInstanceVariable: 'none',
         reportInvalidStringEscapeSequence: 'error',
         reportUnknownParameterType: 'error',
         reportUnknownArgumentType: 'error',
@@ -528,6 +545,7 @@ export function getStrictDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUnboundVariable: 'error',
         reportUndefinedVariable: 'error',
         reportInvalidStubStatement: 'error',
+        reportIncompleteStub: 'error',
         reportUnsupportedDunderAll: 'error',
         reportUnusedCallResult: 'none',
         reportUnusedCoroutine: 'error',
@@ -557,13 +575,13 @@ export class ConfigOptions {
     projectRoot: string;
 
     // Path to python interpreter.
-    pythonPath?: string;
+    pythonPath?: string | undefined;
 
     // Path to use for typeshed definitions.
-    typeshedPath?: string;
+    typeshedPath?: string | undefined;
 
     // Path to custom typings (stub) modules.
-    stubPath?: string;
+    stubPath?: string | undefined;
 
     // A list of file specs to include in the analysis. Can contain
     // directories, in which case all "*.py" files within those directories
@@ -581,7 +599,7 @@ export class ConfigOptions {
     // It is used to store whether the user has specified directories in
     // the exclude setting, which is later modified to include a default set.
     // This setting is true when user has not specified any exclude.
-    autoExcludeVenv?: boolean;
+    autoExcludeVenv?: boolean | undefined;
 
     // A list of file specs whose errors and warnings should be ignored even
     // if they are included in the transitive closure of included files.
@@ -591,14 +609,14 @@ export class ConfigOptions {
     strict: FileSpec[] = [];
 
     // Emit verbose information to console?
-    verboseOutput?: boolean;
+    verboseOutput?: boolean | undefined;
 
     // Perform type checking and report diagnostics only for open files?
-    checkOnlyOpenFiles?: boolean;
+    checkOnlyOpenFiles?: boolean | undefined;
 
     // In the absence of type stubs, use library implementations to extract
     // type information?
-    useLibraryCodeForTypes?: boolean;
+    useLibraryCodeForTypes?: boolean | undefined;
 
     // Offer auto-import completions.
     autoImportCompletions = true;
@@ -632,28 +650,28 @@ export class ConfigOptions {
     // directories. This is used in conjunction with the "venv" name in
     // the config file to identify the python environment used for resolving
     // third-party modules.
-    venvPath?: string;
+    venvPath?: string | undefined;
 
     // Default venv environment.
-    venv?: string;
+    venv?: string | undefined;
 
     // Default pythonVersion. Can be overridden by executionEnvironment.
-    defaultPythonVersion?: PythonVersion;
+    defaultPythonVersion?: PythonVersion | undefined;
 
     // Default pythonPlatform. Can be overridden by executionEnvironment.
-    defaultPythonPlatform?: string;
+    defaultPythonPlatform?: string | undefined;
 
     // Default extraPaths. Can be overridden by executionEnvironment.
-    defaultExtraPaths?: string[];
+    defaultExtraPaths?: string[] | undefined;
 
     //---------------------------------------------------------------
     // Internal-only switches
 
     // Run additional analysis as part of test cases?
-    internalTestMode?: boolean;
+    internalTestMode?: boolean | undefined;
 
     // Run program in index generation mode.
-    indexGenerationMode?: boolean;
+    indexGenerationMode?: boolean | undefined;
 
     static getDiagnosticRuleSet(typeCheckingMode?: string): DiagnosticRuleSet {
         if (typeCheckingMode === 'strict') {
@@ -704,8 +722,8 @@ export class ConfigOptions {
         configObj: any,
         typeCheckingMode: string | undefined,
         console: ConsoleInterface,
+        host: Host,
         diagnosticOverrides?: DiagnosticSeverityOverridesMap,
-        pythonPath?: string,
         skipIncludeSection = false
     ) {
         // Read the "include" entry.
@@ -820,6 +838,7 @@ export class ConfigOptions {
         this.diagnosticRuleSet = {
             printUnknownAsAny: defaultSettings.printUnknownAsAny,
             omitTypeArgsIfAny: defaultSettings.omitTypeArgsIfAny,
+            omitConditionalConstraint: defaultSettings.omitConditionalConstraint,
             omitUnannotatedParamType: defaultSettings.omitUnannotatedParamType,
             pep604Printing: defaultSettings.pep604Printing,
 
@@ -1062,6 +1081,13 @@ export class ConfigOptions {
                 defaultSettings.reportOverlappingOverload
             ),
 
+            // Read the "reportUninitializedInstanceVariable" entry.
+            reportUninitializedInstanceVariable: this._convertDiagnosticLevel(
+                configObj.reportUninitializedInstanceVariable,
+                DiagnosticRule.reportUninitializedInstanceVariable,
+                defaultSettings.reportUninitializedInstanceVariable
+            ),
+
             // Read the "reportInvalidStringEscapeSequence" entry.
             reportInvalidStringEscapeSequence: this._convertDiagnosticLevel(
                 configObj.reportInvalidStringEscapeSequence,
@@ -1188,6 +1214,13 @@ export class ConfigOptions {
                 defaultSettings.reportInvalidStubStatement
             ),
 
+            // Read the "reportIncompleteStub" entry.
+            reportIncompleteStub: this._convertDiagnosticLevel(
+                configObj.reportIncompleteStub,
+                DiagnosticRule.reportIncompleteStub,
+                defaultSettings.reportIncompleteStub
+            ),
+
             // Read the "reportUnsupportedDunderAll" entry.
             reportUnsupportedDunderAll: this._convertDiagnosticLevel(
                 configObj.reportUnsupportedDunderAll,
@@ -1261,7 +1294,7 @@ export class ConfigOptions {
             }
         }
 
-        this.ensureDefaultPythonVersion(pythonPath, console);
+        this.ensureDefaultPythonVersion(host, console);
 
         // Read the default "pythonPlatform".
         if (configObj.pythonPlatform !== undefined) {
@@ -1272,7 +1305,7 @@ export class ConfigOptions {
             }
         }
 
-        this.ensureDefaultPythonPlatform(console);
+        this.ensureDefaultPythonPlatform(host, console);
 
         // Read the "typeshedPath" setting.
         this.typeshedPath = undefined;
@@ -1381,36 +1414,34 @@ export class ConfigOptions {
         }
     }
 
-    ensureDefaultPythonPlatform(console: ConsoleInterface) {
+    ensureDefaultPythonPlatform(host: Host, console: ConsoleInterface) {
         // If no default python platform was specified, assume that the
         // user wants to use the current platform.
         if (this.defaultPythonPlatform !== undefined) {
             return;
         }
 
-        if (process.platform === 'darwin') {
-            this.defaultPythonPlatform = PythonPlatform.Darwin;
-        } else if (process.platform === 'linux') {
-            this.defaultPythonPlatform = PythonPlatform.Linux;
-        } else if (process.platform === 'win32') {
-            this.defaultPythonPlatform = PythonPlatform.Windows;
-        }
-
+        this.defaultPythonPlatform = host.getPythonPlatform();
         if (this.defaultPythonPlatform !== undefined) {
             console.info(`Assuming Python platform ${this.defaultPythonPlatform}`);
         }
     }
 
-    ensureDefaultPythonVersion(pythonPath: string | undefined, console: ConsoleInterface) {
+    ensureDefaultPythonVersion(host: Host, console: ConsoleInterface) {
         // If no default python version was specified, retrieve the version
         // from the currently-selected python interpreter.
         if (this.defaultPythonVersion !== undefined) {
             return;
         }
 
-        this.defaultPythonVersion = this._getPythonVersionFromPythonInterpreter(pythonPath, console);
+        const importFailureInfo: string[] = [];
+        this.defaultPythonVersion = host.getPythonVersion(this.pythonPath, importFailureInfo);
         if (this.defaultPythonVersion !== undefined) {
             console.info(`Assuming Python version ${versionToString(this.defaultPythonVersion)}`);
+        }
+
+        for (const log of importFailureInfo) {
+            console.info(log);
         }
     }
 
@@ -1427,7 +1458,11 @@ export class ConfigOptions {
 
         if (extraPaths && extraPaths.length > 0) {
             for (const p of extraPaths) {
-                paths.push(resolvePaths(this.projectRoot, p));
+                const path = resolvePaths(this.projectRoot, p);
+                paths.push(path);
+                if (isDirectory(fs, path)) {
+                    paths.push(...getPathsFromPthFiles(fs, path));
+                }
             }
         }
 
@@ -1542,39 +1577,5 @@ export class ConfigOptions {
         }
 
         return undefined;
-    }
-
-    private _getPythonVersionFromPythonInterpreter(
-        interpreterPath: string | undefined,
-        console: ConsoleInterface
-    ): PythonVersion | undefined {
-        try {
-            const commandLineArgs: string[] = [
-                '-c',
-                'import sys, json; json.dump(dict(major=sys.version_info[0], minor=sys.version_info[1]), sys.stdout)',
-            ];
-            let execOutput: string;
-
-            if (interpreterPath) {
-                execOutput = child_process.execFileSync(interpreterPath, commandLineArgs, { encoding: 'utf8' });
-            } else {
-                execOutput = child_process.execFileSync('python', commandLineArgs, { encoding: 'utf8' });
-            }
-
-            const versionJson: { major: number; minor: number } = JSON.parse(execOutput);
-
-            const version = versionFromMajorMinor(versionJson.major, versionJson.minor);
-            if (version === undefined) {
-                console.warn(
-                    `Python version ${versionJson.major}.${versionJson.minor} from interpreter is unsupported`
-                );
-                return undefined;
-            }
-
-            return version;
-        } catch {
-            console.info('Unable to get Python version from interpreter');
-            return undefined;
-        }
     }
 }
