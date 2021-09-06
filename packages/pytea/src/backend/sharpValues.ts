@@ -372,9 +372,9 @@ interface SVObjectProps extends ShValueBase {
 const svObjectProps: SVObjectProps = {
     type: SVType.Object,
     id: -1,
-    attrs: Map(), // TODO: default methods
-    indices: Map(),
-    keyValues: Map(),
+    attrs: Map<string, ShValue>(), // TODO: default methods
+    indices: Map<number, ShValue>(),
+    keyValues: Map<string, ShValue>(),
     addr: SVAddr.create(Number.NEGATIVE_INFINITY, undefined),
     source: undefined,
     shape: undefined,
@@ -444,7 +444,7 @@ export class SVObject extends Record(svObjectProps) implements SVObjectProps {
 
     // assume that this is iterable object like list or tuple, extract numeric values from indices
     extractIndexedNumber(heap: ShHeap): Map<number, ExpNum> {
-        let map: Map<number, ExpNum> = Map();
+        let map: Map<number, ExpNum> = Map<number, ExpNum>();
 
         this.indices.forEach((v, k) => {
             const value = fetchAddr(v, heap);
@@ -539,7 +539,7 @@ const svFuncDefaults: SVFuncProps = {
     id: -1,
     name: '',
     params: List(),
-    defaults: Map(),
+    defaults: Map<string, ShValue>(),
     funcBody: TSPass.get(undefined),
     hasClosure: false,
     funcEnv: undefined,

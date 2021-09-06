@@ -16,7 +16,7 @@ interface ShEnvProps {
 }
 
 const shEnvDefaults: ShEnvProps = {
-    addrMap: Map(),
+    addrMap: Map<string, SVAddr>(),
 };
 
 export class ShEnv extends Record(shEnvDefaults) implements ShEnvProps {
@@ -41,7 +41,7 @@ export class ShEnv extends Record(shEnvDefaults) implements ShEnvProps {
     }
 
     toString(): string {
-        let revMap: Map<number, string> = Map();
+        let revMap: Map<number, string> = Map<number, string>();
         this.addrMap.forEach((v, k) => {
             revMap = revMap.set(v.addr, k);
         });
@@ -67,7 +67,7 @@ interface ShHeapProps {
 
 const shHeapDefaults: ShHeapProps = {
     addrMax: 0,
-    valMap: Map(),
+    valMap: Map<number, ShValue>(),
 };
 
 export class ShHeap extends Record(shHeapDefaults) implements ShHeapProps {

@@ -1128,7 +1128,7 @@ export class ContextSetImpl<T> implements ContextSet<T> {
         const rightHeap = right.heap;
 
         // object address equality map
-        let eqMap: Map<number, number> = Map();
+        let eqMap: Map<number, number> = Map<number, number>();
 
         if (typeof leftRet !== 'object') leftRet = SVNone.create(undefined);
         if (typeof rightRet !== 'object') rightRet = SVNone.create(undefined);

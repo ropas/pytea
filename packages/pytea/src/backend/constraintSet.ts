@@ -144,9 +144,9 @@ const constraintSetDefaults: ConstraintSetProps = {
     pathCtr: List(),
     notPrunedCtrMax: -1,
     ctrIdCache: Set(),
-    rangeCache: Map(),
-    stringCache: Map(),
-    nonStringCache: Map(),
+    rangeCache: Map<number, NumRange>(),
+    stringCache: Map<number, string>(),
+    nonStringCache: Map<number, Set<string>>(),
     valid: true,
 };
 

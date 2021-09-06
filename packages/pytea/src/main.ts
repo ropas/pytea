@@ -17,11 +17,11 @@ import * as process from 'process';
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
 import { CommandLineOptions as PyrightCommandLineOptions } from 'pyright-internal/common/commandLineOptions';
 import { NullConsole, StandardConsole } from 'pyright-internal/common/console';
-
-import { createFromRealFileSystem } from 'pyright-internal/common/fileSystem';
 import { combinePaths } from 'pyright-internal/common/pathUtils';
-import { defaultOptions } from './service/pyteaOptions';
+import { PyrightFileSystem } from 'pyright-internal/pyrightFileSystem';
+import { createFromRealFileSystem } from 'pyright-internal/common/realFileSystem';
 
+import { defaultOptions } from './service/pyteaOptions';
 import { PyteaService } from './service/pyteaService';
 import { buildPyteaOption, exportConstraintSet } from './service/pyteaUtils';
 
@@ -56,7 +56,7 @@ function parsePyrightArgs(): CommandLineOptions | undefined {
     try {
         args = commandLineArgs(optionDefinitions);
     } catch (err) {
-        const argErr: { name: string; optionName: string } = err;
+        const argErr: { optionName: string } = err as { optionName: string };
         if (argErr && argErr.optionName) {
             console.error(`Unexpected option ${argErr.optionName}.\n${toolName} --help for usage`);
             return;
@@ -124,12 +124,12 @@ function runMain(args: CommandLineOptions) {
 
     // ignore original pyright output.
     const output = new NullConsole();
-    const realFileSystem = createFromRealFileSystem(output);
+    const fileSystem = new PyrightFileSystem(createFromRealFileSystem(output));
 
     const runZ3 = args.z3;
     options.watchForSourceChanges = false;
 
-    const pyrightService = new AnalyzerService('<default>', realFileSystem, output);
+    const pyrightService = new AnalyzerService('<default>', fileSystem, output);
     let pyteaService: PyteaService | undefined;
 
     const resultPath = combinePaths(process.cwd(), args.resultPath);
