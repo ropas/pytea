@@ -1,26 +1,26 @@
 # Config (pyteaconfig.json)
 
-We use `pyteaconfig.json` to handle options for Pytea, following `pyrightconfig.json` of Pyright.
+PyTea reads `pyteaconfig.json` to handle analysis options of Pytea, like `pyrightconfig.json` of Pyright.
 
-Place `pyteaconfig.ts` to the directory that contains the target Python file, or run with options like below.
+The user should place `pyteaconfig.json` in which contains the target Python file. The user can also run PyTea with explicit command-line options like below.
 
 ```bash
-# set explicit pyteaconfig.json
+# set explicit path of pyteaconfig.json
 python bin/pytea.py --config=path/to/pyteaconfig.json path/to/source.py
 
 # or use below
 node bin/index.js --configPath=path/to/pyteaconfig.json path/to/source.py
 ```
 
-We will call `bin/index.js` (Constraint Generator) as **Node side**, and `bin/pytea.py` (Z3Py) as **Z3 side**.
+The main paper of PyTea calls `bin/index.js` (Constraint Generator) as **Online analyzer**, and `bin/pytea.py` (Z3Py) as **Offline analyzer**. From this document, we will call them **JS script** and **Python script**, respectively.
 
 ## Notable Configurations
 
 ### `pythonCmdArgs: { [option: string]: boolean | number | string }`:
 
-This options will be injected to `ArgumentParser.add_argument(...)` method from Python [argparse](https://docs.python.org/3/library/argparse.html) module.
+These options will be injected to `ArgumentParser.add_argument(...)` method call of Python [argparse](https://docs.python.org/3/library/argparse.html) module.
 
-If `required` option of `add_argument` is on but `pythonCmdArgs` does not have it, the analyzer will raise error immediately.
+If the `required` option of `add_argument` is set but `pythonCmdArgs` does not have an option on it, the analyzer will raise the error immediately.
 
 ```python
 # "pythonCmdArgs": { "batch_size": 32, "device": "cuda", "epoch": 1 }
@@ -36,13 +36,13 @@ args = parser.parse_args()
 
 ### `logLevel: "none" | "result-only" | "reduced" | "full"`
 
-This option determines how detailed Pytea will print the analysis result to the user.
+This option determines how detailed Pytea will print the analysis result.
 
-`-l, --log` option of `pytea.py` will give an alias of this Node option. This option of Z3 side will be given as integer number (0 to 3), like `--log=2`.
+Python script has an alias of this option. Use `-l` or `--log`, like `--log=1` (`logLevel` will be set to `"result-only"`).
 
 #### `none`
 
-Node side runs silently. Print final results of Z3 side only.
+Online analyzer will execute the analysis silently. Print only the result of offline analyzer.
 
 ```bash
 > python bin/pytea.py --log=0 path/to/source.py
@@ -55,25 +55,28 @@ analyzer starts!
 
 #### `result-only`
 
-Print final states of paths of Node sides. If the analyzer found error, it prints the broken constraint and the source position of that constraint. It also prints function call stacks, so users can determine which exact user code is failed.
+Print the final state of each path when the online analyzer is finished. If the analyzer found error, it will print the conflicted constraint and the source position of that constraint. It also prints the call stack in order to determine which user code is exactly failed.
 
 It also prints **Warnings**. Warnings contains **Unimplemented function call and module import**, so if you have met some false warnings about unimplemented API that we have not implemented, please make issue and notify us.
 
 #### `reduced`
 
-In addition to the above, print every value assingned to variables in the environment at the stopped position (i.e., dumps reduced environment and heap), and every collected constraint from each path.
+In addition to the above, print every value assingned to the variables in the environment (i.e., reduced environment and heap) at the stopped position. It also prints every collected constraint from each path.
 
-Constraints are divided by three classes.
+Each constraint is divided by three classes.
 
-- **Hard Constraint** (Dark Gray): Initialization condition of each symbolic variable. Produced from for loop (index range) or unknown tensor initialization (marks each dimension should be non-zero).
-- **Path Constraint** (Yellow): Branch condition (e.g., `if ...` in Python syntax).
-- **Soft Constraint** (White): Conditions required by each API. It can be violated, that means, if this constriant is violated, there is an error.
+- **Hard Constraint**
+  - **Initial Constraint** (Dark Gray): Initialization condition of each symbolic variable. Produced from a for loop (index range) or any unknown tensor initialization which is marked that each dimension should be non-zero.
+  - **Path Constraint** (Yellow): Branch condition (e.g., `if ...` in Python syntax).
+- **Soft Constraint** (White): Safety conditions required by each tensor-related API. This kind of constraint should not be violated under the previous Hard constraints (i.e. under all possible input values).
 
 #### `full`
 
-In addition to the above, print every raw dump of environments and python. It also prints PyTea IR (internal representation) translation result of the entry file. You may not want this option.
+In addition to the above, print raw dump of the PyTea environment object. It also prints the PyTea IR (internal representation) translation of the entry file. You may not use this option.
 
 ## Full Configurations
+
+For the up-to-date configuration, see [pyteaOptions.ts](../packages/pytea/src/service/pyteaOptions.ts)
 
 ```typescript
 export type PyCmdArgs = { [option: string]: boolean | number | string };

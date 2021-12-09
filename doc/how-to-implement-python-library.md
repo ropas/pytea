@@ -1,6 +1,6 @@
 # How to implement Python Library API and LibCalls
 
-Every path below comes with a prefix `packages/pytea` as a base path.
+Every path below comes with a prefix `packages/pytea`.
 
 ## Source structure
 
