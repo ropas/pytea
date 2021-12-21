@@ -29,12 +29,11 @@ Every path below comes with a prefix `packages/pytea`.
 
 ## Overall workflow
 
-- 1\. 구현하고자 하는 PyTorch API의 뼈대를 `pylib` 폴더에 다른 함수들을 참고하여 구현한다. 기초적인 syntax는 python이랑 같으니 python 만으로 구현할 수 있는 것은 그대로 구현한다.
-- 2\. shape error 또는 list range constraint 등을 명시적으로 주어야 하는 api는 `LibCall.torch.matmul(self, other)`와 같이 `LibCall` 문을 사용한다. `LibCall.torch.matmul` 은 frontend에서 적절히 처리되어 `src/pylibImplements/backend/torch/index.ts`의 `matmul` 함수를 부르는 것으로 처리된다.
-- 3\. `LibCall.foo.bar(x, y)` 함수를 사용했다고 가정하자. `src/pylibImplements/backend/foo/index.ts`에 `bar(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue>` 시그니처를 가지는 함수를 다른 함수를 참고하여 적절히 제작한다.
-  - 3.1 `foo` 디렉토리가 없다면 다른 폴더를 참조해서 적절히 제작한 후, `src/pylibImplements/backend/index.ts`의 `libCallMap`에 import { libCallMap as fooMap } from './foo'`와`...registLibCall(fooMap, 'foo')` 문장을 등록하도록 한다.
-- 4\. `index.ts` 아래의 `libCallImpls`에 구현한 `foo` 값을 집어넣는다.
-- 5\. 구현한 `bar` 함수는 `src/pylibImplements/backend/torch/index.ts`의 `libCallMap`, `src/pylibImplements/backend/index.ts`의 `libCallMap`을 거쳐 `src/backend/evaluator.ts`의 `evalLibCall` 함수에서 LibCallType.explicit 부분을 처리하는 곳에서 처리된다. 앞의 두 `libCallMap`에 bar이 잘 들어갈 수 있는지 확인한다.
+1. Implement PyTorch (or other library) API by referring to `pylib` and [supported Python syntax](supported-python-syntax.md) on directory `pylib`. For some well-formed high-level modules like [torchvision/models/resnet.py](../packages/pytea/pylib/torchvision/models/resnet.py), you can completely copy and paste the original source.
+2. Replace expressions which require explicit constraints by appropriate `LibCall` methods, like
+`LibCall.torch.matmul(self, other)`, or `LibCall.guard.require_lt(0, x)`. Each `LibCall.XXX.YYY(...)` will invoke the function `YYY(...)` from `src/pylibImplements/XXX/index.ts` or `src/pylibImplements/XXX.ts`.
+3. Suppose that we use a function `LibCall.foo.bar(x, y)` from Python script. You should implement `bar(ctx: Context<LCBase.ExplicitParams>, source?: ParseNode): ContextSet<ShValue>` on `src/pylibImplements/backend/foo/index.ts`. If there is no directory or file `foo`, create it and register `libCallImpls` at `src/pylibImplements/backend/index.ts`.
+4. Register `foo` at `libCallImpls`. `libCallImpls` is usually placed in the end of the file.
 
 ### Note
 

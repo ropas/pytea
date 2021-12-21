@@ -1,10 +1,8 @@
 # Format of PyTea Internal Representation
 
-PyTea 내부에서 사용하는 IR은 LISP 형태로 변환되어 입출력을 수행할 수 있다.
+PyTea IR can be exported with S-Expression format. Each statement and expression follows a form like `(<constructor> [<source>]? <args>*)`.
 
-각 statement 및 expression은 전부 `(<constructor> [<source>]? <args>*)`와 같은 형태를 따른다.
-
-예를 들어 `x = 1 + 2`는 다음과 같은 IR로 번역된다.
+For example, `x = 1 + 2` will be translated like below:
 
 ```lisp
 (source-map "/home/path/to/script/test.py"
@@ -13,7 +11,7 @@ PyTea 내부에서 사용하는 IR은 LISP 형태로 변환되어 입출력을 �
   (binop [0:4:9] + (const [0:4:5] 1) (const [0:8:9] 2))))
 ```
 
-이 형태를 기반으로 한 IR 입출력의 구현은 `IRReader.ts`에 있으며, LISP 형태가 아닌 Python 형태로 좀 더 알아보기 쉽게 출력하려면 `ThStmt.toString` 함수를 사용하면 된다.
+`IRReader.ts` implements the I/O of S-Expression, and `ThStmt.toString` method supports more Python-like syntax.
 
 ## Syntax
 

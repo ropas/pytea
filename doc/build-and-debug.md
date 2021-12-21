@@ -8,13 +8,13 @@ npm run install:all
 cd packages/pytea
 npm run webpack # compile development build
 
-# run constraint generator only
+# run constraint generator (online analyzer) only
 node ./index.js path/to/script.py
 
-# run with z3
+# run full pytea
 python pytea.py path/to/script.py
 ```
 
-We added two debug options to VSCode Debug panel.
-- `Pytea CLI`: Build and run pytea frontend using `packages/pytea/pytest/basics/pyteaconfig.json`. It should define `entryPath` option.
-- `Pytea CLI scratch`: Scratchpad debugging. Does not build pytea config, but analyze `packages/pytea/pytest/basics/scratch.py`. User must build PyTea with `npm run build` before test it.
+We use two debug options to VSCode Debug panel.
+- `Pytea CLI`: Build and run pytea with `packages/pytea/pytest/basics/pyteaconfig.json`. The config file must have `entryPath` option.
+- `Pytea CLI scratch`: Scratchpad debugging. It does not build pytea config, but analyzes `packages/pytea/pytest/basics/scratch.py`. User must build PyTea with `npm run build` before tests it.

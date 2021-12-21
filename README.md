@@ -1,11 +1,30 @@
-# PyTea: PyTorch Tensor Shape Error Detection
+# PyTea: PyTorch Tensor Shape Error Analyzer
+
+[paper](https://arxiv.org/abs/2112.09037) [project page](https://sf.snu.ac.kr/pytea/)
+
 ## Requirements
 
 - `node.js >= 12.x`
 - `python >= 3.8`
   - `z3-solver >= 4.8`
 
-## How to build and use
+## How to install and use
+
+```bash
+# install node.js
+sudo apt-get install nodejs
+
+# install python z3-solver
+pip install z3-solver
+
+# download pytea
+wget https://github.com/ropas/pytea/releases/download/v0.1.0/pytea.zip
+unzip pytea.zip
+
+# run pytea
+python bin/pytea.py path/to/source.py
+```
+## How to build
 
 ```bash
 # install dependencies
@@ -14,9 +33,6 @@ pip install z3-solver
 
 # build
 npm run build
-
-# analyze
-python bin/pytea.py path/to/source.py
 ```
 
 ## Documentations

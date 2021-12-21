@@ -2,7 +2,9 @@
 
 PyTea reads `pyteaconfig.json` to handle analysis options of Pytea, like `pyrightconfig.json` of Pyright.
 
-The user should place `pyteaconfig.json` in which contains the target Python file. The user can also run PyTea with explicit command-line options like below.
+The user should place `pyteaconfig.json` in which contains the target Python file. If the config file does not exist, default parameters will be used.
+
+The user can also run PyTea with explicit command-line options like below:
 
 ```bash
 # set explicit path of pyteaconfig.json
