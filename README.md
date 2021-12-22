@@ -23,6 +23,9 @@ unzip pytea.zip
 
 # run pytea
 python bin/pytea.py path/to/source.py
+
+# run example file
+python bin/pytea.py packages/pytea/pytest/basics/scratch.py
 ```
 ## How to build
 
@@ -39,6 +42,7 @@ npm run build
 
 * [Configuration](doc/config.md)
 * [Build and Debug](doc/build-and-debug.md)
+* [How to add new API](doc/how-to-implement-python-library.md)
 
 ## Brief explanation of the analysis result
 

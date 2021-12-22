@@ -6,8 +6,6 @@
  *
  * require guard in pylib side
  */
-import { ExpNum } from 'src/backend/symExpressions';
-
 import { fetchAddr, isSize } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
 import { CodeSource, ShValue, SVBool, SVInt, SVType } from '../backend/sharpValues';

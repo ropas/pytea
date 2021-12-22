@@ -85,13 +85,14 @@ interface ContextProps<T> {
     ctrSet: ConstraintSet;
     retVal: T;
 
-    // SVFunc is python function call, string is libcall name.
+    // the properties below are internal values; the user should not directly modify these values.
+    // SVFunc is a type of Python function, string is a name of LibCall.
     callStack: List<[SVFunc | string, CodeSource | undefined]>;
     logs: List<ShValue>;
     imported: ShEnv; // qualPath (relative to project root or site-packages) to address.
     relPath: string; // relative path to entry file. starts with entry file name.
 
-    // if set, automatically go to failed path.
+    // if it is set, this context is regarded as a failed path.
     failed?: SVError;
 }
 
