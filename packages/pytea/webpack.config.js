@@ -10,7 +10,7 @@ const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
 const { TsconfigPathsPlugin } = require('tsconfig-paths-webpack-plugin');
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
-const { monorepoResourceNameMapper } = require('../../build/lib/webpack');
+const { cacheConfig, monorepoResourceNameMapper } = require('../../build/lib/webpack');
 
 const outPath = path.resolve(__dirname, 'dist');
 const pylibImplements = path.resolve(__dirname, 'pylib');
@@ -19,7 +19,7 @@ const z3wrapper = path.resolve(__dirname, 'z3wrapper');
 module.exports = (_, { mode }) => {
     return {
         context: __dirname,
-        cache: true,
+        cache: mode === 'development' ? cacheConfig(__dirname, __filename) : false,
         entry: {
             pytea: './src/pytea.ts',
         },

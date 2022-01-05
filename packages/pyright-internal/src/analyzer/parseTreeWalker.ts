@@ -10,6 +10,7 @@
 import { fail } from '../common/debug';
 import {
     ArgumentNode,
+    ArrowCallableNode,
     AssertNode,
     AssignmentExpressionNode,
     AssignmentNode,
@@ -114,6 +115,12 @@ export class ParseTreeWalker {
     // returned.
     visitNode(node: ParseNode): ParseNodeArray {
         switch (node.nodeType) {
+            case ParseNodeType.Error:
+                if (this.visitError(node)) {
+                    return [node.child, ...(node.decorators ?? [])];
+                }
+                break;
+
             case ParseNodeType.Argument:
                 if (this.visitArgument(node)) {
                     return [node.name, node.valueExpression];
@@ -168,21 +175,9 @@ export class ParseTreeWalker {
                 }
                 break;
 
-            case ParseNodeType.Case:
-                if (this.visitCase(node)) {
-                    return [node.pattern, node.guardExpression, node.suite];
-                }
-                break;
-
             case ParseNodeType.Class:
                 if (this.visitClass(node)) {
                     return [...node.decorators, node.name, ...node.arguments, node.suite];
-                }
-                break;
-
-            case ParseNodeType.Ternary:
-                if (this.visitTernary(node)) {
-                    return [node.ifExpression, node.testExpression, node.elseExpression];
                 }
                 break;
 
@@ -216,21 +211,21 @@ export class ParseTreeWalker {
                 }
                 break;
 
-            case ParseNodeType.DictionaryKeyEntry:
-                if (this.visitDictionaryKeyEntry(node)) {
-                    return [node.keyExpression, node.valueExpression];
-                }
-                break;
-
             case ParseNodeType.DictionaryExpandEntry:
                 if (this.visitDictionaryExpandEntry(node)) {
                     return [node.expandExpression];
                 }
                 break;
 
-            case ParseNodeType.Error:
-                if (this.visitError(node)) {
-                    return [node.child, ...(node.decorators ?? [])];
+            case ParseNodeType.DictionaryKeyEntry:
+                if (this.visitDictionaryKeyEntry(node)) {
+                    return [node.keyExpression, node.valueExpression];
+                }
+                break;
+
+            case ParseNodeType.Ellipsis:
+                if (this.visitEllipsis(node)) {
+                    return [];
                 }
                 break;
 
@@ -270,12 +265,6 @@ export class ParseTreeWalker {
                 }
                 break;
 
-            case ParseNodeType.Ellipsis:
-                if (this.visitEllipsis(node)) {
-                    return [];
-                }
-                break;
-
             case ParseNodeType.Except:
                 if (this.visitExcept(node)) {
                     return [node.typeExpression, node.name, node.exceptSuite];
@@ -304,12 +293,6 @@ export class ParseTreeWalker {
                         node.functionAnnotationComment,
                         node.suite,
                     ];
-                }
-                break;
-
-            case ParseNodeType.FunctionAnnotation:
-                if (this.visitFunctionAnnotation(node)) {
-                    return [...node.paramTypeAnnotations, node.returnTypeAnnotation];
                 }
                 break;
 
@@ -346,12 +329,6 @@ export class ParseTreeWalker {
             case ParseNodeType.ListComprehensionIf:
                 if (this.visitListComprehensionIf(node)) {
                     return [node.testExpression];
-                }
-                break;
-
-            case ParseNodeType.Match:
-                if (this.visitMatch(node)) {
-                    return [node.subjectExpression, ...node.cases];
                 }
                 break;
 
@@ -403,66 +380,6 @@ export class ParseTreeWalker {
                 }
                 break;
 
-            case ParseNodeType.PatternCapture:
-                if (this.visitPatternCapture(node)) {
-                    return [node.target];
-                }
-                break;
-
-            case ParseNodeType.PatternClass:
-                if (this.visitPatternClass(node)) {
-                    return [node.className, ...node.arguments];
-                }
-                break;
-
-            case ParseNodeType.PatternClassArgument:
-                if (this.visitPatternClassArgument(node)) {
-                    return [node.name, node.pattern];
-                }
-                break;
-
-            case ParseNodeType.PatternAs:
-                if (this.visitPatternAs(node)) {
-                    return [...node.orPatterns, node.target];
-                }
-                break;
-
-            case ParseNodeType.PatternLiteral:
-                if (this.visitPatternLiteral(node)) {
-                    return [node.expression];
-                }
-                break;
-
-            case ParseNodeType.PatternMapping:
-                if (this.visitPatternMapping(node)) {
-                    return [...node.entries];
-                }
-                break;
-
-            case ParseNodeType.PatternMappingKeyEntry:
-                if (this.visitPatternMappingKeyEntry(node)) {
-                    return [node.keyPattern, node.valuePattern];
-                }
-                break;
-
-            case ParseNodeType.PatternMappingExpandEntry:
-                if (this.visitPatternMappingExpandEntry(node)) {
-                    return [node.target];
-                }
-                break;
-
-            case ParseNodeType.PatternSequence:
-                if (this.visitPatternSequence(node)) {
-                    return [...node.entries];
-                }
-                break;
-
-            case ParseNodeType.PatternValue:
-                if (this.visitPatternValue(node)) {
-                    return [node.expression];
-                }
-                break;
-
             case ParseNodeType.Raise:
                 if (this.visitRaise(node)) {
                     return [node.typeExpression, node.valueExpression, node.tracebackExpression];
@@ -493,21 +410,27 @@ export class ParseTreeWalker {
                 }
                 break;
 
-            case ParseNodeType.String:
-                if (this.visitString(node)) {
-                    return [];
-                }
-                break;
-
             case ParseNodeType.StringList:
                 if (this.visitStringList(node)) {
                     return [node.typeAnnotation, ...node.strings];
                 }
                 break;
 
+            case ParseNodeType.String:
+                if (this.visitString(node)) {
+                    return [];
+                }
+                break;
+
             case ParseNodeType.Suite:
                 if (this.visitSuite(node)) {
                     return [...node.statements];
+                }
+                break;
+
+            case ParseNodeType.Ternary:
+                if (this.visitTernary(node)) {
+                    return [node.ifExpression, node.testExpression, node.elseExpression];
                 }
                 break;
 
@@ -571,6 +494,90 @@ export class ParseTreeWalker {
                 }
                 break;
 
+            case ParseNodeType.FunctionAnnotation:
+                if (this.visitFunctionAnnotation(node)) {
+                    return [...node.paramTypeAnnotations, node.returnTypeAnnotation];
+                }
+                break;
+
+            case ParseNodeType.Match:
+                if (this.visitMatch(node)) {
+                    return [node.subjectExpression, ...node.cases];
+                }
+                break;
+
+            case ParseNodeType.Case:
+                if (this.visitCase(node)) {
+                    return [node.pattern, node.guardExpression, node.suite];
+                }
+                break;
+
+            case ParseNodeType.PatternSequence:
+                if (this.visitPatternSequence(node)) {
+                    return [...node.entries];
+                }
+                break;
+
+            case ParseNodeType.PatternAs:
+                if (this.visitPatternAs(node)) {
+                    return [...node.orPatterns, node.target];
+                }
+                break;
+
+            case ParseNodeType.PatternLiteral:
+                if (this.visitPatternLiteral(node)) {
+                    return [node.expression];
+                }
+                break;
+
+            case ParseNodeType.PatternClass:
+                if (this.visitPatternClass(node)) {
+                    return [node.className, ...node.arguments];
+                }
+                break;
+
+            case ParseNodeType.PatternCapture:
+                if (this.visitPatternCapture(node)) {
+                    return [node.target];
+                }
+                break;
+
+            case ParseNodeType.PatternMapping:
+                if (this.visitPatternMapping(node)) {
+                    return [...node.entries];
+                }
+                break;
+
+            case ParseNodeType.PatternMappingKeyEntry:
+                if (this.visitPatternMappingKeyEntry(node)) {
+                    return [node.keyPattern, node.valuePattern];
+                }
+                break;
+
+            case ParseNodeType.PatternMappingExpandEntry:
+                if (this.visitPatternMappingExpandEntry(node)) {
+                    return [node.target];
+                }
+                break;
+
+            case ParseNodeType.PatternValue:
+                if (this.visitPatternValue(node)) {
+                    return [node.expression];
+                }
+                break;
+
+            case ParseNodeType.PatternClassArgument:
+                if (this.visitPatternClassArgument(node)) {
+                    return [node.name, node.pattern];
+                }
+                break;
+
+            case ParseNodeType.ArrowCallable:
+                if (this.visitArrowCallable(node)) {
+                    return [...node.parameters.map((param) => param.typeAnnotation), node.returnTypeAnnotation];
+                }
+                break;
+
             default:
                 fail('Unexpected node type');
                 break;
@@ -581,6 +588,10 @@ export class ParseTreeWalker {
 
     // Override these methods as necessary.
     visitArgument(node: ArgumentNode) {
+        return true;
+    }
+
+    visitArrowCallable(node: ArrowCallableNode) {
         return true;
     }
 

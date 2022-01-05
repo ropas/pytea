@@ -41,7 +41,7 @@ export class ExecutionEnvironment {
         defaultPythonPlatform: string | undefined,
         defaultExtraPaths: string[] | undefined
     ) {
-        this.root = root;
+        this.root = root || undefined;
         this.pythonVersion = defaultPythonVersion || latestStablePythonVersion;
         this.pythonPlatform = defaultPythonPlatform;
         this.extraPaths = defaultExtraPaths || [];
@@ -49,7 +49,8 @@ export class ExecutionEnvironment {
 
     // Root directory for execution - absolute or relative to the
     // project root.
-    root: string;
+    // Undefined if this is a rootless environment (e.g., open file mode).
+    root?: string;
 
     // Always default to the latest stable version of the language.
     pythonVersion: PythonVersion;
@@ -172,6 +173,10 @@ export interface DiagnosticRuleSet {
     // the owning class or module?
     reportPrivateUsage: DiagnosticLevel;
 
+    // Report usage of an import from a py.typed module that is
+    // not meant to be re-exported from that module.
+    reportPrivateImportUsage: DiagnosticLevel;
+
     // Report attempts to redefine variables that are in all-caps.
     reportConstantRedefinition: DiagnosticLevel;
 
@@ -208,6 +213,9 @@ export interface DiagnosticRuleSet {
 
     // Report usage of unknown input or return parameters?
     reportUnknownMemberType: DiagnosticLevel;
+
+    // Report input parameters that are missing type annotations?
+    reportMissingParameterType: DiagnosticLevel;
 
     // Report usage of generic class without explicit type arguments?
     reportMissingTypeArgument: DiagnosticLevel;
@@ -311,6 +319,7 @@ export function getDiagLevelDiagnosticRules() {
         DiagnosticRule.reportUntypedBaseClass,
         DiagnosticRule.reportUntypedNamedTuple,
         DiagnosticRule.reportPrivateUsage,
+        DiagnosticRule.reportPrivateImportUsage,
         DiagnosticRule.reportConstantRedefinition,
         DiagnosticRule.reportIncompatibleMethodOverride,
         DiagnosticRule.reportIncompatibleVariableOverride,
@@ -322,6 +331,7 @@ export function getDiagLevelDiagnosticRules() {
         DiagnosticRule.reportUnknownLambdaType,
         DiagnosticRule.reportUnknownVariableType,
         DiagnosticRule.reportUnknownMemberType,
+        DiagnosticRule.reportMissingParameterType,
         DiagnosticRule.reportMissingTypeArgument,
         DiagnosticRule.reportInvalidTypeVarUse,
         DiagnosticRule.reportCallInDefaultInitializer,
@@ -384,6 +394,7 @@ export function getOffDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUntypedBaseClass: 'none',
         reportUntypedNamedTuple: 'none',
         reportPrivateUsage: 'none',
+        reportPrivateImportUsage: 'none',
         reportConstantRedefinition: 'none',
         reportIncompatibleMethodOverride: 'none',
         reportIncompatibleVariableOverride: 'none',
@@ -395,6 +406,7 @@ export function getOffDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUnknownLambdaType: 'none',
         reportUnknownVariableType: 'none',
         reportUnknownMemberType: 'none',
+        reportMissingParameterType: 'none',
         reportMissingTypeArgument: 'none',
         reportInvalidTypeVarUse: 'none',
         reportCallInDefaultInitializer: 'none',
@@ -429,7 +441,7 @@ export function getBasicDiagnosticRuleSet(): DiagnosticRuleSet {
         strictParameterNoneValue: false,
         enableTypeIgnoreComments: true,
         reportGeneralTypeIssues: 'error',
-        reportPropertyTypeMismatch: 'error',
+        reportPropertyTypeMismatch: 'none',
         reportFunctionMemberAccess: 'none',
         reportMissingImports: 'error',
         reportMissingModuleSource: 'warning',
@@ -453,6 +465,7 @@ export function getBasicDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUntypedBaseClass: 'none',
         reportUntypedNamedTuple: 'none',
         reportPrivateUsage: 'none',
+        reportPrivateImportUsage: 'error',
         reportConstantRedefinition: 'none',
         reportIncompatibleMethodOverride: 'none',
         reportIncompatibleVariableOverride: 'none',
@@ -464,6 +477,7 @@ export function getBasicDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUnknownLambdaType: 'none',
         reportUnknownVariableType: 'none',
         reportUnknownMemberType: 'none',
+        reportMissingParameterType: 'none',
         reportMissingTypeArgument: 'none',
         reportInvalidTypeVarUse: 'warning',
         reportCallInDefaultInitializer: 'none',
@@ -498,7 +512,7 @@ export function getStrictDiagnosticRuleSet(): DiagnosticRuleSet {
         strictParameterNoneValue: true,
         enableTypeIgnoreComments: true, // Not overridden by strict mode
         reportGeneralTypeIssues: 'error',
-        reportPropertyTypeMismatch: 'error',
+        reportPropertyTypeMismatch: 'none',
         reportFunctionMemberAccess: 'error',
         reportMissingImports: 'error',
         reportMissingModuleSource: 'warning',
@@ -522,6 +536,7 @@ export function getStrictDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUntypedBaseClass: 'error',
         reportUntypedNamedTuple: 'error',
         reportPrivateUsage: 'error',
+        reportPrivateImportUsage: 'error',
         reportConstantRedefinition: 'error',
         reportIncompatibleMethodOverride: 'error',
         reportIncompatibleVariableOverride: 'error',
@@ -533,6 +548,7 @@ export function getStrictDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUnknownLambdaType: 'error',
         reportUnknownVariableType: 'error',
         reportUnknownMemberType: 'error',
+        reportMissingParameterType: 'error',
         reportMissingTypeArgument: 'error',
         reportInvalidTypeVarUse: 'error',
         reportCallInDefaultInitializer: 'none',
@@ -559,6 +575,7 @@ export function getStrictDiagnosticRuleSet(): DiagnosticRuleSet {
 export class ConfigOptions {
     constructor(projectRoot: string, typeCheckingMode?: string) {
         this.projectRoot = projectRoot;
+        this.typeCheckingMode = typeCheckingMode;
         this.diagnosticRuleSet = ConfigOptions.getDiagnosticRuleSet(typeCheckingMode);
 
         // If type checking mode is off, allow inference for py.typed sources
@@ -634,6 +651,16 @@ export class ConfigOptions {
     // to contain type annotations?
     disableInferenceForPyTypedSources = true;
 
+    // Current type checking mode.
+    typeCheckingMode?: string;
+
+    // Was this config initialized from JSON (pyrightconfig/pyproject)?
+    initializedFromJson = false;
+
+    // Should we skip analysis of all functions and methods that have
+    // no parameter ore return type annotations?
+    analyzeUnannotatedFunctions = true;
+
     //---------------------------------------------------------------
     // Diagnostics Rule Set
 
@@ -672,6 +699,10 @@ export class ConfigOptions {
 
     // Run program in index generation mode.
     indexGenerationMode?: boolean | undefined;
+
+    // When a symbol cannot be resolved from an import, should it be
+    // treated as Any rather than Unknown?
+    evaluateUnknownImportsAsAny?: boolean;
 
     static getDiagnosticRuleSet(typeCheckingMode?: string): DiagnosticRuleSet {
         if (typeCheckingMode === 'strict') {
@@ -726,6 +757,8 @@ export class ConfigOptions {
         diagnosticOverrides?: DiagnosticSeverityOverridesMap,
         skipIncludeSection = false
     ) {
+        this.initializedFromJson = true;
+
         // Read the "include" entry.
         if (!skipIncludeSection) {
             this.include = [];
@@ -826,9 +859,9 @@ export class ConfigOptions {
             }
         }
 
-        const effectiveTypeCheckingMode = configTypeCheckingMode || typeCheckingMode;
-        const defaultSettings = ConfigOptions.getDiagnosticRuleSet(effectiveTypeCheckingMode);
-        if (effectiveTypeCheckingMode === 'off') {
+        this.typeCheckingMode = configTypeCheckingMode || typeCheckingMode;
+        const defaultSettings = ConfigOptions.getDiagnosticRuleSet(this.typeCheckingMode);
+        if (this.typeCheckingMode === 'off') {
             this.disableInferenceForPyTypedSources = false;
         }
 
@@ -1053,6 +1086,13 @@ export class ConfigOptions {
                 defaultSettings.reportPrivateUsage
             ),
 
+            // Read the "reportPrivateImportUsage" entry.
+            reportPrivateImportUsage: this._convertDiagnosticLevel(
+                configObj.reportPrivateImportUsage,
+                DiagnosticRule.reportPrivateImportUsage,
+                defaultSettings.reportPrivateImportUsage
+            ),
+
             // Read the "reportConstantRedefinition" entry.
             reportConstantRedefinition: this._convertDiagnosticLevel(
                 configObj.reportConstantRedefinition,
@@ -1128,6 +1168,13 @@ export class ConfigOptions {
                 configObj.reportUnknownMemberType,
                 DiagnosticRule.reportUnknownMemberType,
                 defaultSettings.reportUnknownMemberType
+            ),
+
+            // Read the "reportMissingParameterType" entry.
+            reportMissingParameterType: this._convertDiagnosticLevel(
+                configObj.reportMissingParameterType,
+                DiagnosticRule.reportMissingParameterType,
+                defaultSettings.reportMissingParameterType
             ),
 
             // Read the "reportMissingTypeArgument" entry.

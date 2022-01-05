@@ -1,6 +1,6 @@
 import sys
 from builtins import object as _object
-from importlib.abc import Loader, PathEntryFinder
+from importlib.abc import PathEntryFinder
 from importlib.machinery import ModuleSpec
 from io import TextIOWrapper
 from types import FrameType, ModuleType, TracebackType
@@ -8,7 +8,6 @@ from typing import (
     Any,
     AsyncGenerator,
     Callable,
-    FrozenSet,
     NoReturn,
     Optional,
     Protocol,
@@ -27,12 +26,10 @@ _T = TypeVar("_T")
 # The following type alias are stub-only and do not exist during runtime
 _ExcInfo = Tuple[Type[BaseException], BaseException, TracebackType]
 _OptExcInfo = Union[_ExcInfo, Tuple[None, None, None]]
-_PathSequence = Sequence[Union[bytes, str]]
 
-# Unlike importlib.abc.MetaPathFinder, invalidate_caches() might not exist (see python docs)
+# Intentionally omits one deprecated and one optional method of `importlib.abc.MetaPathFinder`
 class _MetaPathFinder(Protocol):
-    def find_module(self, fullname: str, path: _PathSequence | None) -> Loader | None: ...
-    def find_spec(self, fullname: str, path: _PathSequence | None, target: ModuleType | None = ...) -> ModuleSpec | None: ...
+    def find_spec(self, fullname: str, path: Sequence[str] | None, target: ModuleType | None = ...) -> ModuleSpec | None: ...
 
 # ----- sys variables -----
 if sys.platform != "win32":
@@ -47,7 +44,7 @@ if sys.platform == "win32":
     dllhandle: int
 dont_write_bytecode: bool
 displayhook: Callable[[object], Any]
-excepthook: Callable[[Type[BaseException], BaseException, TracebackType], Any]
+excepthook: Callable[[Type[BaseException], BaseException, TracebackType | None], Any]
 exec_prefix: str
 executable: str
 float_repr_style: str
@@ -70,13 +67,13 @@ if sys.version_info >= (3, 9):
 prefix: str
 if sys.version_info >= (3, 8):
     pycache_prefix: str | None
-ps1: str
-ps2: str
+ps1: object
+ps2: object
 stdin: TextIO
 stdout: TextIO
 stderr: TextIO
 if sys.version_info >= (3, 10):
-    stdlib_module_names: FrozenSet[str]
+    stdlib_module_names: frozenset[str]
 __stdin__: TextIOWrapper
 __stdout__: TextIOWrapper
 __stderr__: TextIOWrapper
@@ -141,6 +138,7 @@ class _implementation:
     version: _version_info
     hexversion: int
     cache_tag: str
+    _multiarch: str
 
 int_info: _int_info
 
@@ -163,11 +161,12 @@ def _current_frames() -> dict[int, FrameType]: ...
 def _getframe(__depth: int = ...) -> FrameType: ...
 def _debugmallocstats() -> None: ...
 def __displayhook__(value: object) -> None: ...
-def __excepthook__(type_: Type[BaseException], value: BaseException, traceback: TracebackType) -> None: ...
+def __excepthook__(type_: Type[BaseException], value: BaseException, traceback: TracebackType | None) -> None: ...
 def exc_info() -> _OptExcInfo: ...
 
 # sys.exit() accepts an optional argument of anything printable
 def exit(__status: object = ...) -> NoReturn: ...
+def getallocatedblocks() -> int: ...
 def getdefaultencoding() -> str: ...
 
 if sys.platform != "win32":
@@ -203,7 +202,7 @@ class _WinVersion(Tuple[int, int, int, int, str, int, int, int, int, Tuple[int, 
     service_pack_major: int
     suite_mast: int
     product_type: int
-    platform_version: Tuple[int, int, int]
+    platform_version: tuple[int, int, int]
 
 if sys.platform == "win32":
     def getwindowsversion() -> _WinVersion: ...
@@ -246,3 +245,7 @@ class _asyncgen_hooks(Tuple[_AsyncgenHook, _AsyncgenHook]):
 
 def get_asyncgen_hooks() -> _asyncgen_hooks: ...
 def set_asyncgen_hooks(firstiter: _AsyncgenHook = ..., finalizer: _AsyncgenHook = ...) -> None: ...
+
+if sys.version_info >= (3, 7):
+    def get_coroutine_origin_tracking_depth() -> int: ...
+    def set_coroutine_origin_tracking_depth(depth: int) -> None: ...

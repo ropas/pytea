@@ -1,4 +1,4 @@
-# This sample tests the use of a generic property class.
+# This sample tests the use of a generic descriptor class.
 
 from typing import Any, Callable, Generic, Literal, Optional, Type, TypeVar, overload
 

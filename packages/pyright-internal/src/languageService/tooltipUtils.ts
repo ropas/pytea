@@ -19,7 +19,7 @@ import {
     getPropertyDocStringInherited,
     getVariableDocString,
 } from '../analyzer/typeDocStringUtils';
-import { TypeEvaluator } from '../analyzer/typeEvaluator';
+import { TypeEvaluator } from '../analyzer/typeEvaluatorTypes';
 import {
     FunctionType,
     isFunction,
@@ -73,7 +73,9 @@ export function getDocumentationPartsForTypeAndDecl(
     resolvedDecl: Declaration | undefined,
     evaluator: TypeEvaluator
 ): string[] {
-    if (isModule(type)) {
+    if (resolvedDecl?.type === DeclarationType.Variable && resolvedDecl.typeAliasName && resolvedDecl.docString) {
+        return [resolvedDecl.docString];
+    } else if (isModule(type)) {
         const doc = getModuleDocString(type, resolvedDecl, sourceMapper);
         if (doc) {
             return [doc];
@@ -84,11 +86,9 @@ export function getDocumentationPartsForTypeAndDecl(
             return [doc];
         }
     } else if (isFunction(type)) {
-        if (resolvedDecl?.type === DeclarationType.Function || resolvedDecl?.type === DeclarationType.Class) {
-            const doc = getFunctionDocStringFromType(type, sourceMapper, evaluator);
-            if (doc) {
-                return [doc];
-            }
+        const doc = getFunctionDocStringFromType(type, sourceMapper, evaluator);
+        if (doc) {
+            return [doc];
         }
     } else if (isOverloadedFunction(type)) {
         const enclosingClass = resolvedDecl ? ParseTreeUtils.getEnclosingClass(resolvedDecl.node) : undefined;

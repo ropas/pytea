@@ -1,18 +1,21 @@
 import socket
 import sys
 from _typeshed import WriteableBuffer
-from typing import IO, Any, Callable, ClassVar, NoReturn, Tuple, Type
+from typing import IO, Any, Callable, ClassVar, NoReturn, Type
 
 from . import events, futures, proactor_events, selector_events, streams, windows_utils
 
-__all__ = [
-    "SelectorEventLoop",
-    "ProactorEventLoop",
-    "IocpProactor",
-    "DefaultEventLoopPolicy",
-    "WindowsSelectorEventLoopPolicy",
-    "WindowsProactorEventLoopPolicy",
-]
+if sys.version_info >= (3, 7):
+    __all__ = (
+        "SelectorEventLoop",
+        "ProactorEventLoop",
+        "IocpProactor",
+        "DefaultEventLoopPolicy",
+        "WindowsSelectorEventLoopPolicy",
+        "WindowsProactorEventLoopPolicy",
+    )
+else:
+    __all__ = ["SelectorEventLoop", "ProactorEventLoop", "IocpProactor", "DefaultEventLoopPolicy"]
 
 NULL: int
 INFINITE: int
@@ -33,7 +36,7 @@ class ProactorEventLoop(proactor_events.BaseProactorEventLoop):
     def __init__(self, proactor: IocpProactor | None = ...) -> None: ...
     async def create_pipe_connection(
         self, protocol_factory: Callable[[], streams.StreamReaderProtocol], address: str
-    ) -> Tuple[proactor_events._ProactorDuplexPipeTransport, streams.StreamReaderProtocol]: ...
+    ) -> tuple[proactor_events._ProactorDuplexPipeTransport, streams.StreamReaderProtocol]: ...
     async def start_serving_pipe(
         self, protocol_factory: Callable[[], streams.StreamReaderProtocol], address: str
     ) -> list[PipeServer]: ...

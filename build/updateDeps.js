@@ -10,16 +10,21 @@ async function main() {
         transitive: { type: 'boolean' },
     }).argv;
 
-    await updateAll(argv.transitive, [
+    await updateAll(!!argv.transitive, [
         // These packages impact compatibility with VS Code and other users;
         // ensure they remained pinned exactly.
         '@types/vscode',
+        'vsce',
         'vscode-jsonrpc',
         'vscode-languageclient',
         'vscode-languageserver',
         'vscode-languageserver-protocol',
         'vscode-languageserver-types',
+        // Minor version changes have breaks; require a manual update.
+        'typescript',
     ]);
 }
+
+main();
 
 main();

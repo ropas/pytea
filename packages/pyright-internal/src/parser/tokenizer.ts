@@ -135,6 +135,8 @@ const _byteOrderMarker = 0xfeff;
 
 const _maxStringTokenLength = 32 * 1024;
 
+export const defaultTabSize = 8;
+
 export interface TokenizerOutput {
     // List of all tokens.
     tokens: TextRangeCollection<Token>;
@@ -242,7 +244,7 @@ export class Tokenizer {
         }
 
         // Insert any implied dedent tokens.
-        this._setIndent(0, 0, true, false);
+        this._setIndent(0, 0, /* isSpacePresent */ false, /* isTabPresent */ false);
 
         // Add a final end-of-stream token to make parsing easier.
         this._tokens.push(Token.create(TokenType.EndOfStream, this._cs.position, 0, this._getComments()));
@@ -268,8 +270,8 @@ export class Tokenizer {
             let averageSpacePerIndent = Math.round(this._indentSpacesTotal / this._indentCount);
             if (averageSpacePerIndent < 1) {
                 averageSpacePerIndent = 1;
-            } else if (averageSpacePerIndent > 8) {
-                averageSpacePerIndent = 8;
+            } else if (averageSpacePerIndent > defaultTabSize) {
+                averageSpacePerIndent = defaultTabSize;
             }
             predominantTabSequence = '';
             for (let i = 0; i < averageSpacePerIndent; i++) {
@@ -525,7 +527,7 @@ export class Tokenizer {
                     // Translate tabs into spaces assuming both 1-space
                     // and 8-space tab stops.
                     tab1Spaces++;
-                    tab8Spaces += 8 - (tab8Spaces % 8);
+                    tab8Spaces += defaultTabSize - (tab8Spaces % defaultTabSize);
                     isTabPresent = true;
                     this._cs.moveNext();
                     break;
@@ -605,7 +607,22 @@ export class Tokenizer {
                 this._tokens.push(
                     IndentToken.create(this._cs.position, 0, tab8Spaces, isIndentAmbiguous, this._getComments())
                 );
+            } else if (prevTabInfo.tab8Spaces === tab8Spaces) {
+                // The Python spec says that if there is ambiguity about how tabs should
+                // be translated into spaces because the user has intermixed tabs and
+                // spaces, it should be an error. We'll record this condition in the token
+                // so the parser can later report it.
+                if ((prevTabInfo.isSpacePresent && isTabPresent) || (prevTabInfo.isTabPresent && isSpacePresent)) {
+                    this._tokens.push(IndentToken.create(this._cs.position, 0, tab8Spaces, true, this._getComments()));
+                }
             } else {
+                // The Python spec says that if there is ambiguity about how tabs should
+                // be translated into spaces because the user has intermixed tabs and
+                // spaces, it should be an error. We'll record this condition in the token
+                // so the parser can later report it.
+                let isDedentAmbiguous =
+                    (prevTabInfo.isSpacePresent && isTabPresent) || (prevTabInfo.isTabPresent && isSpacePresent);
+
                 // The Python spec says that dedent amounts need to match the indent
                 // amount exactly. An error is generated at runtime if it doesn't.
                 // We'll record that error condition within the token, allowing the
@@ -627,8 +644,17 @@ export class Tokenizer {
                     const matchesIndent = index < dedentPoints.length - 1 || dedentAmount === tab8Spaces;
                     const actualDedentAmount = index < dedentPoints.length - 1 ? dedentAmount : tab8Spaces;
                     this._tokens.push(
-                        DedentToken.create(this._cs.position, 0, actualDedentAmount, matchesIndent, this._getComments())
+                        DedentToken.create(
+                            this._cs.position,
+                            0,
+                            actualDedentAmount,
+                            matchesIndent,
+                            isDedentAmbiguous,
+                            this._getComments()
+                        )
                     );
+
+                    isDedentAmbiguous = false;
                 });
             }
         }

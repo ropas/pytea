@@ -18,10 +18,11 @@ import {
     ListComprehensionNode,
     ModuleNode,
     ParseNode,
+    ParseNodeType,
     StringNode,
 } from '../parser/parseNodes';
 import { AnalyzerFileInfo } from './analyzerFileInfo';
-import { FlowFlags, FlowNode } from './codeFlow';
+import { FlowFlags, FlowNode } from './codeFlowTypes';
 import { Declaration } from './declaration';
 import { ImportResult } from './importResult';
 import { Scope } from './scope';
@@ -29,6 +30,7 @@ import { Scope } from './scope';
 export interface DunderAllInfo {
     names: string[];
     stringNodes: StringNode[];
+    usesUnsupportedDunderAllForm: boolean;
 }
 
 interface AnalyzerNodeInfo {
@@ -62,6 +64,10 @@ interface AnalyzerNodeInfo {
     // function or lambda) that requires code flow analysis.
     codeFlowExpressions?: Set<string>;
 
+    // Number that represents the complexity of a function's code
+    // flow graph.
+    codeFlowComplexity?: number;
+
     // List of __all__ symbols in the module.
     dunderAllInfo?: DunderAllInfo | undefined;
 }
@@ -77,6 +83,9 @@ export function cleanNodeAnalysisInfo(node: ParseNode) {
     delete analyzerNode.flowNode;
     delete analyzerNode.afterFlowNode;
     delete analyzerNode.fileInfo;
+    delete analyzerNode.codeFlowExpressions;
+    delete analyzerNode.codeFlowComplexity;
+    delete analyzerNode.dunderAllInfo;
 }
 
 export function getImportInfo(node: ParseNode): ImportResult | undefined {
@@ -129,9 +138,12 @@ export function setAfterFlowNode(node: ParseNode, flowNode: FlowNode) {
     analyzerNode.afterFlowNode = flowNode;
 }
 
-export function getFileInfo(node: ModuleNode): AnalyzerFileInfo | undefined {
+export function getFileInfo(node: ParseNode): AnalyzerFileInfo {
+    while (node.nodeType !== ParseNodeType.Module) {
+        node = node.parent!;
+    }
     const analyzerNode = node as AnalyzerNodeInfo;
-    return analyzerNode.fileInfo;
+    return analyzerNode.fileInfo!;
 }
 
 export function setFileInfo(node: ModuleNode, fileInfo: AnalyzerFileInfo) {
@@ -147,6 +159,16 @@ export function getCodeFlowExpressions(node: ExecutionScopeNode): Set<string> | 
 export function setCodeFlowExpressions(node: ExecutionScopeNode, expressions: Set<string>) {
     const analyzerNode = node as AnalyzerNodeInfo;
     analyzerNode.codeFlowExpressions = expressions;
+}
+
+export function getCodeFlowComplexity(node: FunctionNode) {
+    const analyzerNode = node as AnalyzerNodeInfo;
+    return analyzerNode.codeFlowComplexity ?? 0;
+}
+
+export function setCodeFlowComplexity(node: FunctionNode, complexity: number) {
+    const analyzerNode = node as AnalyzerNodeInfo;
+    analyzerNode.codeFlowComplexity = complexity;
 }
 
 export function getDunderAllInfo(node: ModuleNode): DunderAllInfo | undefined {

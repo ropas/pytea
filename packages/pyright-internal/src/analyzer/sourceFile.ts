@@ -43,7 +43,7 @@ import { performQuickAction } from '../languageService/quickActions';
 import { ReferenceCallback, ReferencesProvider, ReferencesResult } from '../languageService/referencesProvider';
 import { SignatureHelpProvider, SignatureHelpResults } from '../languageService/signatureHelpProvider';
 import { Localizer } from '../localization/localize';
-import { ModuleNode } from '../parser/parseNodes';
+import { ModuleNode, NameNode } from '../parser/parseNodes';
 import { ModuleImport, ParseOptions, Parser, ParseResults } from '../parser/parser';
 import { Token } from '../parser/tokenizerTypes';
 import { AnalyzerFileInfo, ImportLookup } from './analyzerFileInfo';
@@ -59,13 +59,14 @@ import { Scope } from './scope';
 import { SourceMapper } from './sourceMapper';
 import { SymbolTable } from './symbol';
 import { TestWalker } from './testWalker';
-import { TypeEvaluator } from './typeEvaluator';
+import { TypeEvaluator } from './typeEvaluatorTypes';
 
 // Limit the number of import cycles tracked per source file.
 const _maxImportCyclesPerFile = 4;
 
-// Allow files up to 32MB in length.
-const _maxSourceFileSize = 32 * 1024 * 1024;
+// Allow files up to 50MB in length, same as VS Code.
+// https://github.com/microsoft/vscode/blob/1e750a7514f365585d8dab1a7a82e0938481ea2f/src/vs/editor/common/model/textModel.ts#L194
+const _maxSourceFileSize = 50 * 1024 * 1024;
 
 interface ResolveImportResult {
     imports: ImportResult[];
@@ -260,7 +261,7 @@ export class SourceFile {
         if (options.diagnosticRuleSet.enableTypeIgnoreComments) {
             if (Object.keys(this._typeIgnoreLines).length > 0) {
                 diagList = diagList.filter((d) => {
-                    if (d.category !== DiagnosticCategory.UnusedCode) {
+                    if (d.category !== DiagnosticCategory.UnusedCode && d.category !== DiagnosticCategory.Deprecated) {
                         for (let line = d.range.start.line; line <= d.range.end.line; line++) {
                             if (this._typeIgnoreLines[line]) {
                                 return false;
@@ -317,9 +318,12 @@ export class SourceFile {
 
         // If we're not returning any diagnostics, filter out all of
         // the errors and warnings, leaving only the unreachable code
-        // diagnostics.
+        // and deprecated diagnostics.
         if (!includeWarningsAndErrors) {
-            diagList = diagList.filter((diag) => diag.category === DiagnosticCategory.UnusedCode);
+            diagList = diagList.filter(
+                (diag) =>
+                    diag.category === DiagnosticCategory.UnusedCode || diag.category === DiagnosticCategory.Deprecated
+            );
         }
 
         return diagList;
@@ -414,8 +418,33 @@ export class SourceFile {
         return this._clientDocument?.version;
     }
 
-    getFileContents() {
+    getOpenFileContents() {
         return this._clientDocument?.getText();
+    }
+
+    getFileContent(): string | undefined {
+        // Get current buffer content if the file is opened.
+        const openFileContent = this.getOpenFileContents();
+        if (openFileContent) {
+            return openFileContent;
+        }
+
+        // Otherwise, get content from file system.
+        try {
+            // Check the file's length before attempting to read its full contents.
+            const fileStat = this.fileSystem.statSync(this._filePath);
+            if (fileStat.size > _maxSourceFileSize) {
+                this._console.error(
+                    `File length of "${this._filePath}" is ${fileStat.size} ` +
+                        `which exceeds the maximum supported file size of ${_maxSourceFileSize}`
+                );
+                throw new Error('File larger than max');
+            }
+
+            return this.fileSystem.readFileSync(this._filePath, 'utf8');
+        } catch (error) {
+            return undefined;
+        }
     }
 
     setClientVersion(version: number | null, contents: TextDocumentContentChangeEvent[]): void {
@@ -437,6 +466,7 @@ export class SourceFile {
 
             this._lastFileContentLength = fileContents.length;
             this._lastFileContentHash = contentsHash;
+            this._isFileDeleted = false;
         }
     }
 
@@ -522,23 +552,16 @@ export class SourceFile {
             }
 
             const diagSink = new DiagnosticSink();
-            let fileContents = this.getFileContents();
+            let fileContents = this.getOpenFileContents();
             if (fileContents === undefined) {
                 try {
                     const startTime = timingStats.readFileTime.totalTime;
                     timingStats.readFileTime.timeOperation(() => {
-                        // Check the file's length before attempting to read its full contents.
-                        const fileStat = this.fileSystem.statSync(this._filePath);
-                        if (fileStat.size > _maxSourceFileSize) {
-                            this._console.error(
-                                `File length of "${this._filePath}" is ${fileStat.size} ` +
-                                    `which exceeds the maximum supported file size of ${_maxSourceFileSize}`
-                            );
-                            throw new Error('File larger than max');
-                        }
-
                         // Read the file's contents.
-                        fileContents = content ?? this.fileSystem.readFileSync(this._filePath, 'utf8');
+                        fileContents = content ?? this.getFileContent();
+                        if (fileContents === undefined) {
+                            throw new Error("Can't get file content");
+                        }
 
                         // Remember the length and hash for comparison purposes.
                         this._lastFileContentLength = fileContents.length;
@@ -700,6 +723,43 @@ export class SourceFile {
         );
     }
 
+    getTypeDefinitionsForPosition(
+        sourceMapper: SourceMapper,
+        position: Position,
+        evaluator: TypeEvaluator,
+        filePath: string,
+        token: CancellationToken
+    ): DocumentRange[] | undefined {
+        // If we have no completed analysis job, there's nothing to do.
+        if (!this._parseResults) {
+            return undefined;
+        }
+
+        return DefinitionProvider.getTypeDefinitionsForPosition(
+            sourceMapper,
+            this._parseResults,
+            position,
+            evaluator,
+            filePath,
+            token
+        );
+    }
+
+    getDeclarationForNode(
+        sourceMapper: SourceMapper,
+        node: NameNode,
+        evaluator: TypeEvaluator,
+        reporter: ReferenceCallback | undefined,
+        token: CancellationToken
+    ): ReferencesResult | undefined {
+        // If we have no completed analysis job, there's nothing to do.
+        if (!this._parseResults) {
+            return undefined;
+        }
+
+        return ReferencesProvider.getDeclarationForNode(sourceMapper, this._filePath, node, evaluator, reporter, token);
+    }
+
     getDeclarationForPosition(
         sourceMapper: SourceMapper,
         position: Position,
@@ -847,7 +907,7 @@ export class SourceFile {
 
         // This command should be called only for open files, in which
         // case we should have the file contents already loaded.
-        const fileContents = this.getFileContents();
+        const fileContents = this.getOpenFileContents();
         if (fileContents === undefined) {
             return undefined;
         }
@@ -888,7 +948,7 @@ export class SourceFile {
         completionItem: CompletionItem,
         token: CancellationToken
     ) {
-        const fileContents = this.getFileContents();
+        const fileContents = this.getOpenFileContents();
         if (!this._parseResults || fileContents === undefined) {
             return;
         }
@@ -933,10 +993,10 @@ export class SourceFile {
     }
 
     bind(configOptions: ConfigOptions, importLookup: ImportLookup, builtinsScope: Scope | undefined) {
-        assert(!this.isParseRequired());
-        assert(this.isBindingRequired());
-        assert(!this._isBindingInProgress);
-        assert(this._parseResults !== undefined);
+        assert(!this.isParseRequired(), 'Bind called before parsing');
+        assert(this.isBindingRequired(), 'Bind called unnecessarily');
+        assert(!this._isBindingInProgress, 'Bind called while binding in progress');
+        assert(this._parseResults !== undefined, 'Parse results not available');
 
         return this._logTracker.log(`binding: ${this._getPathForLogging(this._filePath)}`, () => {
             try {
@@ -965,7 +1025,7 @@ export class SourceFile {
 
                     this._bindDiagnostics = fileInfo.diagnosticSink.fetchAndClear();
                     const moduleScope = AnalyzerNodeInfo.getScope(this._parseResults!.parseTree);
-                    assert(moduleScope !== undefined);
+                    assert(moduleScope !== undefined, 'Module scope not returned by binder');
                     this._moduleSymbolTable = moduleScope!.symbolTable;
                 });
             } catch (e: any) {
@@ -999,11 +1059,11 @@ export class SourceFile {
     }
 
     check(evaluator: TypeEvaluator) {
-        assert(!this.isParseRequired());
-        assert(!this.isBindingRequired());
-        assert(!this._isBindingInProgress);
-        assert(this.isCheckingRequired());
-        assert(this._parseResults !== undefined);
+        assert(!this.isParseRequired(), 'Check called before parsing');
+        assert(!this.isBindingRequired(), 'Check called before binding');
+        assert(!this._isBindingInProgress, 'Check called while binding in progress');
+        assert(this.isCheckingRequired(), 'Check called unnecessarily');
+        assert(this._parseResults !== undefined, 'Parse results not available');
 
         return this._logTracker.log(`checking: ${this._getPathForLogging(this._filePath)}`, () => {
             try {
@@ -1054,7 +1114,7 @@ export class SourceFile {
         importLookup: ImportLookup,
         builtinsScope?: Scope
     ) {
-        assert(this._parseResults !== undefined);
+        assert(this._parseResults !== undefined, 'Parse results not available');
         const analysisDiagnostics = new TextRangeDiagnosticSink(this._parseResults!.tokenizerOutput.lines);
 
         const fileInfo: AnalyzerFileInfo = {

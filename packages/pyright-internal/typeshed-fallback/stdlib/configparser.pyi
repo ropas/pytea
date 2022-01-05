@@ -1,23 +1,7 @@
 import sys
 from _typeshed import StrOrBytesPath, StrPath, SupportsWrite
-from typing import (
-    AbstractSet,
-    Any,
-    Callable,
-    ClassVar,
-    Dict,
-    Iterable,
-    Iterator,
-    Mapping,
-    MutableMapping,
-    Optional,
-    Pattern,
-    Sequence,
-    Tuple,
-    Type,
-    TypeVar,
-    overload,
-)
+from collections.abc import Callable, ItemsView, Iterable, Iterator, Mapping, MutableMapping, Sequence
+from typing import Any, ClassVar, Dict, Optional, Pattern, Type, TypeVar, overload
 from typing_extensions import Literal
 
 # Internal type aliases
@@ -138,14 +122,14 @@ class RawConfigParser(_parser):
         fallback: _T = ...,
     ) -> _T: ...
     # This is incompatible with MutableMapping so we ignore the type
-    @overload  # type: ignore
+    @overload  # type: ignore[override]
     def get(self, section: str, option: str, *, raw: bool = ..., vars: _section | None = ...) -> str: ...
     @overload
     def get(self, section: str, option: str, *, raw: bool = ..., vars: _section | None = ..., fallback: _T) -> str | _T: ...
     @overload
-    def items(self, *, raw: bool = ..., vars: _section | None = ...) -> AbstractSet[Tuple[str, SectionProxy]]: ...
+    def items(self, *, raw: bool = ..., vars: _section | None = ...) -> ItemsView[str, SectionProxy]: ...
     @overload
-    def items(self, section: str, raw: bool = ..., vars: _section | None = ...) -> list[Tuple[str, str]]: ...
+    def items(self, section: str, raw: bool = ..., vars: _section | None = ...) -> list[tuple[str, str]]: ...
     def set(self, section: str, option: str, value: str | None = ...) -> None: ...
     def write(self, fp: SupportsWrite[str], space_around_delimiters: bool = ...) -> None: ...
     def remove_option(self, section: str, option: str) -> bool: ...
@@ -153,7 +137,9 @@ class RawConfigParser(_parser):
     def optionxform(self, optionstr: str) -> str: ...
 
 class ConfigParser(RawConfigParser): ...
-class SafeConfigParser(ConfigParser): ...
+
+if sys.version_info < (3, 11):
+    class SafeConfigParser(ConfigParser): ...
 
 class SectionProxy(MutableMapping[str, str]):
     def __init__(self, parser: RawConfigParser, name: str) -> None: ...
@@ -167,7 +153,16 @@ class SectionProxy(MutableMapping[str, str]):
     def parser(self) -> RawConfigParser: ...
     @property
     def name(self) -> str: ...
-    def get(self, option: str, fallback: str | None = ..., *, raw: bool = ..., vars: _section | None = ..., _impl: Any | None = ..., **kwargs: Any) -> str: ...  # type: ignore
+    def get(  # type: ignore[override]
+        self,
+        option: str,
+        fallback: str | None = ...,
+        *,
+        raw: bool = ...,
+        vars: _section | None = ...,
+        _impl: Any | None = ...,
+        **kwargs: Any,
+    ) -> str: ...
     # These are partially-applied version of the methods with the same names in
     # RawConfigParser; the stubs should be kept updated together
     @overload
@@ -236,7 +231,7 @@ class InterpolationSyntaxError(InterpolationError): ...
 
 class ParsingError(Error):
     source: str
-    errors: list[Tuple[int, str]]
+    errors: list[tuple[int, str]]
     def __init__(self, source: str | None = ..., filename: str | None = ...) -> None: ...
     def append(self, lineno: int, line: str) -> None: ...
 

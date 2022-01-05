@@ -1,21 +1,8 @@
 import sys
-from _typeshed import SupportsItems, SupportsLessThan
-from typing import (
-    Any,
-    Callable,
-    Generic,
-    Hashable,
-    Iterable,
-    Mapping,
-    NamedTuple,
-    Sequence,
-    Set,
-    Sized,
-    Tuple,
-    Type,
-    TypeVar,
-    overload,
-)
+import types
+from _typeshed import SupportsAllComparisons, SupportsItems
+from typing import Any, Callable, Generic, Hashable, Iterable, NamedTuple, Sequence, Sized, Tuple, Type, TypeVar, overload
+from typing_extensions import final
 
 if sys.version_info >= (3, 9):
     from types import GenericAlias
@@ -36,6 +23,7 @@ class _CacheInfo(NamedTuple):
     maxsize: int
     currsize: int
 
+@final
 class _lru_cache_wrapper(Generic[_T]):
     __wrapped__: Callable[..., _T]
     def __call__(self, *args: Hashable, **kwargs: Hashable) -> _T: ...
@@ -57,7 +45,7 @@ WRAPPER_UPDATES: Sequence[str]
 def update_wrapper(wrapper: _T, wrapped: _AnyCallable, assigned: Sequence[str] = ..., updated: Sequence[str] = ...) -> _T: ...
 def wraps(wrapped: _AnyCallable, assigned: Sequence[str] = ..., updated: Sequence[str] = ...) -> Callable[[_T], _T]: ...
 def total_ordering(cls: Type[_T]) -> Type[_T]: ...
-def cmp_to_key(mycmp: Callable[[_T, _T], int]) -> Callable[[_T], SupportsLessThan]: ...
+def cmp_to_key(mycmp: Callable[[_T, _T], int]) -> Callable[[_T], SupportsAllComparisons]: ...
 
 class partial(Generic[_T]):
     func: Callable[..., _T]
@@ -86,7 +74,7 @@ class partialmethod(Generic[_T]):
         def __class_getitem__(cls, item: Any) -> GenericAlias: ...
 
 class _SingleDispatchCallable(Generic[_T]):
-    registry: Mapping[Any, Callable[..., _T]]
+    registry: types.MappingProxyType[Any, Callable[..., _T]]
     def dispatch(self, cls: Any) -> Callable[..., _T]: ...
     # @fun.register(complex)
     # def _(arg, verbose=False): ...
@@ -136,7 +124,7 @@ def _make_key(
     kwds: SupportsItems[Any, Any],
     typed: bool,
     kwd_mark: Tuple[object, ...] = ...,
-    fasttypes: Set[type] = ...,
+    fasttypes: set[type] = ...,
     tuple: type = ...,
     type: Any = ...,
     len: Callable[[Sized], int] = ...,

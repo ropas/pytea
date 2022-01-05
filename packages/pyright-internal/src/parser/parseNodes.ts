@@ -104,6 +104,7 @@ export const enum ParseNodeType {
     PatternMappingExpandEntry,
     PatternValue,
     PatternClassArgument,
+    ArrowCallable,
 }
 
 export const enum ErrorExpressionCategory {
@@ -120,6 +121,7 @@ export const enum ErrorExpressionCategory {
     MissingFunctionParameterList,
     MissingPattern,
     MissingPatternSubject,
+    MissingDictValue,
 }
 
 export interface ParseNodeBase extends TextRange {
@@ -375,16 +377,18 @@ export interface ExceptNode extends ParseNodeBase {
     typeExpression?: ExpressionNode | undefined;
     name?: NameNode | undefined;
     exceptSuite: SuiteNode;
+    isExceptGroup: boolean;
 }
 
 export namespace ExceptNode {
-    export function create(exceptToken: Token, exceptSuite: SuiteNode) {
+    export function create(exceptToken: Token, exceptSuite: SuiteNode, isExceptGroup: boolean) {
         const node: ExceptNode = {
             start: exceptToken.start,
             length: exceptToken.length,
             nodeType: ParseNodeType.Except,
             id: _nextNodeId++,
             exceptSuite,
+            isExceptGroup,
         };
 
         exceptSuite.parent = node;
@@ -491,13 +495,13 @@ export namespace ClassNode {
     // function or class declaration.
     export function createDummyForDecorators(decorators: DecoratorNode[]) {
         const node: ClassNode = {
-            start: 0,
+            start: decorators[0].start,
             length: 0,
             nodeType: ParseNodeType.Class,
             id: _nextNodeId++,
             decorators,
             name: {
-                start: 0,
+                start: decorators[0].start,
                 length: 0,
                 id: 0,
                 nodeType: ParseNodeType.Name,
@@ -512,7 +516,7 @@ export namespace ClassNode {
             },
             arguments: [],
             suite: {
-                start: 0,
+                start: decorators[0].start,
                 length: 0,
                 id: 0,
                 nodeType: ParseNodeType.Suite,
@@ -676,7 +680,8 @@ export type ExpressionNode =
     | ListNode
     | SetNode
     | DecoratorNode
-    | FunctionAnnotationNode;
+    | FunctionAnnotationNode
+    | ArrowCallableNode;
 
 export function isExpressionNode(node: ParseNode): node is ExpressionNode {
     switch (node.nodeType) {
@@ -708,6 +713,7 @@ export function isExpressionNode(node: ParseNode): node is ExpressionNode {
         case ParseNodeType.DictionaryExpandEntry:
         case ParseNodeType.List:
         case ParseNodeType.Set:
+        case ParseNodeType.ArrowCallable:
             return true;
 
         default:
@@ -1419,6 +1425,9 @@ export interface StringListNode extends ParseNodeBase {
     // a type annotation, they are further parsed
     // into an expression.
     typeAnnotation?: ExpressionNode;
+
+    // Indicates that the string list is enclosed in parens.
+    isParenthesized?: boolean;
 }
 
 export namespace StringListNode {
@@ -1445,6 +1454,7 @@ export namespace StringListNode {
 export interface DictionaryNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.Dictionary;
     entries: DictionaryEntryNode[];
+    trailingCommaToken?: Token;
 }
 
 export namespace DictionaryNode {
@@ -2217,6 +2227,52 @@ export namespace PatternValueNode {
     }
 }
 
+export interface ArrowCallableParameter {
+    category: ParameterCategory;
+    typeAnnotation: ExpressionNode;
+    starToken?: Token;
+}
+
+export interface ArrowCallableNode extends ParseNodeBase {
+    readonly nodeType: ParseNodeType.ArrowCallable;
+    isAsync?: boolean;
+    parameters: ArrowCallableParameter[];
+    returnTypeAnnotation: ExpressionNode;
+}
+
+export namespace ArrowCallableNode {
+    export function create(
+        openParenToken: Token,
+        parameters: ArrowCallableParameter[],
+        returnTypeAnnotation: ExpressionNode,
+        asyncToken?: Token
+    ) {
+        const node: ArrowCallableNode = {
+            start: openParenToken.start,
+            length: openParenToken.length,
+            nodeType: ParseNodeType.ArrowCallable,
+            id: _nextNodeId++,
+            parameters,
+            returnTypeAnnotation,
+        };
+
+        if (asyncToken) {
+            node.isAsync = true;
+            extendRange(node, asyncToken);
+        }
+
+        extendRange(node, returnTypeAnnotation);
+
+        parameters.forEach((expr) => {
+            expr.typeAnnotation.parent = node;
+        });
+
+        returnTypeAnnotation.parent = node;
+
+        return node;
+    }
+}
+
 export type PatternAtomNode =
     | PatternSequenceNode
     | PatternLiteralNode
@@ -2230,6 +2286,7 @@ export type PatternAtomNode =
 export type ParseNode =
     | ErrorNode
     | ArgumentNode
+    | ArrowCallableNode
     | AssertNode
     | AssignmentExpressionNode
     | AssignmentNode

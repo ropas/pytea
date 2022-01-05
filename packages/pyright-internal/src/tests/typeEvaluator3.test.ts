@@ -33,7 +33,7 @@ test('Ellipsis1', () => {
 test('Generators1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['generators1.py']);
 
-    TestUtils.validateResults(analysisResults, 5);
+    TestUtils.validateResults(analysisResults, 8);
 });
 
 test('Generators2', () => {
@@ -108,6 +108,12 @@ test('Generators13', () => {
     TestUtils.validateResults(analysisResults, 0);
 });
 
+test('Generators14', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['generators14.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
 test('Coroutines1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['coroutines1.py']);
 
@@ -162,10 +168,58 @@ test('Loops7', () => {
     TestUtils.validateResults(analysisResults, 0);
 });
 
+test('Loops8', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['loops8.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('Loops9', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['loops9.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('Loops10', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['loops10.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('Loops11', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['loops11.py']);
+
+    TestUtils.validateResults(analysisResults, 3);
+});
+
+test('Loops12', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['loops12.py']);
+
+    TestUtils.validateResults(analysisResults, 1);
+});
+
+test('Loops13', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['loops13.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('Loops14', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['loops14.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('Loops15', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['loops15.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
 test('ForLoop1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['forLoop1.py']);
 
-    TestUtils.validateResults(analysisResults, 2);
+    TestUtils.validateResults(analysisResults, 3);
 });
 
 test('ForLoop2', () => {
@@ -177,7 +231,7 @@ test('ForLoop2', () => {
 test('ListComprehension1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['listComprehension1.py']);
 
-    TestUtils.validateResults(analysisResults, 1);
+    TestUtils.validateResults(analysisResults, 2);
 });
 
 test('ListComprehension2', () => {
@@ -246,6 +300,12 @@ test('Literals5', () => {
     TestUtils.validateResults(analysisResults, 2);
 });
 
+test('Literals6', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['literals6.py']);
+
+    TestUtils.validateResults(analysisResults, 26);
+});
+
 test('TypeAlias1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeAlias1.py']);
 
@@ -269,50 +329,47 @@ test('TypeAlias4', () => {
 
     configOptions.defaultPythonVersion = PythonVersion.V3_9;
     const analysisResults3_9 = TestUtils.typeAnalyzeSampleFiles(['typeAlias4.py'], configOptions);
-    TestUtils.validateResults(analysisResults3_9, 7);
+    TestUtils.validateResults(analysisResults3_9, 8);
 
     configOptions.defaultPythonVersion = PythonVersion.V3_10;
     const analysisResults3_10 = TestUtils.typeAnalyzeSampleFiles(['typeAlias4.py'], configOptions);
-    TestUtils.validateResults(analysisResults3_10, 6);
+    TestUtils.validateResults(analysisResults3_10, 7);
 });
 
 test('TypeAlias5', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeAlias5.py']);
 
-    TestUtils.validateResults(analysisResults, 2);
+    TestUtils.validateResults(analysisResults, 3);
 });
 
 test('TypeAlias6', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeAlias6.py']);
 
-    TestUtils.validateResults(analysisResults, 9);
+    TestUtils.validateResults(analysisResults, 6);
 });
 
 test('TypeAlias7', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeAlias7.py']);
 
-    TestUtils.validateResults(analysisResults, 3);
+    TestUtils.validateResults(analysisResults, 0);
 });
 
 test('TypeAlias8', () => {
-    const configOptions = new ConfigOptions('.');
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeAlias8.py']);
 
-    configOptions.defaultPythonVersion = PythonVersion.V3_10;
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeAlias8.py'], configOptions);
-
-    TestUtils.validateResults(analysisResults, 4);
+    TestUtils.validateResults(analysisResults, 0);
 });
 
 test('TypeAlias9', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeAlias9.py']);
 
-    TestUtils.validateResults(analysisResults, 0);
+    TestUtils.validateResults(analysisResults, 3);
 });
 
 test('TypeAlias10', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeAlias10.py']);
 
-    TestUtils.validateResults(analysisResults, 0);
+    TestUtils.validateResults(analysisResults, 4);
 });
 
 test('TypeAlias11', () => {
@@ -321,26 +378,47 @@ test('TypeAlias11', () => {
     TestUtils.validateResults(analysisResults, 0);
 });
 
-test('TypeAlias12', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeAlias12.py']);
+test('RecursiveTypeAlias1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['recursiveTypeAlias1.py']);
+
+    TestUtils.validateResults(analysisResults, 9);
+});
+
+test('RecursiveTypeAlias2', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['recursiveTypeAlias2.py']);
+
+    TestUtils.validateResults(analysisResults, 3);
+});
+
+test('RecursiveTypeAlias3', () => {
+    const configOptions = new ConfigOptions('.');
+
+    configOptions.defaultPythonVersion = PythonVersion.V3_10;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['recursiveTypeAlias3.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 4);
+});
+
+test('RecursiveTypeAlias4', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['recursiveTypeAlias4.py']);
 
     TestUtils.validateResults(analysisResults, 0);
 });
 
-test('TypeAlias13', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeAlias13.pyi']);
+test('RecursiveTypeAlias5', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['recursiveTypeAlias5.pyi']);
 
     TestUtils.validateResults(analysisResults, 2);
 });
 
-test('TypeAlias14', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeAlias14.py']);
+test('RecursiveTypeAlias6', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['recursiveTypeAlias6.py']);
 
-    TestUtils.validateResults(analysisResults, 6);
+    TestUtils.validateResults(analysisResults, 0);
 });
 
-test('TypeAlias15', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeAlias15.py']);
+test('RecursiveTypeAlias6', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['recursiveTypeAlias6.py']);
 
     TestUtils.validateResults(analysisResults, 0);
 });
@@ -413,6 +491,25 @@ test('Classes7', () => {
     TestUtils.validateResults(analysisResults, 1);
 });
 
+test('Classes8', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['classes8.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('Classes9', () => {
+    const configOptions = new ConfigOptions('.');
+
+    // By default, optional diagnostics are ignored.
+    let analysisResults = TestUtils.typeAnalyzeSampleFiles(['classes9.py'], configOptions);
+    TestUtils.validateResults(analysisResults, 0);
+
+    // Turn on errors.
+    configOptions.diagnosticRuleSet.reportIncompatibleMethodOverride = 'error';
+    analysisResults = TestUtils.typeAnalyzeSampleFiles(['classes9.py'], configOptions);
+    TestUtils.validateResults(analysisResults, 3);
+});
+
 test('Enums1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['enums1.py']);
 
@@ -449,6 +546,18 @@ test('Enums6', () => {
     TestUtils.validateResults(analysisResults, 0);
 });
 
+test('Enums7', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['enums7.py']);
+
+    TestUtils.validateResults(analysisResults, 4);
+});
+
+test('Enums8', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['enums8.py']);
+
+    TestUtils.validateResults(analysisResults, 1);
+});
+
 test('TypeGuard1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeGuard1.py']);
 
@@ -457,6 +566,18 @@ test('TypeGuard1', () => {
 
 test('TypeGuard2', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeGuard2.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('TypeGuard3', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeGuard3.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('TypeGuard4', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeGuard4.py']);
 
     TestUtils.validateResults(analysisResults, 0);
 });
@@ -530,7 +651,7 @@ test('VariadicTypeVar6', () => {
 
     configOptions.defaultPythonVersion = PythonVersion.V3_10;
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['variadicTypeVar6.py'], configOptions);
-    TestUtils.validateResults(analysisResults, 9);
+    TestUtils.validateResults(analysisResults, 8);
 });
 
 test('VariadicTypeVar7', () => {
@@ -549,6 +670,14 @@ test('VariadicTypeVar8', () => {
     TestUtils.validateResults(analysisResults, 4);
 });
 
+test('VariadicTypeVar9', () => {
+    const configOptions = new ConfigOptions('.');
+
+    configOptions.defaultPythonVersion = PythonVersion.V3_10;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['variadicTypeVar9.py'], configOptions);
+    TestUtils.validateResults(analysisResults, 0);
+});
+
 test('Match1', () => {
     const configOptions = new ConfigOptions('.');
 
@@ -562,7 +691,7 @@ test('Match2', () => {
 
     configOptions.defaultPythonVersion = PythonVersion.V3_10;
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['match2.py'], configOptions);
-    TestUtils.validateResults(analysisResults, 0);
+    TestUtils.validateResults(analysisResults, 2);
 });
 
 test('Match3', () => {
@@ -570,7 +699,7 @@ test('Match3', () => {
 
     configOptions.defaultPythonVersion = PythonVersion.V3_10;
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['match3.py'], configOptions);
-    TestUtils.validateResults(analysisResults, 1);
+    TestUtils.validateResults(analysisResults, 5);
 });
 
 test('Match4', () => {
@@ -603,6 +732,22 @@ test('Match7', () => {
     configOptions.defaultPythonVersion = PythonVersion.V3_10;
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['match7.py'], configOptions);
     TestUtils.validateResults(analysisResults, 2);
+});
+
+test('Match8', () => {
+    const configOptions = new ConfigOptions('.');
+
+    configOptions.defaultPythonVersion = PythonVersion.V3_10;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['match8.py'], configOptions);
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('Match9', () => {
+    const configOptions = new ConfigOptions('.');
+
+    configOptions.defaultPythonVersion = PythonVersion.V3_10;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['match9.py'], configOptions);
+    TestUtils.validateResults(analysisResults, 0);
 });
 
 test('List1', () => {
@@ -642,6 +787,12 @@ test('None1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['none1.py']);
 
     TestUtils.validateResults(analysisResults, 1);
+});
+
+test('None2', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['none2.py']);
+
+    TestUtils.validateResults(analysisResults, 2);
 });
 
 test('Constructor1', () => {
@@ -694,6 +845,18 @@ test('Constructor8', () => {
 
 test('Constructor9', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['constructor9.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('Constructor10', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['constructor10.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('Constructor11', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['constructor11.py']);
 
     TestUtils.validateResults(analysisResults, 0);
 });

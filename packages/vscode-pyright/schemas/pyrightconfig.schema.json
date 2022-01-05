@@ -141,7 +141,7 @@
       "$id": "#/properties/reportPropertyTypeMismatch",
       "$ref": "#/definitions/diagnostic",
       "title": "Controls reporting of property getter/setter type mismatches",
-      "default": "error"
+      "default": "none"
     },
     "reportFunctionMemberAccess": {
       "$id": "#/properties/reportFunctionMemberAccess",
@@ -281,6 +281,12 @@
       "title": "Controls reporting of private variables and functions used outside of the owning class or module and usage of protected members outside of subclasses",
       "default": "none"
     },
+    "reportPrivateImportUsage": {
+      "$id": "#/properties/reportPrivateImportUsage",
+      "$ref": "#/definitions/diagnostic",
+      "title": "Controls reporting of improper usage of symbol imported from a \"py.typed\" module that is not re-exported from that module",
+      "default": "error"
+    },
     "reportConstantRedefinition": {
       "$id": "#/properties/reportConstantRedefinition",
       "$ref": "#/definitions/diagnostic",
@@ -345,6 +351,12 @@
       "$id": "#/properties/reportUnknownMemberType",
       "$ref": "#/definitions/diagnostic",
       "title": "Controls reporting class and instance variables whose types are unknown",
+      "default": "none"
+    },
+    "reportMissingParameterType": {
+      "$id": "#/properties/reportMissingParameterType",
+      "$ref": "#/definitions/diagnostic",
+      "title": "Controls reporting input parameters that are missing a type annotation",
       "default": "none"
     },
     "reportMissingTypeArgument": {
@@ -444,11 +456,11 @@
       "default": "error"
     },
     "extraPaths": {
-      "$id": "#/properties/executionEnvironments/items/properties/extraPaths",
+      "$id": "#/properties/extraPaths",
       "type": "array",
       "title": "Additional import search resolution paths",
       "items": {
-        "$id": "#/properties/executionEnvironments/items/properties/extraPaths/items",
+        "$id": "#/properties/extraPaths/items",
         "type": "string",
         "title": "Additional import search resolution path",
         "default": "",
@@ -530,7 +542,7 @@
             }
           },
           "pythonVersion": {
-            "$id": "#/properties/pythonVersion",
+            "$id": "#/properties/executionEnvironments/items/properties/pythonVersion",
             "type": "string",
             "title": "Python version to assume during type analysis",
             "default": "",
@@ -540,7 +552,7 @@
             "pattern": "^3\\.[0-9]+$"
           },
           "pythonPlatform": {
-            "$id": "#/properties/pythonPlatform",
+            "$id": "#/properties/executionEnvironments/items/properties/pythonPlatform",
             "type": "string",
             "title": "Python platform to assume during type analysis",
             "default": "",

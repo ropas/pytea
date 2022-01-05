@@ -24,7 +24,7 @@ import * as AnalyzerNodeInfo from '../analyzer/analyzerNodeInfo';
 import { AliasDeclaration, Declaration, DeclarationType } from '../analyzer/declaration';
 import { getNameFromDeclaration } from '../analyzer/declarationUtils';
 import { getLastTypedDeclaredForSymbol } from '../analyzer/symbolUtils';
-import { TypeEvaluator } from '../analyzer/typeEvaluator';
+import { TypeEvaluator } from '../analyzer/typeEvaluatorTypes';
 import { isProperty } from '../analyzer/typeUtils';
 import { throwIfCancellationRequested } from '../common/cancellationUtils';
 import { convertOffsetsToRange } from '../common/positionUtils';
@@ -70,16 +70,29 @@ export function getIndexAliasData(
         return undefined;
     }
 
-    const resolved = resolveAliasDeclaration(importLookup, declaration, /* resolveLocalNames */ true);
-    const nameValue = resolved ? getNameFromDeclaration(resolved) : undefined;
-    if (!nameValue || resolved!.path.length <= 0) {
+    const resolvedInfo = resolveAliasDeclaration(
+        importLookup,
+        declaration,
+        /* resolveLocalNames */ true,
+        /* allowExternallyHiddenAccess */ false
+    );
+    if (!resolvedInfo || !resolvedInfo.declaration) {
         return undefined;
     }
 
-    const symbolKind = getSymbolKind(nameValue, resolved!) ?? SymbolKind.Module;
+    if (resolvedInfo.isPrivate) {
+        return undefined;
+    }
+
+    const nameValue = getNameFromDeclaration(resolvedInfo.declaration);
+    if (!nameValue || resolvedInfo.declaration.path.length <= 0) {
+        return undefined;
+    }
+
+    const symbolKind = getSymbolKind(nameValue, resolvedInfo.declaration) ?? SymbolKind.Module;
     return {
         originalName: nameValue,
-        modulePath: resolved!.path,
+        modulePath: resolvedInfo.declaration.path,
         kind: symbolKind,
         itemKind: convertSymbolKindToCompletionItemKind(symbolKind),
     };
@@ -339,7 +352,7 @@ function collectSymbolIndexData(
                 return;
             }
 
-            if (declaration.path.length <= 0) {
+            if (!declaration.loadSymbolsFromPath || declaration.path.length <= 0) {
                 // If alias doesn't have a path to the original file, we can't do dedup
                 // so ignore those aliases.
                 // ex) asyncio.futures, asyncio.base_futures.futures and many will dedup

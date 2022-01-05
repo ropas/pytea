@@ -78,6 +78,10 @@ class Foo:
         self.member7: Final = 6
 
 
+t1: Literal["Literal[4]"] = reveal_type(Foo.member1)
+t2: Literal["Literal[4]"] = reveal_type(Foo(True).member1)
+
+
 class Bar(Foo):
     # This should generate an error because we are overriding
     # a member that is marked Final in the parent class.
@@ -105,3 +109,35 @@ def bar(a: Final[int]):
 # This should generate an error because Final must the outermost
 # type in assignments.
 b: List[Final[int]] = []
+
+
+class ClassA:
+    member1: Final = 3
+    member2: Final
+
+    def __init__(self):
+        # This should generate an error.
+        self.member1 = 5
+
+        self.member2 = "hi"
+
+        self.member3: Final = "hi"
+
+    def other(self):
+        # This should generate an error.
+        self.member1 = 5
+
+        # This should generate an error.
+        self.member2 = "hi"
+
+        # This should generate an error.
+        self.member3 = "hi"
+
+
+a = ClassA()
+
+# This should generate an error.
+a.member1 = 4
+
+# This should generate an error.
+a.member3 = "x"

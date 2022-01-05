@@ -112,6 +112,9 @@ export interface VariableDeclaration extends DeclarationBase {
     // constant in that reassignment is not permitted)?
     isFinal?: boolean;
 
+    // Is the declaration a "ClassVar"?
+    isClassVar?: boolean;
+
     // Is the declaration annotated with "Required"?
     isRequired?: boolean;
 
@@ -120,6 +123,11 @@ export interface VariableDeclaration extends DeclarationBase {
 
     // Is the declaration an entry in __slots__?
     isDefinedBySlots?: boolean;
+
+    // Is the declaration using a runtime-evaluated type expression
+    // rather than an annotation? This is used for TypedDicts, NamedTuples,
+    // and other complex (more dynamic) class definitions with typed variables.
+    isRuntimeTypeExpression?: boolean;
 
     // Points to the "TypeAlias" annotation described in PEP 613.
     typeAliasAnnotation?: ExpressionNode | undefined;
@@ -147,6 +155,9 @@ export interface AliasDeclaration extends DeclarationBase {
     // rename references.
     usesLocalName: boolean;
 
+    // Indicate whether symbols can be loaded from the path.
+    loadSymbolsFromPath: boolean;
+
     // The name of the symbol being imported (used for "from X import Y"
     // statements, not applicable to "import X" statements).
     symbolName?: string | undefined;
@@ -170,6 +181,10 @@ export interface AliasDeclaration extends DeclarationBase {
 
     // Is this a dummy entry for an unresolved import?
     isUnresolved?: boolean;
+
+    // Is this a dummy entry for an import that cannot be resolved
+    // directly because it targets a native library?
+    isNativeLib?: boolean;
 }
 
 // This interface represents a set of actions that the python loader
@@ -179,6 +194,9 @@ export interface ModuleLoaderActions {
     // if the resolved path doesn't reference a module (e.g. it's
     // a directory).
     path: string;
+
+    // Indicate whether symbols can be loaded from the path.
+    loadSymbolsFromPath: boolean;
 
     // See comment for "implicitImports" field in AliasDeclaration.
     implicitImports?: Map<string, ModuleLoaderActions>;
@@ -213,6 +231,10 @@ export function isAliasDeclaration(decl: Declaration): decl is AliasDeclaration 
     return decl.type === DeclarationType.Alias;
 }
 
-export function isSpecialBuiltInClassDeclarations(decl: Declaration): decl is SpecialBuiltInClassDeclaration {
+export function isSpecialBuiltInClassDeclaration(decl: Declaration): decl is SpecialBuiltInClassDeclaration {
     return decl.type === DeclarationType.SpecialBuiltInClass;
+}
+
+export function isIntrinsicDeclaration(decl: Declaration): decl is IntrinsicDeclaration {
+    return decl.type === DeclarationType.Intrinsic;
 }

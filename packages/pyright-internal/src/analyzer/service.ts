@@ -44,6 +44,8 @@ import {
     getFileSpec,
     getFileSystemEntries,
     isDirectory,
+    isFile,
+    makeDirectories,
     normalizePath,
     normalizeSlashes,
     stripFileExtension,
@@ -60,10 +62,10 @@ import { ReferenceCallback } from '../languageService/referencesProvider';
 import { SignatureHelpResults } from '../languageService/signatureHelpProvider';
 import { AnalysisCompleteCallback } from './analysis';
 import { BackgroundAnalysisProgram, BackgroundAnalysisProgramFactory } from './backgroundAnalysisProgram';
-import { ImportedModuleDescriptor, ImportResolver, ImportResolverFactory } from './importResolver';
+import { createImportedModuleDescriptor, ImportResolver, ImportResolverFactory } from './importResolver';
 import { MaxAnalysisTime } from './program';
 import { findPythonSearchPaths } from './pythonPathUtils';
-import { TypeEvaluator } from './typeEvaluator';
+import { TypeEvaluator } from './typeEvaluatorTypes';
 
 export const configFileNames = ['pyrightconfig.json'];
 export const pyprojectTomlName = 'pyproject.toml';
@@ -148,10 +150,10 @@ export class AnalyzerService {
                   );
     }
 
-    clone(instanceName: string, backgroundAnalysis?: BackgroundAnalysisBase): AnalyzerService {
-        return new AnalyzerService(
+    clone(instanceName: string, backgroundAnalysis?: BackgroundAnalysisBase, fs?: FileSystem): AnalyzerService {
+        const service = new AnalyzerService(
             instanceName,
-            this._fs,
+            fs ?? this._fs,
             this._console,
             this._hostFactory,
             this._importResolverFactory,
@@ -162,6 +164,20 @@ export class AnalyzerService {
             this._backgroundAnalysisProgramFactory,
             this._cancellationProvider
         );
+
+        // Make sure we keep editor content (open file) which could be different than one in the file system.
+        for (const fileInfo of this.backgroundAnalysisProgram.program.getOpened()) {
+            const version = fileInfo.sourceFile.getClientVersion();
+            if (version !== undefined) {
+                service.setFileOpened(
+                    fileInfo.sourceFile.getFilePath(),
+                    version,
+                    fileInfo.sourceFile.getOpenFileContents()!
+                );
+            }
+        }
+
+        return service;
     }
 
     dispose() {
@@ -187,7 +203,7 @@ export class AnalyzerService {
         this._backgroundAnalysisProgram.setCompletionCallback(callback);
     }
 
-    setOptions(commandLineOptions: CommandLineOptions, reanalyze = true): void {
+    setOptions(commandLineOptions: CommandLineOptions): void {
         this._commandLineOptions = commandLineOptions;
 
         const host = this._hostFactory();
@@ -205,22 +221,32 @@ export class AnalyzerService {
         this._executionRootPath = normalizePath(
             combinePaths(commandLineOptions.executionRoot, configOptions.projectRoot)
         );
-        this._applyConfigOptions(host, reanalyze);
+        this._applyConfigOptions(host);
+    }
+
+    isTracked(filePath: string): boolean {
+        for (const includeSpec of this._configOptions.include) {
+            if (this._matchIncludeFileSpec(includeSpec.regExp, this._configOptions.exclude, filePath)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     setFileOpened(path: string, version: number | null, contents: string) {
-        this._backgroundAnalysisProgram.setFileOpened(path, version, contents, this._isTracked(path));
+        this._backgroundAnalysisProgram.setFileOpened(path, version, contents, this.isTracked(path));
         this._scheduleReanalysis(false);
     }
 
     updateOpenFileContents(path: string, version: number | null, contents: TextDocumentContentChangeEvent[]) {
-        this._backgroundAnalysisProgram.updateOpenFileContents(path, version, contents, this._isTracked(path));
+        this._backgroundAnalysisProgram.updateOpenFileContents(path, version, contents, this.isTracked(path));
         this._scheduleReanalysis(false);
     }
 
     test_setIndexing(
         workspaceIndices: Map<string, IndexResults>,
-        libraryIndices: Map<string, Map<string, IndexResults>>
+        libraryIndices: Map<string | undefined, Map<string, IndexResults>>
     ) {
         this._backgroundAnalysisProgram.test_setIndexing(workspaceIndices, libraryIndices);
     }
@@ -270,6 +296,14 @@ export class AnalyzerService {
         token: CancellationToken
     ): DocumentRange[] | undefined {
         return this._program.getDefinitionsForPosition(filePath, position, filter, token);
+    }
+
+    getTypeDefinitionForPosition(
+        filePath: string,
+        position: Position,
+        token: CancellationToken
+    ): DocumentRange[] | undefined {
+        return this._program.getTypeDefinitionsForPosition(filePath, position, token);
     }
 
     reportReferencesForPosition(
@@ -363,6 +397,10 @@ export class AnalyzerService {
         token: CancellationToken
     ): TextEditAction[] | undefined {
         return this._program.performQuickAction(filePath, command, args, token);
+    }
+
+    renameModule(filePath: string, newFilePath: string, token: CancellationToken): FileEditAction[] | undefined {
+        return this._program.renameModule(filePath, newFilePath, token);
     }
 
     renameSymbolAtPosition(
@@ -592,6 +630,8 @@ export class AnalyzerService {
             configOptions.applyDiagnosticOverrides(commandLineOptions.diagnosticSeverityOverrides);
         }
 
+        configOptions.analyzeUnannotatedFunctions = commandLineOptions.analyzeUnannotatedFunctions ?? true;
+
         const reportDuplicateSetting = (settingName: string, configValue: number | string | boolean) => {
             const settingSource = commandLineOptions.fromVsCodeExtension
                 ? 'the client settings'
@@ -715,7 +755,7 @@ export class AnalyzerService {
         const typingsSubdirPath = this._getTypeStubFolder();
 
         this._program.writeTypeStub(
-            this._typeStubTargetPath!,
+            this._typeStubTargetPath ?? '',
             this._typeStubTargetIsSingleFile,
             typingsSubdirPath,
             token
@@ -726,7 +766,7 @@ export class AnalyzerService {
         const typingsSubdirPath = this._getTypeStubFolder();
 
         return this._backgroundAnalysisProgram.writeTypeStub(
-            this._typeStubTargetPath!,
+            this._typeStubTargetPath ?? '',
             this._typeStubTargetIsSingleFile,
             typingsSubdirPath,
             token
@@ -736,7 +776,11 @@ export class AnalyzerService {
     // This is called after a new type stub has been created. It allows
     // us to invalidate caches and force reanalysis of files that potentially
     // are affected by the appearance of a new type stub.
-    invalidateAndForceReanalysis(rebuildLibraryIndexing = true) {
+    invalidateAndForceReanalysis(rebuildLibraryIndexing = true, updateTrackedFileList = false) {
+        if (updateTrackedFileList) {
+            this._updateTrackedFileList(/* markFilesDirtyUnconditionally */ false);
+        }
+
         // Mark all files with one or more errors dirty.
         this._backgroundAnalysisProgram.invalidateAndForceReanalysis(rebuildLibraryIndexing);
     }
@@ -792,6 +836,7 @@ export class AnalyzerService {
             this._console.error(errMsg);
             throw new Error(errMsg);
         }
+
         if (!stubPath) {
             // We should never get here because we always generate a
             // default typings path if none was specified.
@@ -799,6 +844,7 @@ export class AnalyzerService {
             this._console.info(errMsg);
             throw new Error(errMsg);
         }
+
         const typeStubInputTargetParts = this._typeStubTargetImportName.split('.');
         if (typeStubInputTargetParts[0].length === 0) {
             // We should never get here because the import resolution
@@ -807,6 +853,7 @@ export class AnalyzerService {
             this._console.error(errMsg);
             throw new Error(errMsg);
         }
+
         try {
             // Generate a new typings directory if necessary.
             if (!this._fs.existsSync(stubPath)) {
@@ -817,18 +864,22 @@ export class AnalyzerService {
             this._console.error(errMsg);
             throw new Error(errMsg);
         }
-        // Generate a typings subdirectory.
+
+        // Generate a typings subdirectory hierarchy.
         const typingsSubdirPath = combinePaths(stubPath, typeStubInputTargetParts[0]);
+        const typingsSubdirHierarchy = combinePaths(stubPath, ...typeStubInputTargetParts);
+
         try {
             // Generate a new typings subdirectory if necessary.
-            if (!this._fs.existsSync(typingsSubdirPath)) {
-                this._fs.mkdirSync(typingsSubdirPath);
+            if (!this._fs.existsSync(typingsSubdirHierarchy)) {
+                makeDirectories(this._fs, typingsSubdirHierarchy, stubPath);
             }
         } catch (e: any) {
-            const errMsg = `Could not create typings subdirectory '${typingsSubdirPath}'`;
+            const errMsg = `Could not create typings subdirectory '${typingsSubdirHierarchy}'`;
             this._console.error(errMsg);
             throw new Error(errMsg);
         }
+
         return typingsSubdirPath;
     }
 
@@ -876,7 +927,7 @@ export class AnalyzerService {
                 throw e;
             }
 
-            this._console.error(`Pyproject file "${pyprojectPath}" is missing "[tool.pyright] section.`);
+            this._console.error(`Pyproject file "${pyprojectPath}" is missing "[tool.pyright]" section.`);
             return undefined;
         });
     }
@@ -948,12 +999,7 @@ export class AnalyzerService {
         // for a different set of files.
         if (this._typeStubTargetImportName) {
             const execEnv = this._configOptions.findExecEnvironment(this._executionRootPath);
-            const moduleDescriptor: ImportedModuleDescriptor = {
-                leadingDots: 0,
-                nameParts: this._typeStubTargetImportName.split('.'),
-                importedSymbols: [],
-            };
-
+            const moduleDescriptor = createImportedModuleDescriptor(this._typeStubTargetImportName);
             const importResult = this._backgroundAnalysisProgram.importResolver.resolveImport(
                 '',
                 execEnv,
@@ -963,38 +1009,43 @@ export class AnalyzerService {
             if (importResult.isImportFound) {
                 const filesToImport: string[] = [];
 
-                // Namespace packages resolve to a directory name, so
-                // don't include those.
-                const resolvedPath = importResult.resolvedPaths[importResult.resolvedPaths.length - 1];
+                // Determine the directory that contains the root package.
+                const finalResolvedPath = importResult.resolvedPaths[importResult.resolvedPaths.length - 1];
+                const isFinalPathFile = isFile(this._fs, finalResolvedPath);
+                const isFinalPathInitFile =
+                    isFinalPathFile && stripFileExtension(getFileName(finalResolvedPath)) === '__init__';
 
-                // Get the directory that contains the root package.
-                let targetPath = getDirectoryPath(resolvedPath);
-                let prevResolvedPath = resolvedPath;
+                let rootPackagePath = finalResolvedPath;
+
+                if (isFinalPathFile) {
+                    // If the module is a __init__.pyi? file, use its parent directory instead.
+                    rootPackagePath = getDirectoryPath(rootPackagePath);
+                }
+
                 for (let i = importResult.resolvedPaths.length - 2; i >= 0; i--) {
-                    const resolvedPath = importResult.resolvedPaths[i];
-                    if (resolvedPath) {
-                        targetPath = getDirectoryPath(resolvedPath);
-                        prevResolvedPath = resolvedPath;
+                    if (importResult.resolvedPaths[i]) {
+                        rootPackagePath = importResult.resolvedPaths[i];
                     } else {
                         // If there was no file corresponding to this portion
                         // of the name path, assume that it's contained
                         // within its parent directory.
-                        targetPath = getDirectoryPath(prevResolvedPath);
-                        prevResolvedPath = targetPath;
+                        rootPackagePath = getDirectoryPath(rootPackagePath);
                     }
                 }
 
-                if (isDirectory(this._fs, targetPath)) {
-                    this._typeStubTargetPath = targetPath;
+                if (isDirectory(this._fs, rootPackagePath)) {
+                    this._typeStubTargetPath = rootPackagePath;
+                } else if (isFile(this._fs, rootPackagePath)) {
+                    // This can occur if there is a "dir/__init__.py" at the same level as a
+                    // module "dir/module.py" that is specifically targeted for stub generation.
+                    this._typeStubTargetPath = getDirectoryPath(rootPackagePath);
                 }
 
-                if (!resolvedPath) {
+                if (!finalResolvedPath) {
                     this._typeStubTargetIsSingleFile = false;
                 } else {
-                    filesToImport.push(resolvedPath);
-                    this._typeStubTargetIsSingleFile =
-                        importResult.resolvedPaths.length === 1 &&
-                        stripFileExtension(getFileName(importResult.resolvedPaths[0])) !== '__init__';
+                    filesToImport.push(finalResolvedPath);
+                    this._typeStubTargetIsSingleFile = importResult.resolvedPaths.length === 1 && !isFinalPathInitFile;
                 }
 
                 // Add the implicit import paths.
@@ -1153,6 +1204,10 @@ export class AnalyzerService {
 
                 const isIgnored = ignoredWatchEventFunction(fileList);
                 this._sourceFileWatcher = this._fs.createFileSystemWatcher(fileList, (event, path) => {
+                    if (!path) {
+                        return;
+                    }
+
                     if (this._verboseOutput) {
                         this._console.info(`SourceFile: Received fs event '${event}' for path '${path}'`);
                     }
@@ -1237,6 +1292,10 @@ export class AnalyzerService {
                 }
                 const isIgnored = ignoredWatchEventFunction(watchList);
                 this._libraryFileWatcher = this._fs.createFileSystemWatcher(watchList, (event, path) => {
+                    if (!path) {
+                        return;
+                    }
+
                     if (this._verboseOutput) {
                         this._console.info(`LibraryFile: Received fs event '${event}' for path '${path}'}'`);
                     }
@@ -1305,6 +1364,10 @@ export class AnalyzerService {
             });
         } else if (this._executionRootPath) {
             this._configFileWatcher = this._fs.createFileSystemWatcher([this._executionRootPath], (event, path) => {
+                if (!path) {
+                    return;
+                }
+
                 if (event === 'add' || event === 'change') {
                     const fileName = getFileName(path);
                     if (fileName && configFileNames.some((name) => name === fileName)) {
@@ -1357,7 +1420,7 @@ export class AnalyzerService {
         }
     }
 
-    private _applyConfigOptions(host: Host, reanalyze = true) {
+    private _applyConfigOptions(host: Host) {
         // Allocate a new import resolver because the old one has information
         // cached based on the previous config options.
         const importResolver = this._importResolverFactory(
@@ -1371,7 +1434,7 @@ export class AnalyzerService {
         if (this._commandLineOptions?.fromVsCodeExtension || this._configOptions.verboseOutput) {
             const logLevel = this._configOptions.verboseOutput ? LogLevel.Info : LogLevel.Log;
             for (const execEnv of this._configOptions.getExecutionEnvironments()) {
-                log(this._console, logLevel, `Search paths for ${execEnv.root}`);
+                log(this._console, logLevel, `Search paths for ${execEnv.root || '<default>'}`);
                 const roots = importResolver.getImportRoots(execEnv, /* forLogging */ true);
                 roots.forEach((path) => {
                     log(this._console, logLevel, `  ${path}`);
@@ -1384,9 +1447,7 @@ export class AnalyzerService {
         this._updateSourceFileWatchers();
         this._updateTrackedFileList(true);
 
-        if (reanalyze) {
-            this._scheduleReanalysis(false);
-        }
+        this._scheduleReanalysis(false);
     }
 
     private _clearReanalysisTimer() {
@@ -1397,7 +1458,7 @@ export class AnalyzerService {
     }
 
     private _scheduleReanalysis(requireTrackedFileUpdate: boolean) {
-        if (this._disposed) {
+        if (this._disposed || !this._commandLineOptions?.enableAmbientAnalysis) {
             // already disposed
             return;
         }
@@ -1471,16 +1532,6 @@ export class AnalyzerService {
     private _matchIncludeFileSpec(includeRegExp: RegExp, exclude: FileSpec[], filePath: string) {
         if (includeRegExp.test(filePath)) {
             if (!this._isInExcludePath(filePath, exclude) && this._shouldIncludeFile(filePath)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private _isTracked(filePath: string): boolean {
-        for (const includeSpec of this._configOptions.include) {
-            if (this._matchIncludeFileSpec(includeSpec.regExp, this._configOptions.exclude, filePath)) {
                 return true;
             }
         }

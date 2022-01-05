@@ -30,9 +30,10 @@ import {
     ModuleType,
     OverloadedFunctionType,
     Type,
+    TypeCategory,
 } from '../analyzer/types';
 import { ModuleNode, ParseNodeType } from '../parser/parseNodes';
-import { TypeEvaluator } from './typeEvaluator';
+import { TypeEvaluator } from './typeEvaluatorTypes';
 import {
     ClassIteratorFlags,
     ClassMemberLookupFlags,
@@ -42,9 +43,28 @@ import {
 } from './typeUtils';
 
 const DefaultClassIteratorFlagsForFunctions =
+    ClassMemberLookupFlags.SkipObjectBaseClass |
     ClassMemberLookupFlags.SkipInstanceVariables |
     ClassMemberLookupFlags.SkipOriginalClass |
     ClassMemberLookupFlags.DeclaredTypesOnly;
+
+function isInheritedFromBuiltin(type: FunctionType | OverloadedFunctionType, classType?: ClassType): boolean {
+    if (type.category === TypeCategory.OverloadedFunction) {
+        if (type.overloads.length === 0) {
+            return false;
+        }
+        type = type.overloads[0];
+    }
+
+    // Functions that are bound to a different type than where they
+    // were declared are inherited.
+    return (
+        type.details.moduleName === 'builtins' &&
+        !!classType &&
+        !!type.boundToType &&
+        !ClassType.isSameGenericClass(classType, type.boundToType)
+    );
+}
 
 export function getFunctionDocStringInherited(
     type: FunctionType,
@@ -54,7 +74,10 @@ export function getFunctionDocStringInherited(
 ) {
     let docString: string | undefined;
 
-    if (resolvedDecl && isFunctionDeclaration(resolvedDecl)) {
+    // Don't allow docs to be inherited from the builtins to other classes;
+    // they typically not helpful (and object's __init__ doc causes issues
+    // with our current docstring traversal).
+    if (!isInheritedFromBuiltin(type, classType) && resolvedDecl && isFunctionDeclaration(resolvedDecl)) {
         docString = _getFunctionDocString(type, resolvedDecl, sourceMapper);
     }
 
@@ -77,7 +100,7 @@ export function getFunctionDocStringInherited(
         }
     }
 
-    return docString;
+    return docString || type.details.docString;
 }
 
 export function getOverloadedFunctionDocStringsInherited(
@@ -87,9 +110,16 @@ export function getOverloadedFunctionDocStringsInherited(
     evaluator: TypeEvaluator,
     classType?: ClassType
 ) {
-    let docStrings = _getOverloadedFunctionDocStrings(type, resolvedDecl, sourceMapper);
-    if (docStrings && docStrings.length > 0) {
-        return docStrings;
+    let docStrings: string[] | undefined;
+
+    // Don't allow docs to be inherited from the builtins to other classes;
+    // they typically not helpful (and object's __init__ doc causes issues
+    // with our current docstring traversal).
+    if (!isInheritedFromBuiltin(type, classType)) {
+        docStrings = _getOverloadedFunctionDocStrings(type, resolvedDecl, sourceMapper);
+        if (docStrings && docStrings.length > 0) {
+            return docStrings;
+        }
     }
 
     // Search mro

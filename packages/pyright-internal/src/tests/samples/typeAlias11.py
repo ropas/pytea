@@ -1,50 +1,16 @@
-# This sample tests the handling of generic type aliases that are
-# defined in terms of other generic type aliases in a nested manner.
+# This sample tests the simple aliasing of a generic class with no
+# type arguments.
 
-from typing import Awaitable, Callable, Generic, TypeVar
-
-
-TSource = TypeVar("TSource")
-TError = TypeVar("TError")
-TResult = TypeVar("TResult")
-TNext = TypeVar("TNext")
+from typing import Generic, Literal, TypeVar
 
 
-class Context(Generic[TResult]):
-    Response: TResult
+_T = TypeVar("_T")
 
 
-class Result(Generic[TResult, TError]):
-    def map(
-        self, mapper: Callable[[Context[TResult]], TResult]
-    ) -> "Result[TResult, TError]":
-        return Result()
+class ClassA(Generic[_T]):
+    def __init__(self, x: _T):
+        pass
 
 
-HttpFuncResult = Result[Context[TResult], TError]
-HttpFuncResultAsync = Awaitable[Result[Context[TResult], TError]]
-
-HttpFunc = Callable[
-    [Context[TNext]],
-    HttpFuncResultAsync[TResult, TError],
-]
-
-HttpHandler = Callable[
-    [
-        HttpFunc[TNext, TResult, TError],
-        Context[TSource],
-    ],
-    HttpFuncResultAsync[TResult, TError],
-]
-
-
-async def run_async(
-    ctx: Context[TSource],
-    handler: HttpHandler[str, TResult, TError, TSource],
-) -> Result[TResult, TError]:
-    result = Result[TResult, TError]()
-
-    def mapper(x: Context[TResult]) -> TResult:
-        return x.Response
-
-    return result.map(mapper)
+A = ClassA
+t1: Literal["ClassA[int]"] = reveal_type(A(3))

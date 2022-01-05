@@ -25,6 +25,8 @@ import { Localizer } from '../localization/localize';
 import {
     ArgumentCategory,
     ArgumentNode,
+    ArrowCallableNode,
+    ArrowCallableParameter,
     AssertNode,
     AssignmentExpressionNode,
     AssignmentNode,
@@ -418,8 +420,6 @@ export class Parser {
     //     | star_named_expression ',' star_named_expressions?
     //     | named_expression
     private _parseMatchStatement(): MatchNode | undefined {
-        const matchToken = this._getKeywordToken(KeywordType.Match);
-
         // Parse the subject expression with errors suppressed. If it's not
         // followed by a colon, we'll assume this is not a match statement.
         // We need to do this because "match" is considered a soft keyword,
@@ -428,12 +428,15 @@ export class Parser {
         let smellsLikeMatchStatement = false;
         this._suppressErrors(() => {
             const curTokenIndex = this._tokenIndex;
-            this._parseTestOrStarListAsExpression(
+
+            this._getKeywordToken(KeywordType.Match);
+            const expression = this._parseTestOrStarListAsExpression(
                 /* allowAssignmentExpression */ true,
                 ErrorExpressionCategory.MissingPatternSubject,
                 Localizer.Diagnostic.expectedReturnExpr()
             );
-            smellsLikeMatchStatement = this._peekToken().type === TokenType.Colon;
+            smellsLikeMatchStatement =
+                expression.nodeType !== ParseNodeType.Error && this._peekToken().type === TokenType.Colon;
 
             // Set the token index back to the start.
             this._tokenIndex = curTokenIndex;
@@ -442,6 +445,8 @@ export class Parser {
         if (!smellsLikeMatchStatement) {
             return undefined;
         }
+
+        const matchToken = this._getKeywordToken(KeywordType.Match);
 
         const subjectExpression = this._parseTestOrStarListAsExpression(
             /* allowAssignmentExpression */ true,
@@ -501,6 +506,9 @@ export class Parser {
                 if (this._consumeTokenIfType(TokenType.Dedent)) {
                     if (!dedentToken.matchesIndent) {
                         this._addError(Localizer.Diagnostic.inconsistentIndent(), dedentToken);
+                    }
+                    if (dedentToken.isDedentAmbiguous) {
+                        this._addError(Localizer.Diagnostic.inconsistentTabs(), dedentToken);
                     }
                     break;
                 }
@@ -776,6 +784,7 @@ export class Parser {
 
         const patternCaptureOrValue = this._parsePatternCaptureOrValue();
         if (patternCaptureOrValue) {
+            const openParenToken = this._peekToken();
             if (
                 patternCaptureOrValue.nodeType === ParseNodeType.Error ||
                 !this._consumeTokenIfType(TokenType.OpenParenthesis)
@@ -792,7 +801,7 @@ export class Parser {
             const classPattern = PatternClassNode.create(classNameExpr, args);
 
             if (!this._consumeTokenIfType(TokenType.CloseParenthesis)) {
-                this._addError(Localizer.Diagnostic.expectedCloseParen(), this._peekToken());
+                this._addError(Localizer.Diagnostic.expectedCloseParen(), openParenToken);
 
                 // Consume the remainder of tokens on the line for error
                 // recovery.
@@ -857,7 +866,7 @@ export class Parser {
                     nextToken.type === TokenType.OpenParenthesis
                         ? Localizer.Diagnostic.expectedCloseParen()
                         : Localizer.Diagnostic.expectedCloseBracket(),
-                    this._peekToken()
+                    nextToken
                 );
                 this._consumeTokensUntilType([
                     TokenType.Colon,
@@ -874,7 +883,7 @@ export class Parser {
             if (this._consumeTokenIfType(TokenType.CloseCurlyBrace)) {
                 extendRange(mappingPattern, lastToken);
             } else {
-                this._addError(Localizer.Diagnostic.expectedCloseBrace(), this._peekToken());
+                this._addError(Localizer.Diagnostic.expectedCloseBrace(), nextToken);
                 this._consumeTokensUntilType([TokenType.Colon, TokenType.CloseCurlyBrace]);
             }
 
@@ -1180,10 +1189,16 @@ export class Parser {
         if (!this._consumeTokenIfType(TokenType.Colon)) {
             this._addError(Localizer.Diagnostic.expectedColon(), nextToken);
 
-            // Try to perform parse recovery by consuming tokens until
-            // we find the end of the line.
+            // Try to perform parse recovery by consuming tokens.
             if (this._consumeTokensUntilType([TokenType.NewLine, TokenType.Colon])) {
-                this._getNextToken();
+                if (this._peekTokenType() === TokenType.Colon) {
+                    this._getNextToken();
+                } else if (this._peekToken(1).type !== TokenType.Indent) {
+                    // Bail so we resume the at the next statement.
+                    // We can't parse as a simple statement as we've skipped all but the newline.
+                    this._getNextToken();
+                    return suite;
+                }
             }
         }
 
@@ -1197,6 +1212,10 @@ export class Parser {
                     }
 
                     if (nextToken.type === TokenType.Dedent) {
+                        if ((nextToken as DedentToken).isDedentAmbiguous) {
+                            this._addError(Localizer.Diagnostic.inconsistentTabs(), nextToken);
+                        }
+
                         indent--;
 
                         if (indent === 0) {
@@ -1269,6 +1288,9 @@ export class Parser {
                     if (!dedentToken.matchesIndent) {
                         this._addError(Localizer.Diagnostic.inconsistentIndent(), dedentToken);
                     }
+                    if (dedentToken.isDedentAmbiguous) {
+                        this._addError(Localizer.Diagnostic.inconsistentTabs(), dedentToken);
+                    }
                     break;
                 }
 
@@ -1295,8 +1317,12 @@ export class Parser {
     private _parseForStatement(asyncToken?: KeywordToken): ForNode {
         const forToken = this._getKeywordToken(KeywordType.For);
 
-        const exprListResult = this._parseExpressionList(/* allowStar */ true);
-        const targetExpr = this._makeExpressionOrTuple(exprListResult, /* enclosedInParens */ false);
+        const targetExpr = this._parseExpressionListAsPossibleTuple(
+            ErrorExpressionCategory.MissingExpression,
+            Localizer.Diagnostic.expectedExpr(),
+            forToken
+        );
+
         let seqExpr: ExpressionNode;
         let forSuite: SuiteNode;
         let elseSuite: SuiteNode | undefined;
@@ -1391,8 +1417,11 @@ export class Parser {
 
         const forToken = this._getKeywordToken(KeywordType.For);
 
-        const exprListResult = this._parseExpressionList(/* allowStar */ true);
-        const targetExpr = this._makeExpressionOrTuple(exprListResult, /* enclosedInParens */ false);
+        const targetExpr = this._parseExpressionListAsPossibleTuple(
+            ErrorExpressionCategory.MissingExpression,
+            Localizer.Diagnostic.expectedExpr(),
+            forToken
+        );
         let seqExpr: ExpressionNode | undefined;
 
         if (!this._consumeTokenIfKeyword(KeywordType.In)) {
@@ -1468,6 +1497,16 @@ export class Parser {
                 break;
             }
 
+            // See if this is a Python 3.11 exception group.
+            const possibleStarToken = this._peekToken();
+            let isExceptGroup = false;
+            if (this._consumeTokenIfOperator(OperatorType.Multiply)) {
+                if (this._getLanguageVersion() < PythonVersion.V3_11 && !this._parseOptions.isStubFile) {
+                    this._addError(Localizer.Diagnostic.exceptionGroupIncompatible(), possibleStarToken);
+                }
+                isExceptGroup = true;
+            }
+
             let typeExpr: ExpressionNode | undefined;
             let symbolName: IdentifierToken | undefined;
             if (this._peekTokenType() !== TokenType.Colon) {
@@ -1502,7 +1541,7 @@ export class Parser {
             }
 
             const exceptSuite = this._parseSuite(this._isInFunction);
-            const exceptNode = ExceptNode.create(exceptToken, exceptSuite);
+            const exceptNode = ExceptNode.create(exceptToken, exceptSuite, isExceptGroup);
             if (typeExpr) {
                 exceptNode.typeExpression = typeExpr;
                 exceptNode.typeExpression.parent = exceptNode;
@@ -1556,6 +1595,7 @@ export class Parser {
             );
         }
 
+        const openParenToken = this._peekToken();
         if (!this._consumeTokenIfType(TokenType.OpenParenthesis)) {
             this._addError(Localizer.Diagnostic.expectedOpenParen(), this._peekToken());
             return ErrorNode.create(
@@ -1569,7 +1609,7 @@ export class Parser {
         const paramList = this._parseVarArgsList(TokenType.CloseParenthesis, /* allowAnnotations */ true);
 
         if (!this._consumeTokenIfType(TokenType.CloseParenthesis)) {
-            this._addError(Localizer.Diagnostic.expectedCloseParen(), this._peekToken());
+            this._addError(Localizer.Diagnostic.expectedCloseParen(), openParenToken);
             this._consumeTokensUntilType([TokenType.Colon]);
         }
 
@@ -1755,7 +1795,7 @@ export class Parser {
         } else if (this._consumeTokenIfOperator(OperatorType.Power)) {
             starCount = 2;
         } else if (this._consumeTokenIfOperator(OperatorType.Divide)) {
-            if (this._getLanguageVersion() < PythonVersion.V3_8) {
+            if (this._getLanguageVersion() < PythonVersion.V3_8 && !this._parseOptions.isStubFile) {
                 this._addError(Localizer.Diagnostic.positionOnlyIncompatible(), firstToken);
             }
             slashCount = 1;
@@ -1878,7 +1918,7 @@ export class Parser {
 
         if (isParenthesizedWithItemList) {
             if (!this._consumeTokenIfType(TokenType.CloseParenthesis)) {
-                this._addError(Localizer.Diagnostic.expectedCloseParen(), this._peekToken());
+                this._addError(Localizer.Diagnostic.expectedCloseParen(), possibleParen);
             }
         }
 
@@ -2005,11 +2045,12 @@ export class Parser {
         }
 
         let argList: ArgumentNode[] = [];
+        const openParenToken = this._peekToken();
         if (this._consumeTokenIfType(TokenType.OpenParenthesis)) {
             argList = this._parseArgList();
 
             if (!this._consumeTokenIfType(TokenType.CloseParenthesis)) {
-                this._addError(Localizer.Diagnostic.expectedCloseParen(), this._peekToken());
+                this._addError(Localizer.Diagnostic.expectedCloseParen(), openParenToken);
             }
         }
 
@@ -2117,6 +2158,7 @@ export class Parser {
                 importFromNode.wildcardToken = possibleStarToken;
                 this._containsWildcardImport = true;
             } else {
+                const openParenToken = this._peekToken();
                 const inParen = this._consumeTokenIfType(TokenType.OpenParenthesis);
                 let trailingCommaToken: Token | undefined;
 
@@ -2166,7 +2208,7 @@ export class Parser {
 
                     const nextToken = this._peekToken();
                     if (!this._consumeTokenIfType(TokenType.CloseParenthesis)) {
-                        this._addError(Localizer.Diagnostic.expectedCloseParen(), this._peekToken());
+                        this._addError(Localizer.Diagnostic.expectedCloseParen(), openParenToken);
                     } else {
                         extendRange(importFromNode, nextToken);
                     }
@@ -2273,10 +2315,15 @@ export class Parser {
         const moduleNameNode = ModuleNameNode.create(this._peekToken());
 
         while (true) {
-            if (this._consumeTokenIfType(TokenType.Ellipsis)) {
-                moduleNameNode.leadingDots += 3;
-            } else if (this._consumeTokenIfType(TokenType.Dot)) {
-                moduleNameNode.leadingDots++;
+            const token = this._getTokenIfType(TokenType.Ellipsis) ?? this._getTokenIfType(TokenType.Dot);
+            if (token) {
+                if (token.type === TokenType.Ellipsis) {
+                    moduleNameNode.leadingDots += 3;
+                } else {
+                    moduleNameNode.leadingDots++;
+                }
+
+                extendRange(moduleNameNode, token);
             } else {
                 break;
             }
@@ -2588,6 +2635,23 @@ export class Parser {
         return tupleNode;
     }
 
+    private _parseExpressionListAsPossibleTuple(
+        errorCategory: ErrorExpressionCategory,
+        errorString: string,
+        errorToken: Token
+    ): ExpressionNode {
+        if (this._isNextTokenNeverExpression()) {
+            this._addError(errorString, errorToken);
+            return ErrorNode.create(errorToken, errorCategory);
+        }
+
+        const exprListResult = this._parseExpressionList(/* allowStar */ true);
+        if (exprListResult.parseError) {
+            return exprListResult.parseError;
+        }
+        return this._makeExpressionOrTuple(exprListResult, /* enclosedInParens */ false);
+    }
+
     private _parseTestListAsExpression(errorCategory: ErrorExpressionCategory, errorString: string): ExpressionNode {
         if (this._isNextTokenNeverExpression()) {
             return this._handleExpressionParseError(errorCategory, errorString);
@@ -2684,7 +2748,7 @@ export class Parser {
             return ifExpr;
         }
 
-        const testExpr = this._parseAssignmentExpression();
+        const testExpr = this._parseOrTest();
         if (testExpr.nodeType === ParseNodeType.Error) {
             return testExpr;
         }
@@ -2720,7 +2784,7 @@ export class Parser {
             return leftExpr;
         }
 
-        if (!this._assignmentExpressionsAllowed) {
+        if (!this._assignmentExpressionsAllowed || this._isParsingTypeAnnotation) {
             this._addError(Localizer.Diagnostic.walrusNotAllowed(), walrusToken);
         }
 
@@ -2735,6 +2799,14 @@ export class Parser {
 
     // or_test: and_test ('or' and_test)*
     private _parseOrTest(): ExpressionNode {
+        // Is the next expression possibly an arrow callable?
+        if (this._peekKeywordType() === KeywordType.Async || this._peekTokenType() === TokenType.OpenParenthesis) {
+            const possibleArrowCall = this._parseArrowCall();
+            if (possibleArrowCall) {
+                return possibleArrowCall;
+            }
+        }
+
         let leftExpr = this._parseAndTest();
         if (leftExpr.nodeType === ParseNodeType.Error) {
             return leftExpr;
@@ -3030,6 +3102,7 @@ export class Parser {
         // Consume trailers.
         while (true) {
             // Is it a function call?
+            const startOfTrailerToken = this._peekToken();
             if (this._consumeTokenIfType(TokenType.OpenParenthesis)) {
                 // Generally, function calls are not allowed within type annotations,
                 // but they are permitted in "Annotated" annotations.
@@ -3049,7 +3122,7 @@ export class Parser {
                 const nextToken = this._peekToken();
                 let isArgListTerminated = false;
                 if (!this._consumeTokenIfType(TokenType.CloseParenthesis)) {
-                    this._addError(Localizer.Diagnostic.expectedCloseParen(), this._peekToken());
+                    this._addError(Localizer.Diagnostic.expectedCloseParen(), startOfTrailerToken);
 
                     // Consume the remainder of tokens on the line for error
                     // recovery.
@@ -3116,6 +3189,7 @@ export class Parser {
                     this._handleExpressionParseError(
                         ErrorExpressionCategory.MissingIndexCloseBracket,
                         Localizer.Diagnostic.expectedCloseBracket(),
+                        startOfTrailerToken,
                         indexNode
                     );
                 }
@@ -3128,6 +3202,7 @@ export class Parser {
                     return this._handleExpressionParseError(
                         ErrorExpressionCategory.MissingMemberAccessName,
                         Localizer.Diagnostic.expectedMemberName(),
+                        startOfTrailerToken,
                         atomExpression
                     );
                 }
@@ -3225,6 +3300,7 @@ export class Parser {
             const errorNode = this._handleExpressionParseError(
                 ErrorExpressionCategory.MissingIndexOrSlice,
                 Localizer.Diagnostic.expectedSliceIndex(),
+                /* targetToken */ undefined,
                 /* childNode */ undefined,
                 [TokenType.CloseBracket]
             );
@@ -3408,6 +3484,12 @@ export class Parser {
         }
 
         if (nextToken.type === TokenType.OpenParenthesis) {
+            const possibleArrowCall = this._parseArrowCall();
+            if (possibleArrowCall) {
+                this._addError(Localizer.Diagnostic.arrowCallableNeedsParen(), possibleArrowCall);
+                return possibleArrowCall;
+            }
+
             const possibleTupleNode = this._parseTupleAtom();
             if (
                 possibleTupleNode.nodeType === ParseNodeType.Tuple &&
@@ -3428,6 +3510,11 @@ export class Parser {
                 // expression is parenthesized.
                 possibleTupleNode.parenthesized = true;
             }
+
+            if (possibleTupleNode.nodeType === ParseNodeType.StringList) {
+                possibleTupleNode.isParenthesized = true;
+            }
+
             return possibleTupleNode;
         } else if (nextToken.type === TokenType.OpenBracket) {
             const listNode = this._parseListAtom();
@@ -3458,6 +3545,14 @@ export class Parser {
                 return ConstantNode.create(this._getNextToken() as KeywordToken);
             }
 
+            if (keywordToken.keywordType === KeywordType.Async) {
+                const possibleArrowCall = this._parseArrowCall();
+                if (possibleArrowCall) {
+                    this._addError(Localizer.Diagnostic.arrowCallableNeedsParen(), possibleArrowCall);
+                    return possibleArrowCall;
+                }
+            }
+
             // Make an identifier out of the keyword.
             const keywordAsIdentifier = this._getTokenIfIdentifier();
             if (keywordAsIdentifier) {
@@ -3478,10 +3573,11 @@ export class Parser {
     private _handleExpressionParseError(
         category: ErrorExpressionCategory,
         errorMsg: string,
+        targetToken?: Token,
         childNode?: ExpressionNode,
         additionalStopTokens?: TokenType[]
     ): ErrorNode {
-        this._addError(errorMsg, this._peekToken());
+        this._addError(errorMsg, targetToken ?? this._peekToken());
         const expr = ErrorNode.create(this._peekToken(), category, childNode);
         const stopTokens = [TokenType.NewLine];
         if (additionalStopTokens) {
@@ -3524,6 +3620,106 @@ export class Parser {
         return this._parseLambdaExpression(allowConditional);
     }
 
+    // Attempts to parse an arrow call. If it is not a valid arrow call,
+    // it returns undefined without emitting any diagnostics. If it is
+    // an arrow call (as evidenced by a "->" token after the close paren),
+    // it returns an ArrowCallableNode. This method should be called when
+    // the next token is either an open paren or an "async" keyword.
+    // arrow_call: 'async'? '(' arrow_parameters ')' '->' test
+    private _parseArrowCall(): ArrowCallableNode | undefined {
+        let smellsLikeArrowCall = false;
+
+        // Do a lookahead operation to see if this smells like an arrow
+        // call. If not, it's probably a normal parenthesis or tuple
+        // expression.
+        this._suppressErrors(() => {
+            const curTokenIndex = this._tokenIndex;
+
+            this._consumeTokenIfKeyword(KeywordType.Async);
+
+            if (this._consumeTokenIfType(TokenType.OpenParenthesis)) {
+                this._parseArrowCallableParameterList();
+
+                if (this._consumeTokenIfType(TokenType.CloseParenthesis)) {
+                    if (this._consumeTokenIfType(TokenType.Arrow)) {
+                        smellsLikeArrowCall = true;
+                    }
+                }
+            }
+
+            this._tokenIndex = curTokenIndex;
+        });
+
+        if (!smellsLikeArrowCall) {
+            return undefined;
+        }
+
+        let asyncToken: Token | undefined = this._peekToken();
+        if (!this._consumeTokenIfKeyword(KeywordType.Async)) {
+            asyncToken = undefined;
+        }
+
+        const openParenToken = this._peekToken();
+        if (openParenToken.type !== TokenType.OpenParenthesis) {
+            return undefined;
+        }
+        this._getNextToken();
+
+        const arrowCallableParams = this._parseArrowCallableParameterList();
+
+        // Consume the close paren and arrow tokens.
+        this._getNextToken();
+        this._getNextToken();
+
+        const returnTypeAnnotation = this._parseTypeAnnotation();
+
+        return ArrowCallableNode.create(openParenToken, arrowCallableParams, returnTypeAnnotation, asyncToken);
+    }
+
+    private _parseArrowCallableParameterList(): ArrowCallableParameter[] {
+        const paramList: ArrowCallableParameter[] = [];
+
+        while (true) {
+            if (this._peekTokenType() === TokenType.CloseParenthesis) {
+                break;
+            }
+
+            const param = this._parseArrowCallableParameter();
+            if (!param) {
+                this._consumeTokensUntilType([TokenType.CloseParenthesis]);
+                break;
+            }
+
+            paramList.push(param);
+
+            const foundComma = this._consumeTokenIfType(TokenType.Comma);
+
+            if (!foundComma) {
+                break;
+            }
+        }
+
+        return paramList;
+    }
+
+    private _parseArrowCallableParameter(): ArrowCallableParameter {
+        const nextToken = this._peekToken();
+        let category = ParameterCategory.Simple;
+        let starToken: Token | undefined;
+
+        if (this._consumeTokenIfOperator(OperatorType.Multiply)) {
+            category = ParameterCategory.VarArgList;
+            starToken = nextToken;
+        } else if (this._consumeTokenIfOperator(OperatorType.Power)) {
+            category = ParameterCategory.VarArgDictionary;
+            starToken = nextToken;
+        }
+
+        const typeAnnotation = this._parseTypeAnnotation();
+
+        return { category, typeAnnotation, starToken };
+    }
+
     // ('(' [yield_expr | testlist_comp] ')'
     // testlist_comp: (test | star_expr) (comp_for | (',' (test | star_expr))* [','])
     private _parseTupleAtom(): ExpressionNode {
@@ -3535,7 +3731,9 @@ export class Parser {
             if (this._peekTokenType() !== TokenType.CloseParenthesis) {
                 return this._handleExpressionParseError(
                     ErrorExpressionCategory.MissingTupleCloseParen,
-                    Localizer.Diagnostic.expectedCloseParen()
+                    Localizer.Diagnostic.expectedCloseParen(),
+                    startParen,
+                    yieldExpr
                 );
             } else {
                 extendRange(yieldExpr, this._getNextToken());
@@ -3546,16 +3744,24 @@ export class Parser {
 
         const exprListResult = this._parseTestListWithComprehension();
         const tupleOrExpression = this._makeExpressionOrTuple(exprListResult, /* enclosedInParens */ true);
+        const isExpression = exprListResult.list.length === 1 && !exprListResult.trailingComma;
 
-        extendRange(tupleOrExpression, startParen);
+        if (!isExpression) {
+            extendRange(tupleOrExpression, startParen);
+        }
 
         if (this._peekTokenType() !== TokenType.CloseParenthesis) {
             return this._handleExpressionParseError(
                 ErrorExpressionCategory.MissingTupleCloseParen,
-                Localizer.Diagnostic.expectedCloseParen()
+                Localizer.Diagnostic.expectedCloseParen(),
+                startParen,
+                exprListResult.parseError ?? tupleOrExpression
             );
         } else {
-            extendRange(tupleOrExpression, this._getNextToken());
+            const nextToken = this._getNextToken();
+            if (!isExpression) {
+                extendRange(tupleOrExpression, nextToken);
+            }
         }
 
         return tupleOrExpression;
@@ -3572,20 +3778,31 @@ export class Parser {
         if (!this._consumeTokenIfType(TokenType.CloseBracket)) {
             return this._handleExpressionParseError(
                 ErrorExpressionCategory.MissingListCloseBracket,
-                Localizer.Diagnostic.expectedCloseBracket()
+                Localizer.Diagnostic.expectedCloseBracket(),
+                startBracket,
+                exprListResult.parseError ?? _createList()
             );
         }
 
-        const listAtom = ListNode.create(startBracket);
-        extendRange(listAtom, closeBracket);
-        if (exprListResult.list.length > 0) {
-            exprListResult.list.forEach((expr) => {
-                expr.parent = listAtom;
-            });
-            extendRange(listAtom, exprListResult.list[exprListResult.list.length - 1]);
+        return _createList();
+
+        function _createList() {
+            const listAtom = ListNode.create(startBracket);
+
+            if (closeBracket) {
+                extendRange(listAtom, closeBracket);
+            }
+
+            if (exprListResult.list.length > 0) {
+                exprListResult.list.forEach((expr) => {
+                    expr.parent = listAtom;
+                });
+                extendRange(listAtom, exprListResult.list[exprListResult.list.length - 1]);
+            }
+
+            listAtom.entries = exprListResult.list;
+            return listAtom;
         }
-        listAtom.entries = exprListResult.list;
-        return listAtom;
     }
 
     private _parseTestListWithComprehension(): ListResult<ExpressionNode> {
@@ -3623,11 +3840,14 @@ export class Parser {
         let isSet = false;
         let sawListComprehension = false;
         let isFirstEntry = true;
+        let trailingCommaToken: Token | undefined;
 
         while (true) {
             if (this._peekTokenType() === TokenType.CloseCurlyBrace) {
                 break;
             }
+
+            trailingCommaToken = undefined;
 
             let doubleStarExpression: ExpressionNode | undefined;
             let keyExpression: ExpressionNode | undefined;
@@ -3689,6 +3909,12 @@ export class Parser {
                 assert(keyExpression !== undefined);
                 if (keyExpression) {
                     if (isDictionary) {
+                        const missingValueErrorNode = ErrorNode.create(
+                            this._peekToken(),
+                            ErrorExpressionCategory.MissingDictValue
+                        );
+                        const keyEntryNode = DictionaryKeyEntryNode.create(keyExpression, missingValueErrorNode);
+                        dictionaryEntries.push(keyEntryNode);
                         this._addError(Localizer.Diagnostic.dictKeyValuePairs(), keyExpression);
                     } else {
                         const listComp = this._tryParseListComprehension(keyExpression);
@@ -3711,16 +3937,18 @@ export class Parser {
                 break;
             }
 
-            if (!this._consumeTokenIfType(TokenType.Comma)) {
+            if (this._peekTokenType() !== TokenType.Comma) {
                 break;
             }
+
+            trailingCommaToken = this._getNextToken();
 
             isFirstEntry = false;
         }
 
         let closeCurlyBrace: Token | undefined = this._peekToken();
         if (!this._consumeTokenIfType(TokenType.CloseCurlyBrace)) {
-            this._addError(Localizer.Diagnostic.expectedCloseBrace(), this._peekToken());
+            this._addError(Localizer.Diagnostic.expectedCloseBrace(), startBrace);
             closeCurlyBrace = undefined;
         }
 
@@ -3729,20 +3957,30 @@ export class Parser {
             if (closeCurlyBrace) {
                 extendRange(setAtom, closeCurlyBrace);
             }
+
             if (setEntries.length > 0) {
                 extendRange(setAtom, setEntries[setEntries.length - 1]);
             }
+
             setEntries.forEach((entry) => {
                 entry.parent = setAtom;
             });
+
             setAtom.entries = setEntries;
             return setAtom;
         }
 
         const dictionaryAtom = DictionaryNode.create(startBrace);
+
+        if (trailingCommaToken) {
+            dictionaryAtom.trailingCommaToken = trailingCommaToken;
+            extendRange(dictionaryAtom, trailingCommaToken);
+        }
+
         if (closeCurlyBrace) {
             extendRange(dictionaryAtom, closeCurlyBrace);
         }
+
         if (dictionaryEntries.length > 0) {
             dictionaryEntries.forEach((entry) => {
                 entry.parent = dictionaryAtom;
@@ -3937,7 +4175,7 @@ export class Parser {
         }
 
         if (!this._consumeTokenIfType(TokenType.CloseParenthesis)) {
-            this._addError(Localizer.Diagnostic.expectedCloseParen(), this._peekToken());
+            this._addError(Localizer.Diagnostic.expectedCloseParen(), openParenToken);
             this._consumeTokensUntilType([TokenType.Colon]);
         }
 
@@ -4296,8 +4534,6 @@ export class Parser {
             // parse errors that span strings.
             if (stringNode.strings.length > 1) {
                 this._addError(Localizer.Diagnostic.annotationSpansStrings(), stringNode);
-            } else if (stringNode.strings[0].token.flags & StringTokenFlags.Triplicate) {
-                this._addError(Localizer.Diagnostic.annotationTripleQuote(), stringNode);
             } else if (stringNode.strings[0].token.flags & StringTokenFlags.Format) {
                 this._addError(Localizer.Diagnostic.annotationFormatString(), stringNode);
             } else {
@@ -4318,7 +4554,8 @@ export class Parser {
                         tokenOffset + prefixLength,
                         unescapedString.length,
                         this._parseOptions,
-                        ParseTextMode.VariableAnnotation
+                        ParseTextMode.VariableAnnotation,
+                        (stringNode.strings[0].token.flags & StringTokenFlags.Triplicate) !== 0 ? 1 : 0
                     );
 
                     parseResults.diagnostics.forEach((diag) => {
@@ -4514,13 +4751,16 @@ export class Parser {
         }
     }
 
-    private _consumeTokenIfType(tokenType: TokenType): boolean {
+    private _getTokenIfType(tokenType: TokenType): Token | undefined {
         if (this._peekTokenType() === tokenType) {
-            this._getNextToken();
-            return true;
+            return this._getNextToken();
         }
 
-        return false;
+        return undefined;
+    }
+
+    private _consumeTokenIfType(tokenType: TokenType): boolean {
+        return !!this._getTokenIfType(tokenType);
     }
 
     private _consumeTokenIfKeyword(keywordType: KeywordType): boolean {
@@ -4553,11 +4793,12 @@ export class Parser {
     }
 
     private _suppressErrors(callback: () => void) {
+        const errorsWereSuppressed = this._areErrorsSuppressed;
         try {
             this._areErrorsSuppressed = true;
             callback();
         } finally {
-            this._areErrorsSuppressed = false;
+            this._areErrorsSuppressed = errorsWereSuppressed;
         }
     }
 

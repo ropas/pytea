@@ -15,7 +15,8 @@ import { LogTracker } from '../common/logTracker';
 import { timingStats } from '../common/timing';
 import { ImportLookup } from './analyzerFileInfo';
 import { PrintableType, TracePrinter } from './tracePrinter';
-import { createTypeEvaluator, EvaluatorOptions, TypeEvaluator } from './typeEvaluator';
+import { createTypeEvaluator, EvaluatorOptions } from './typeEvaluator';
+import { TypeEvaluator } from './typeEvaluatorTypes';
 
 // We don't want to track calls from the type evaluator itself, but only entry points.
 export function createTypeEvaluatorWithTracker(
@@ -25,7 +26,7 @@ export function createTypeEvaluatorWithTracker(
     printer?: TracePrinter
 ) {
     if (!evaluatorOptions.logCalls && isDebugMode()) {
-        return createTypeEvaluator(importLookup, evaluatorOptions, logger, undefined);
+        return createTypeEvaluator(importLookup, evaluatorOptions);
     }
 
     function run<T>(title: string, callback: () => T, value?: PrintableType): T {
@@ -55,49 +56,74 @@ export function createTypeEvaluatorWithTracker(
               )
         : importLookup;
 
-    const typeEvaluator = createTypeEvaluator(lookup, evaluatorOptions, logger, printer);
+    const typeEvaluator = createTypeEvaluator(lookup, evaluatorOptions);
 
     const withTracker: TypeEvaluator = {
         runWithCancellationToken: typeEvaluator.runWithCancellationToken,
         getType: (n) => run('getType', () => typeEvaluator.getType(n), n),
+        getTypeOfExpression: (n, e, f) =>
+            run('getTypeOfExpression', () => typeEvaluator.getTypeOfExpression(n, e, f), n),
+        getTypeOfAnnotation: typeEvaluator.getTypeOfAnnotation,
         getTypeOfClass: (n) => run('getTypeOfClass', () => typeEvaluator.getTypeOfClass(n), n),
         getTypeOfFunction: (n) => run('getTypeOfFunction', () => typeEvaluator.getTypeOfFunction(n), n),
+        getTypeForExpressionExpectingType: typeEvaluator.getTypeForExpressionExpectingType,
+        evaluateTypeForSubnode: typeEvaluator.evaluateTypeForSubnode,
         evaluateTypesForStatement: (n) =>
             run('evaluateTypesForStatement', () => typeEvaluator.evaluateTypesForStatement(n), n),
-        getDeclaredTypeForExpression: (n) =>
-            run('getDeclaredTypeForExpression', () => typeEvaluator.getDeclaredTypeForExpression(n), n),
+        evaluateTypesForMatchNode: typeEvaluator.evaluateTypesForMatchNode,
+        evaluateTypesForCaseNode: typeEvaluator.evaluateTypesForCaseNode,
+        evaluateTypeOfParameter: typeEvaluator.evaluateTypeOfParameter,
+        canBeTruthy: typeEvaluator.canBeTruthy,
+        canBeFalsy: typeEvaluator.canBeFalsy,
+        removeTruthinessFromType: typeEvaluator.removeTruthinessFromType,
+        removeFalsinessFromType: typeEvaluator.removeFalsinessFromType,
+        getExpectedType: (n) => run('getExpectedType', () => typeEvaluator.getExpectedType(n), n),
         verifyRaiseExceptionType: (n) =>
             run('verifyRaiseExceptionType', () => typeEvaluator.verifyRaiseExceptionType(n), n),
         verifyDeleteExpression: (n) => run('verifyDeleteExpression', () => typeEvaluator.verifyDeleteExpression(n), n),
         isAfterNodeReachable: (n) => run('isAfterNodeReachable', () => typeEvaluator.isAfterNodeReachable(n), n),
-        isNodeReachable: (n) => run('isNodeReachable', () => typeEvaluator.isNodeReachable(n), n),
+        isNodeReachable: (n, s) => run('isNodeReachable', () => typeEvaluator.isNodeReachable(n, s), n),
+        isAsymmetricDescriptorAssignment: typeEvaluator.isAsymmetricDescriptorAssignment,
         suppressDiagnostics: (node, callback) =>
             run('suppressDiagnostics', () => typeEvaluator.suppressDiagnostics(node, callback)),
         getDeclarationsForNameNode: (n) =>
             run('getDeclarationsForNameNode', () => typeEvaluator.getDeclarationsForNameNode(n), n),
         getTypeForDeclaration: (n) => run('getTypeForDeclaration', () => typeEvaluator.getTypeForDeclaration(n), n),
-        resolveAliasDeclaration: (d, l) =>
-            run('resolveAliasDeclaration', () => typeEvaluator.resolveAliasDeclaration(d, l), d),
+        resolveAliasDeclaration: (d, l, h) =>
+            run('resolveAliasDeclaration', () => typeEvaluator.resolveAliasDeclaration(d, l, h), d),
+        resolveAliasDeclarationWithInfo: (d, l, h) =>
+            run('resolveAliasDeclarationWithInfo', () => typeEvaluator.resolveAliasDeclarationWithInfo(d, l, h), d),
         getTypeFromIterable: (t, a, e) =>
             run('getTypeFromIterable', () => typeEvaluator.getTypeFromIterable(t, a, e), t),
         getTypeFromIterator: (t, a, e) =>
             run('getTypeFromIterator', () => typeEvaluator.getTypeFromIterator(t, a, e), t),
-        getTypedDictMembersForClass: (c, a) =>
-            run('getTypedDictMembersForClass', () => typeEvaluator.getTypedDictMembersForClass(c, a), c),
         getGetterTypeFromProperty: (p, i) =>
             run('getGetterTypeFromProperty', () => typeEvaluator.getGetterTypeFromProperty(p, i), p),
+        getTypeForArgument: typeEvaluator.getTypeForArgument,
         markNamesAccessed: (n, a) => run('markNamesAccessed', () => typeEvaluator.markNamesAccessed(n, a), n),
-        getScopeIdForNode: (n) => run('getScopeIdForNode', () => typeEvaluator.getScopeIdForNode(n), n),
+        getScopeIdForNode: typeEvaluator.getScopeIdForNode,
         makeTopLevelTypeVarsConcrete: (t) =>
             run('makeTopLevelTypeVarsConcrete', () => typeEvaluator.makeTopLevelTypeVarsConcrete(t), t),
+        mapSubtypesExpandTypeVars: typeEvaluator.mapSubtypesExpandTypeVars,
+        populateTypeVarMapBasedOnExpectedType: typeEvaluator.populateTypeVarMapBasedOnExpectedType,
+        lookUpSymbolRecursive: typeEvaluator.lookUpSymbolRecursive,
+        getDeclaredTypeOfSymbol: typeEvaluator.getDeclaredTypeOfSymbol,
         getEffectiveTypeOfSymbol: (s) =>
             run('getEffectiveTypeOfSymbol', () => typeEvaluator.getEffectiveTypeOfSymbol(s), s),
+        getEffectiveTypeOfSymbolForUsage: (s, u, d) =>
+            run('getEffectiveTypeOfSymbolForUsage', () => typeEvaluator.getEffectiveTypeOfSymbolForUsage(s, u, d), s),
+        getInferredTypeOfDeclaration: typeEvaluator.getInferredTypeOfDeclaration,
+        getDeclaredTypeForExpression: typeEvaluator.getDeclaredTypeForExpression,
         getFunctionDeclaredReturnType: (n) =>
             run('getFunctionDeclaredReturnType', () => typeEvaluator.getFunctionDeclaredReturnType(n), n),
-        getFunctionInferredReturnType: (t) =>
-            run('getFunctionInferredReturnType', () => typeEvaluator.getFunctionInferredReturnType(t), t),
+        getFunctionInferredReturnType: (t, a) =>
+            run('getFunctionInferredReturnType', () => typeEvaluator.getFunctionInferredReturnType(t, a), t),
+        getBestOverloadForArguments: (e, t, a) => typeEvaluator.getBestOverloadForArguments(e, t, a),
         getBuiltInType: (n, b) => run('getBuiltInType', () => typeEvaluator.getBuiltInType(n, b), n),
         getTypeOfMember: (m) => run('getTypeOfMember', () => typeEvaluator.getTypeOfMember(m), m.symbol),
+        getTypeFromObjectMember: typeEvaluator.getTypeFromObjectMember,
+        getBoundMethod: typeEvaluator.getBoundMethod,
+        getTypeFromMagicMethodReturn: typeEvaluator.getTypeFromMagicMethodReturn,
         bindFunctionToClassOrObject: (b, m) =>
             run('bindFunctionToClassOrObject', () => typeEvaluator.bindFunctionToClassOrObject(b, m), m),
         getCallSignatureInfo: (n, i, a) =>
@@ -105,21 +131,30 @@ export function createTypeEvaluatorWithTracker(
         getTypeAnnotationForParameter: (n, p) =>
             run('getTypeAnnotationForParameter', () => typeEvaluator.getTypeAnnotationForParameter(n, p), n),
         getAbstractMethods: (c) => run('getAbstractMethods', () => typeEvaluator.getAbstractMethods(c), c),
+        narrowConstrainedTypeVar: typeEvaluator.narrowConstrainedTypeVar,
         canAssignType: (d, s, a, m, f) => run('canAssignType', () => typeEvaluator.canAssignType(d, s, a, m, f), d),
         canOverrideMethod: (b, o, d, e) =>
             run('canOverrideMethod', () => typeEvaluator.canOverrideMethod(b, o, d, e), o),
         canAssignProtocolClassToSelf: (d, s) =>
             run('canAssignProtocolClassToSelf', () => typeEvaluator.canAssignProtocolClassToSelf(d, s)),
+        assignTypeToExpression: typeEvaluator.assignTypeToExpression,
+        getBuiltInObject: typeEvaluator.getBuiltInObject,
+        getTypingType: typeEvaluator.getTypingType,
+        inferReturnTypeIfNecessary: typeEvaluator.inferReturnTypeIfNecessary,
         addError: (m, n) => run('addError', () => typeEvaluator.addError(m, n), n),
         addWarning: (m, n) => run('addWarning', () => typeEvaluator.addWarning(m, n), n),
         addInformation: (m, n) => run('addInformation', () => typeEvaluator.addInformation(m, n), n),
         addUnusedCode: (n, t) => run('addUnusedCode', () => typeEvaluator.addUnusedCode(n, t), n),
+        addDeprecated: (m, n) => run('addDeprecated', () => typeEvaluator.addDeprecated(m, n), n),
         addDiagnostic: (d, r, m, n) => run('addDiagnostic', () => typeEvaluator.addDiagnostic(d, r, m, n), n),
         addDiagnosticForTextRange: (f, d, r, m, g) =>
             run('addDiagnosticForTextRange', () => typeEvaluator.addDiagnosticForTextRange(f, d, r, m, g)),
         printType: (t, e) => run('printType', () => typeEvaluator.printType(t, e), t),
         printFunctionParts: (t) => run('printFunctionParts', () => typeEvaluator.printFunctionParts(t), t),
         getTypeCacheSize: typeEvaluator.getTypeCacheSize,
+        useSpeculativeMode: typeEvaluator.useSpeculativeMode,
+        setTypeForNode: typeEvaluator.setTypeForNode,
+        checkForCancellation: typeEvaluator.checkForCancellation,
     };
 
     return withTracker;

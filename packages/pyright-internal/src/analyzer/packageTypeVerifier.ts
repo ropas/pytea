@@ -16,7 +16,7 @@ import { FullAccessHost } from '../common/fullAccessHost';
 import { combinePaths, getDirectoryPath, getFileExtension, stripFileExtension, tryStat } from '../common/pathUtils';
 import { getEmptyRange, Range } from '../common/textRange';
 import { DeclarationType, FunctionDeclaration, VariableDeclaration } from './declaration';
-import { ImportedModuleDescriptor, ImportResolver } from './importResolver';
+import { createImportedModuleDescriptor, ImportResolver } from './importResolver';
 import {
     AlternateSymbolNameMap,
     getEmptyReport,
@@ -53,8 +53,13 @@ export class PackageTypeVerifier {
     private _importResolver: ImportResolver;
     private _program: Program;
 
-    constructor(private _fileSystem: FileSystem) {
+    constructor(private _fileSystem: FileSystem, private _packageName: string, private _ignoreExternal = false) {
         this._configOptions = new ConfigOptions('');
+
+        if (_ignoreExternal) {
+            this._configOptions.evaluateUnknownImportsAsAny = true;
+        }
+
         this._execEnv = this._configOptions.findExecEnvironment('.');
         this._importResolver = new ImportResolver(
             this._fileSystem,
@@ -64,14 +69,14 @@ export class PackageTypeVerifier {
         this._program = new Program(this._importResolver, this._configOptions);
     }
 
-    verify(packageName: string, ignoreExternal = false): PackageTypeReport {
-        const trimmedPackageName = packageName.trim();
+    verify(): PackageTypeReport {
+        const trimmedPackageName = this._packageName.trim();
         const packageNameParts = trimmedPackageName.split('.');
 
         const report = getEmptyReport(
             packageNameParts[0],
             this._getDirectoryForPackage(packageNameParts[0]) || '',
-            ignoreExternal
+            this._ignoreExternal
         );
         const commonDiagnostics = report.generalDiagnostics;
 
@@ -180,12 +185,7 @@ export class PackageTypeVerifier {
     }
 
     private _resolveImport(moduleName: string) {
-        const moduleDescriptor: ImportedModuleDescriptor = {
-            leadingDots: 0,
-            nameParts: moduleName.split('.'),
-            importedSymbols: [],
-        };
-        return this._importResolver.resolveImport('', this._execEnv, moduleDescriptor);
+        return this._importResolver.resolveImport('', this._execEnv, createImportedModuleDescriptor(moduleName));
     }
 
     private _getPublicSymbolsForModule(
@@ -239,7 +239,7 @@ export class PackageTypeVerifier {
             ) {
                 const fullName = `${scopeName}.${name}`;
 
-                if (!symbol.isExternallyHidden()) {
+                if (!symbol.isExternallyHidden() && !symbol.isPrivateMember() && !symbol.isPrivatePyTypedImport()) {
                     const symbolType = this._program.getTypeForSymbol(symbol);
                     symbolMap.set(fullName, fullName);
 
@@ -435,6 +435,8 @@ export class PackageTypeVerifier {
             if (
                 !isPrivateOrProtectedName(name) &&
                 !symbol.isExternallyHidden() &&
+                !symbol.isPrivateMember() &&
+                !symbol.isPrivatePyTypedImport() &&
                 !symbol.isIgnoredForProtocolMatch() &&
                 !this._isSymbolTypeImplied(scopeType, name)
             ) {
@@ -465,6 +467,16 @@ export class PackageTypeVerifier {
                     const declPath = primaryDecl?.path || '';
                     const symbolCategory = this._getSymbolCategory(symbol, symbolType);
                     const isExported = publicSymbolMap.has(fullName);
+
+                    // If the only reference to this symbol is a "__slots__" entry, we will
+                    // skip it when considering type completeness.
+                    if (
+                        decls.length === 1 &&
+                        primaryDecl?.type === DeclarationType.Variable &&
+                        primaryDecl.isDefinedBySlots
+                    ) {
+                        return;
+                    }
 
                     symbolInfo = {
                         category: symbolCategory,
@@ -504,13 +516,39 @@ export class PackageTypeVerifier {
         declFilePath: string,
         publicSymbolMap: PublicSymbolMap
     ): boolean {
+        let isKnown = true;
+
+        if (type.typeAliasInfo && type.typeAliasInfo.typeArguments) {
+            type.typeAliasInfo.typeArguments.forEach((typeArg, index) => {
+                if (isUnknown(typeArg)) {
+                    this._addSymbolError(
+                        symbolInfo,
+                        `Type argument ${index + 1} for type alias "${type.typeAliasInfo!.name}" has unknown type`,
+                        declRange,
+                        declFilePath
+                    );
+                    isKnown = false;
+                } else if (isPartlyUnknown(typeArg)) {
+                    this._addSymbolError(
+                        symbolInfo,
+                        `Type argument ${index + 1} for type alias "${
+                            type.typeAliasInfo!.name
+                        }" has partially unknown type`,
+                        declRange,
+                        declFilePath
+                    );
+                    isKnown = false;
+                }
+            });
+        }
+
         switch (type.category) {
             case TypeCategory.Unbound:
             case TypeCategory.Any:
             case TypeCategory.None:
             case TypeCategory.Never:
             case TypeCategory.TypeVar:
-                return true;
+                return isKnown;
 
             case TypeCategory.Unknown: {
                 this._addSymbolError(
@@ -526,7 +564,6 @@ export class PackageTypeVerifier {
             }
 
             case TypeCategory.Union: {
-                let isKnown = true;
                 doForEachSubtype(type, (subtype) => {
                     if (
                         !this._validateSymbolType(report, symbolInfo, subtype, declRange, declFilePath, publicSymbolMap)
@@ -543,7 +580,6 @@ export class PackageTypeVerifier {
             }
 
             case TypeCategory.OverloadedFunction: {
-                let isKnown = true;
                 for (const overload of type.overloads) {
                     if (
                         !this._validateSymbolType(
@@ -571,17 +607,16 @@ export class PackageTypeVerifier {
                         !this._validateFunctionType(report, type, publicSymbolMap, symbolInfo, declRange, declFilePath)
                     ) {
                         symbolInfo.typeKnownStatus = TypeKnownStatus.PartiallyUnknown;
-                        return false;
+                        isKnown = false;
                     }
                 }
 
-                return true;
+                return isKnown;
             }
 
             case TypeCategory.Class: {
                 // Properties require special handling.
                 if (TypeBase.isInstance(type) && ClassType.isPropertyClass(type)) {
-                    let isTypeKnown = true;
                     const accessors = ['fget', 'fset', 'fdel'];
                     const propertyClass = type;
 
@@ -603,14 +638,12 @@ export class PackageTypeVerifier {
                                 publicSymbolMap
                             )
                         ) {
-                            isTypeKnown = false;
+                            isKnown = false;
                         }
                     });
 
-                    return isTypeKnown;
+                    return isKnown;
                 }
-
-                let isKnown = true;
 
                 if (!this._shouldIgnoreType(report, type.details.fullName)) {
                     // Don't bother type-checking built-in types.
@@ -618,33 +651,33 @@ export class PackageTypeVerifier {
                         // Reference the class.
                         this._getSymbolForClass(report, type, publicSymbolMap);
                     }
+                }
 
-                    // Analyze type arguments if present to make sure they are known.
-                    if (type.typeArguments) {
-                        type.typeArguments!.forEach((typeArg, index) => {
-                            if (isUnknown(typeArg)) {
-                                this._addSymbolError(
-                                    symbolInfo,
-                                    `Type argument ${index} has unknown type`,
-                                    declRange,
-                                    declFilePath
-                                );
-                                isKnown = false;
-                            } else if (isPartlyUnknown(typeArg)) {
-                                const diag = new DiagnosticAddendum();
-                                diag.addMessage(
-                                    `Type is ${this._program.printType(typeArg, /* expandTypeAlias */ false)}`
-                                );
-                                this._addSymbolError(
-                                    symbolInfo,
-                                    `Type argument ${index} has partially unknown type` + diag.getString(),
-                                    declRange,
-                                    declFilePath
-                                );
-                                isKnown = false;
-                            }
-                        });
-                    }
+                // Analyze type arguments if present to make sure they are known.
+                if (type.typeArguments) {
+                    type.typeArguments!.forEach((typeArg, index) => {
+                        if (isUnknown(typeArg)) {
+                            this._addSymbolError(
+                                symbolInfo,
+                                `Type argument ${index + 1} for class "${type.details.name}" has unknown type`,
+                                declRange,
+                                declFilePath
+                            );
+                            isKnown = false;
+                        } else if (isPartlyUnknown(typeArg)) {
+                            const diag = new DiagnosticAddendum();
+                            diag.addMessage(`Type is ${this._program.printType(typeArg, /* expandTypeAlias */ false)}`);
+                            this._addSymbolError(
+                                symbolInfo,
+                                `Type argument ${index + 1} for class "${
+                                    type.details.name
+                                }" has partially unknown type` + diag.getString(),
+                                declRange,
+                                declFilePath
+                            );
+                            isKnown = false;
+                        }
+                    });
                 }
 
                 if (!isKnown) {
@@ -655,8 +688,6 @@ export class PackageTypeVerifier {
             }
 
             case TypeCategory.Module: {
-                let isKnown = true;
-
                 if (!this._shouldIgnoreType(report, type.moduleName)) {
                     const moduleSymbol = this._getSymbolForModule(report, type, publicSymbolMap);
                     if (moduleSymbol.typeKnownStatus !== TypeKnownStatus.Known) {
@@ -995,20 +1026,39 @@ export class PackageTypeVerifier {
         publicSymbolMap: PublicSymbolMap,
         diag: DiagnosticAddendum
     ): boolean {
+        let isKnown = true;
+
+        if (type.typeAliasInfo && type.typeAliasInfo.typeArguments) {
+            type.typeAliasInfo.typeArguments.forEach((typeArg, index) => {
+                if (isUnknown(typeArg)) {
+                    diag.addMessage(
+                        `Type argument ${index + 1} for type alias "${type.typeAliasInfo!.name}" has unknown type`
+                    );
+                    isKnown = false;
+                } else if (isPartlyUnknown(typeArg)) {
+                    diag.addMessage(
+                        `Type argument ${index + 1} for type alias "${
+                            type.typeAliasInfo!.name
+                        }" has partially unknown type`
+                    );
+                    isKnown = false;
+                }
+            });
+        }
+
         switch (type.category) {
             case TypeCategory.Unbound:
             case TypeCategory.Any:
             case TypeCategory.None:
             case TypeCategory.Never:
             case TypeCategory.TypeVar:
-                return true;
+                return isKnown;
 
             case TypeCategory.Unknown: {
                 return false;
             }
 
             case TypeCategory.Union: {
-                let isKnown = true;
                 doForEachSubtype(type, (subtype) => {
                     if (!this._isTypeKnown(report, subtype, publicSymbolMap, diag.createAddendum())) {
                         isKnown = false;
@@ -1019,7 +1069,6 @@ export class PackageTypeVerifier {
             }
 
             case TypeCategory.OverloadedFunction: {
-                let isKnown = true;
                 for (const overload of type.overloads) {
                     if (!this._isTypeKnown(report, overload, publicSymbolMap, diag.createAddendum())) {
                         isKnown = false;
@@ -1031,50 +1080,54 @@ export class PackageTypeVerifier {
 
             case TypeCategory.Function: {
                 if (!this._shouldIgnoreType(report, type.details.fullName)) {
-                    return this._validateFunctionType(
-                        report,
-                        type,
-                        publicSymbolMap,
-                        /* symbolInfo */ undefined,
-                        /* declRange */ undefined,
-                        /* declFilePath */ undefined,
-                        diag
-                    );
-                }
-
-                return true;
-            }
-
-            case TypeCategory.Class: {
-                let isKnown = true;
-
-                if (!this._shouldIgnoreType(report, type.details.fullName)) {
-                    // Don't bother type-checking built-in types.
-                    if (!ClassType.isBuiltIn(type)) {
-                        // Reference the class.
-                        this._getSymbolForClass(report, type, publicSymbolMap);
-                    }
-
-                    // Analyze type arguments if present to make sure they are known.
-                    if (type.typeArguments) {
-                        type.typeArguments!.forEach((typeArg, index) => {
-                            if (isUnknown(typeArg)) {
-                                diag.addMessage(`Type argument ${index} has unknown type`);
-                                isKnown = false;
-                            } else if (isPartlyUnknown(typeArg)) {
-                                diag.addMessage(`Type argument ${index} has partially unknown type`);
-                                isKnown = false;
-                            }
-                        });
+                    if (
+                        !this._validateFunctionType(
+                            report,
+                            type,
+                            publicSymbolMap,
+                            /* symbolInfo */ undefined,
+                            /* declRange */ undefined,
+                            /* declFilePath */ undefined,
+                            diag
+                        )
+                    ) {
+                        isKnown = false;
                     }
                 }
 
                 return isKnown;
             }
 
-            case TypeCategory.Module: {
-                let isKnown = true;
+            case TypeCategory.Class: {
+                if (!this._shouldIgnoreType(report, type.details.fullName)) {
+                    // Don't bother type-checking built-in types.
+                    if (!ClassType.isBuiltIn(type)) {
+                        // Reference the class.
+                        this._getSymbolForClass(report, type, publicSymbolMap);
+                    }
+                }
 
+                // Analyze type arguments if present to make sure they are known.
+                if (type.typeArguments) {
+                    type.typeArguments!.forEach((typeArg, index) => {
+                        if (isUnknown(typeArg)) {
+                            diag.addMessage(
+                                `Type argument ${index + 1} for class "${type.details.name}" has unknown type`
+                            );
+                            isKnown = false;
+                        } else if (isPartlyUnknown(typeArg)) {
+                            diag.addMessage(
+                                `Type argument ${index + 1} for class "${type.details.name}" has partially unknown type`
+                            );
+                            isKnown = false;
+                        }
+                    });
+                }
+
+                return isKnown;
+            }
+
+            case TypeCategory.Module: {
                 if (!this._shouldIgnoreType(report, type.moduleName)) {
                     const moduleSymbol = this._getSymbolForModule(report, type, publicSymbolMap);
                     if (moduleSymbol.typeKnownStatus !== TypeKnownStatus.Known) {
@@ -1145,13 +1198,11 @@ export class PackageTypeVerifier {
     }
 
     private _getDirectoryForPackage(packageName: string): string | undefined {
-        const moduleDescriptor: ImportedModuleDescriptor = {
-            leadingDots: 0,
-            nameParts: [packageName],
-            importedSymbols: [],
-        };
-
-        const importResult = this._importResolver.resolveImport('', this._execEnv, moduleDescriptor);
+        const importResult = this._importResolver.resolveImport(
+            '',
+            this._execEnv,
+            createImportedModuleDescriptor(packageName)
+        );
 
         if (importResult.isImportFound) {
             const resolvedPath = importResult.resolvedPaths[importResult.resolvedPaths.length - 1];
@@ -1171,6 +1222,7 @@ export class PackageTypeVerifier {
                 '__qualname__',
                 '__slots__',
                 '__all__',
+                '__weakref__',
             ];
             return knownClassSymbols.some((sym) => sym === name);
         } else if (scopeType === ScopeType.Module) {
