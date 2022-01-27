@@ -14,6 +14,7 @@ import {
     CallHierarchyIncomingCall,
     CallHierarchyItem,
     CallHierarchyOutgoingCall,
+    CompletionList,
     DocumentHighlight,
     MarkupKind,
 } from 'vscode-languageserver-types';
@@ -50,7 +51,12 @@ import {
     ModuleSymbolMap,
 } from '../languageService/autoImporter';
 import { CallHierarchyProvider } from '../languageService/callHierarchyProvider';
-import { AbbreviationMap, CompletionOptions, CompletionResults } from '../languageService/completionProvider';
+import {
+    AbbreviationMap,
+    CompletionMap,
+    CompletionOptions,
+    CompletionResultsList,
+} from '../languageService/completionProvider';
 import { DefinitionFilter } from '../languageService/definitionProvider';
 import { DocumentSymbolCollector } from '../languageService/documentSymbolCollector';
 import { IndexOptions, IndexResults, WorkspaceSymbolCallback } from '../languageService/documentSymbolProvider';
@@ -60,7 +66,7 @@ import { RenameModuleProvider } from '../languageService/renameModuleProvider';
 import { SignatureHelpResults } from '../languageService/signatureHelpProvider';
 import { ParseNodeType } from '../parser/parseNodes';
 import { ParseResults } from '../parser/parser';
-import { ImportLookupResult } from './analyzerFileInfo';
+import { AbsoluteModuleDescriptor, ImportLookupResult } from './analyzerFileInfo';
 import * as AnalyzerNodeInfo from './analyzerNodeInfo';
 import { CircularDependency } from './circularDependency';
 import { isAliasDeclaration } from './declaration';
@@ -808,8 +814,40 @@ export class Program {
         fileToAnalyze.sourceFile.bind(this._configOptions, this._lookUpImport, builtinsScope);
     }
 
-    private _lookUpImport = (filePath: string): ImportLookupResult | undefined => {
-        const sourceFileInfo = this._getSourceFileInfoFromPath(filePath);
+    private _lookUpImport = (filePathOrModule: string | AbsoluteModuleDescriptor): ImportLookupResult | undefined => {
+        let sourceFileInfo: SourceFileInfo | undefined;
+
+        if (typeof filePathOrModule === 'string') {
+            sourceFileInfo = this._getSourceFileInfoFromPath(filePathOrModule);
+        } else {
+            // Resolve the import.
+            const importResult = this._importResolver.resolveImport(
+                filePathOrModule.importingFilePath,
+                this._configOptions.findExecEnvironment(filePathOrModule.importingFilePath),
+                {
+                    leadingDots: 0,
+                    nameParts: filePathOrModule.nameParts,
+                    importedSymbols: undefined,
+                }
+            );
+
+            if (importResult.isImportFound && !importResult.isNativeLib && importResult.resolvedPaths.length > 0) {
+                let resolvedPath = importResult.resolvedPaths[importResult.resolvedPaths.length - 1];
+                if (resolvedPath) {
+                    // See if the source file already exists in the program.
+                    sourceFileInfo = this._getSourceFileInfoFromPath(resolvedPath);
+
+                    if (!sourceFileInfo) {
+                        resolvedPath = normalizePathCase(this._fs, resolvedPath);
+
+                        // Start tracking the source file.
+                        this.addTrackedFile(resolvedPath);
+                        sourceFileInfo = this._getSourceFileInfoFromPath(resolvedPath);
+                    }
+                }
+            }
+        }
+
         if (!sourceFileInfo) {
             return undefined;
         }
@@ -818,7 +856,7 @@ export class Program {
             // Bind the file if it's not already bound. Don't count this time
             // against the type checker.
             timingStats.typeCheckerTime.subtractFromTime(() => {
-                this._bindFile(sourceFileInfo);
+                this._bindFile(sourceFileInfo!);
             });
         }
 
@@ -1037,7 +1075,7 @@ export class Program {
     }
 
     getTextOnRange(filePath: string, range: Range, token: CancellationToken): string | undefined {
-        const sourceFileInfo = this._sourceFileMap.get(filePath);
+        const sourceFileInfo = this._getSourceFileInfoFromPath(filePath);
         if (!sourceFileInfo) {
             return undefined;
         }
@@ -1110,7 +1148,7 @@ export class Program {
                 this._importResolver,
                 parseTree,
                 range.start,
-                new Set(),
+                new CompletionMap(),
                 map,
                 {
                     lazyEdit,
@@ -1508,7 +1546,7 @@ export class Program {
         nameMap: AbbreviationMap | undefined,
         libraryMap: Map<string, IndexResults> | undefined,
         token: CancellationToken
-    ): Promise<CompletionResults | undefined> {
+    ): Promise<CompletionResultsList | undefined> {
         const sourceFileInfo = this._getSourceFileInfoFromPath(filePath);
         if (!sourceFileInfo) {
             return undefined;
@@ -1543,13 +1581,20 @@ export class Program {
                     );
                 });
 
-                ls.add(`found ${result?.completionList?.items.length ?? 'null'} items`);
+                ls.add(`found ${result?.completionMap?.size ?? 'null'} items`);
                 return result;
             }
         );
 
-        if (!completionResult?.completionList || !this._extension?.completionListExtension) {
-            return completionResult;
+        const completionResultsList: CompletionResultsList = {
+            completionList: CompletionList.create(completionResult?.completionMap?.toArray()),
+            memberAccessInfo: completionResult?.memberAccessInfo,
+            autoImportInfo: completionResult?.autoImportInfo,
+            extensionInfo: completionResult?.extensionInfo,
+        };
+
+        if (!completionResult?.completionMap || !this._extension?.completionListExtension) {
+            return completionResultsList;
         }
 
         const parseResults = sourceFileInfo.sourceFile.getParseResults();
@@ -1557,7 +1602,7 @@ export class Program {
             const offset = convertPositionToOffset(position, parseResults.tokenizerOutput.lines);
             if (offset !== undefined) {
                 await this._extension.completionListExtension.updateCompletionResults(
-                    completionResult,
+                    completionResultsList,
                     parseResults,
                     offset,
                     token
@@ -1565,7 +1610,7 @@ export class Program {
             }
         }
 
-        return completionResult;
+        return completionResultsList;
     }
 
     resolveCompletionItem(

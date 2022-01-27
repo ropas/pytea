@@ -176,13 +176,13 @@ export namespace ThStmt {
 export interface TEConst extends ThExprBase {
     etype: TEType.Const;
     constType: TEConstType;
-    value: number | string | boolean | undefined;
+    value: number | string | boolean | bigint | undefined;
 }
 
 export namespace TEConst {
     export function create(
         constType: TEConstType,
-        value: number | string | boolean | undefined,
+        value: number | string | boolean | bigint | undefined,
         source?: CodeSource
     ): TEConst {
         return {

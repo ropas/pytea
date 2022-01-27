@@ -43,6 +43,7 @@ import {
     isInstantiableClass,
     isOverloadedFunction,
     NoneType,
+    TupleTypeArgument,
     Type,
     UnknownType,
 } from './types';
@@ -50,10 +51,14 @@ import {
     applySolvedTypeVars,
     buildTypeVarMapFromSpecializedClass,
     convertToInstance,
+    getTypeVarScopeId,
     isLiteralType,
+    populateTypeVarMapForSelfType,
+    requiresSpecialization,
     specializeTupleClass,
     synthesizeTypeVarForSelfCls,
 } from './typeUtils';
+import { TypeVarMap } from './typeVarMap';
 
 // Validates fields for compatibility with a dataclass and synthesizes
 // an appropriate __new__ and __init__ methods plus __dataclass_fields__
@@ -293,6 +298,7 @@ export function synthesizeDataClassMethods(
                         }
                         const dataClassEntry: DataClassEntry = {
                             name: variableName,
+                            classType,
                             alias: aliasName,
                             isKeywordOnly: false,
                             hasDefault: hasDefaultValue,
@@ -308,6 +314,7 @@ export function synthesizeDataClassMethods(
                         // allows us to handle circular references in types.
                         const dataClassEntry: DataClassEntry = {
                             name: variableName,
+                            classType,
                             alias: aliasName,
                             isKeywordOnly,
                             hasDefault: hasDefaultValue,
@@ -368,12 +375,21 @@ export function synthesizeDataClassMethods(
     if (!skipSynthesizeInit && allAncestorsKnown) {
         fullDataClassEntries.forEach((entry) => {
             if (entry.includeInInit) {
+                // If the type refers to Self of the parent class, we need to
+                // transform it to refer to the Self of this subclass.
+                let effectiveType = entry.type;
+                if (entry.classType !== classType && requiresSpecialization(effectiveType)) {
+                    const typeVarMap = new TypeVarMap(getTypeVarScopeId(entry.classType));
+                    populateTypeVarMapForSelfType(typeVarMap, entry.classType, classType);
+                    effectiveType = applySolvedTypeVars(effectiveType, typeVarMap);
+                }
+
                 const functionParam: FunctionParameter = {
                     category: ParameterCategory.Simple,
                     name: entry.alias || entry.name,
                     hasDefault: entry.hasDefault,
                     defaultValueExpression: entry.defaultValueExpression,
-                    type: entry.type,
+                    type: effectiveType,
                     hasDeclaredType: true,
                 };
 
@@ -416,8 +432,8 @@ export function synthesizeDataClassMethods(
                 matchArgsNames.push(entry.name);
             }
         });
-        const literalTypes = matchArgsNames.map((name) => {
-            return ClassType.cloneAsInstance(ClassType.cloneWithLiteral(strType, name));
+        const literalTypes: TupleTypeArgument[] = matchArgsNames.map((name) => {
+            return { type: ClassType.cloneAsInstance(ClassType.cloneWithLiteral(strType, name)), isUnbounded: false };
         });
         const matchArgsType = ClassType.cloneAsInstance(specializeTupleClass(tupleClassType, literalTypes));
         symbolTable.set('__match_args__', Symbol.createWithType(SymbolFlags.ClassMember, matchArgsType));
@@ -630,7 +646,10 @@ export function validateDataClassTransformDecorator(
                     !ClassType.isBuiltIn(valueType, 'tuple') ||
                     !valueType.tupleTypeArguments ||
                     valueType.tupleTypeArguments.some(
-                        (entry) => !isInstantiableClass(entry) && !isFunction(entry) && !isOverloadedFunction(entry)
+                        (entry) =>
+                            !isInstantiableClass(entry.type) &&
+                            !isFunction(entry.type) &&
+                            !isOverloadedFunction(entry.type)
                     )
                 ) {
                     // TODO - emit diagnostic
@@ -641,10 +660,10 @@ export function validateDataClassTransformDecorator(
                     behaviors.fieldDescriptorNames = [];
                 }
                 valueType.tupleTypeArguments.forEach((arg) => {
-                    if (isInstantiableClass(arg) || isFunction(arg)) {
-                        behaviors.fieldDescriptorNames.push(arg.details.fullName);
-                    } else if (isOverloadedFunction(arg)) {
-                        behaviors.fieldDescriptorNames.push(arg.overloads[0].details.fullName);
+                    if (isInstantiableClass(arg.type) || isFunction(arg.type)) {
+                        behaviors.fieldDescriptorNames.push(arg.type.details.fullName);
+                    } else if (isOverloadedFunction(arg.type)) {
+                        behaviors.fieldDescriptorNames.push(arg.type.overloads[0].details.fullName);
                     }
                 });
                 break;
@@ -724,9 +743,12 @@ function applyDataClassBehaviorOverride(
                     if (ClassType.isFrozenDataClass(baseClass)) {
                         hasFrozenBaseClass = true;
                     } else if (
-                        !baseClass.details.declaredMetaclass ||
-                        !isInstantiableClass(baseClass.details.declaredMetaclass) ||
-                        !baseClass.details.declaredMetaclass.details.metaclassDataClassTransform
+                        !baseClass.details.classDataClassTransform &&
+                        !(
+                            baseClass.details.declaredMetaclass &&
+                            isInstantiableClass(baseClass.details.declaredMetaclass) &&
+                            !!baseClass.details.declaredMetaclass.details.classDataClassTransform
+                        )
                     ) {
                         // If this base class is unfrozen and isn't the class that directly
                         // references the metaclass that provides dataclass-like behaviors,
@@ -794,7 +816,7 @@ function applyDataClassBehaviorOverride(
     }
 }
 
-export function applyDataClassMetaclassBehaviorOverrides(
+export function applyDataClassClassBehaviorOverrides(
     evaluator: TypeEvaluator,
     classType: ClassType,
     args: FunctionArgument[]
@@ -832,10 +854,6 @@ export function applyDataClassDecorator(
     applyDataClassDefaultBehaviors(classType, defaultBehaviors);
 
     if (callNode?.arguments) {
-        callNode.arguments.forEach((arg) => {
-            if (arg.name && arg.valueExpression) {
-                applyDataClassBehaviorOverride(evaluator, arg, classType, arg.name.value, arg.valueExpression);
-            }
-        });
+        applyDataClassClassBehaviorOverrides(evaluator, classType, callNode.arguments);
     }
 }

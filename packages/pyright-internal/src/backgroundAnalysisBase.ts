@@ -176,11 +176,17 @@ export class BackgroundAnalysisBase {
         this.enqueueRequest({ requestType, data: cancellationId, port: port2 });
     }
 
-    startIndexing(configOptions: ConfigOptions, kind: HostKind, indices: Indices) {
+    startIndexing(
+        indexOptions: IndexOptions,
+        configOptions: ConfigOptions,
+        importResolver: ImportResolver,
+        kind: HostKind,
+        indices: Indices
+    ) {
         /* noop */
     }
 
-    refreshIndexing(configOptions: ConfigOptions, kind: HostKind, indices?: Indices) {
+    refreshIndexing(configOptions: ConfigOptions, importResolver: ImportResolver, kind: HostKind, indices?: Indices) {
         /* noop */
     }
 
@@ -571,4 +577,8 @@ export interface AnalysisRequest {
 export interface AnalysisResponse {
     requestType: 'log' | 'telemetry' | 'analysisResult' | 'analysisPaused' | 'indexResult' | 'analysisDone';
     data: any;
+}
+
+export interface IndexOptions {
+    packageDepths: [string, number][];
 }

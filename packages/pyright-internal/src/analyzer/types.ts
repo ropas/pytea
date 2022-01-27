@@ -90,10 +90,10 @@ export class EnumLiteral {
     constructor(public className: string, public itemName: string, public itemType: Type) {}
 }
 
-export type LiteralValue = number | boolean | string | EnumLiteral;
+export type LiteralValue = number | bigint | boolean | string | EnumLiteral;
 
 export type TypeSourceId = number;
-export const maxTypeRecursionCount = 16;
+export const maxTypeRecursionCount = 14;
 
 export type InheritanceChain = (ClassType | UnknownType)[];
 
@@ -263,6 +263,7 @@ export namespace ModuleType {
 
 export interface DataClassEntry {
     name: string;
+    classType: ClassType;
     isClassVar: boolean;
     isKeywordOnly: boolean;
     alias?: string | undefined;
@@ -409,8 +410,17 @@ interface ClassDetails {
     inheritedSlotsNames?: string[];
     localSlotsNames?: string[];
 
-    // Transforms to apply if this class is used as a metaclass.
-    metaclassDataClassTransform?: DataClassBehaviors | undefined;
+    // Transforms to apply if this class is used as a metaclass
+    // or a base class.
+    classDataClassTransform?: DataClassBehaviors | undefined;
+}
+
+export interface TupleTypeArgument {
+    type: Type;
+
+    // Does the type argument represent a single value or
+    // an "unbounded" (zero or more) arguments?
+    isUnbounded: boolean;
 }
 
 export interface ClassType extends TypeBase {
@@ -427,8 +437,8 @@ export interface ClassType extends TypeBase {
     // type guard (see PEP 647) will have additional type information
     // that indicates how a type should be narrowed. This field will
     // be used only in a bool class.
-    positiveTypeGuardType?: Type | undefined;
-    negativeTypeGuardType?: Type | undefined;
+    typeGuardType?: Type | undefined;
+    isStrictTypeGuard?: boolean;
 
     // If a generic container class (like a list or dict) is known
     // to contain no elements, its type arguments may be "Unknown".
@@ -437,15 +447,16 @@ export interface ClassType extends TypeBase {
     isEmptyContainer?: boolean | undefined;
 
     // For tuples, the class definition calls for a single type parameter but
-    // the spec allows the programmer to provide variadic type arguments.
-    // To make these compatible, we need to derive a single typeArgument value
-    // based on the variadic arguments.
-    tupleTypeArguments?: Type[] | undefined;
+    // the spec allows the programmer to provide an arbitrary number of
+    // type arguments. This field holds the individual type arguments
+    // while the "typeArguments" field holds the derived non-variadic
+    // type argument, which is the union of the tuple type arguments.
+    tupleTypeArguments?: TupleTypeArgument[] | undefined;
 
     // We sometimes package multiple types into a tuple internally
-    // for matching against a variadic type variable. We need to be
-    // able to distinguish this case from normal tuples.
-    isTupleForUnpackedVariadicTypeVar?: boolean | undefined;
+    // for matching against a variadic type variable or another unpacked
+    // tuple. We need to be able to distinguish this case from normal tuples.
+    isUnpackedTuple?: boolean | undefined;
 
     // If type arguments are present, were they explicit (i.e.
     // provided explicitly in the code)?
@@ -540,7 +551,7 @@ export namespace ClassType {
         typeArguments: Type[] | undefined,
         isTypeArgumentExplicit: boolean,
         includeSubclasses = false,
-        tupleTypeArguments?: Type[],
+        tupleTypeArguments?: TupleTypeArgument[],
         isEmptyContainer?: boolean
     ): ClassType {
         const newClassType = { ...classType };
@@ -555,7 +566,9 @@ export namespace ClassType {
             newClassType.includeSubclasses = true;
         }
         newClassType.tupleTypeArguments = tupleTypeArguments
-            ? tupleTypeArguments.map((t) => (isNever(t) ? UnknownType.create() : t))
+            ? tupleTypeArguments.map((t) =>
+                  isNever(t.type) ? { type: UnknownType.create(), isUnbounded: t.isUnbounded } : t
+              )
             : undefined;
 
         if (isEmptyContainer !== undefined) {
@@ -595,14 +608,12 @@ export namespace ClassType {
 
     export function cloneForTypeGuard(
         classType: ClassType,
-        positiveTypeGuardType: Type,
-        negativeTypeGuardType: Type | undefined
+        typeGuardType: Type,
+        isStrictTypeGuard: boolean
     ): ClassType {
         const newClassType = { ...classType };
-        newClassType.positiveTypeGuardType = positiveTypeGuardType;
-        if (negativeTypeGuardType) {
-            newClassType.negativeTypeGuardType = negativeTypeGuardType;
-        }
+        newClassType.typeGuardType = typeGuardType;
+        newClassType.isStrictTypeGuard = isStrictTypeGuard;
         return newClassType;
     }
 
@@ -612,6 +623,12 @@ export namespace ClassType {
         newClassType.details.fields = new Map(newClassType.details.fields);
         newClassType.details.mro = [...newClassType.details.mro];
         newClassType.details.mro[0] = cloneAsInstantiable(newClassType);
+        return newClassType;
+    }
+
+    export function cloneForUnpackedTuple(classType: ClassType, isUnpacked = true) {
+        const newClassType = { ...classType };
+        newClassType.isUnpackedTuple = isUnpacked;
         return newClassType;
     }
 
@@ -649,13 +666,17 @@ export namespace ClassType {
         return true;
     }
 
-    export function isBuiltIn(classType: ClassType, className?: string) {
+    export function isBuiltIn(classType: ClassType, className?: string | string[]) {
         if (!(classType.details.flags & ClassTypeFlags.BuiltInClass)) {
             return false;
         }
 
         if (className !== undefined) {
-            return classType.details.name === className || classType.aliasName === className;
+            const classArray = Array.isArray(className) ? className : [className];
+            return (
+                classArray.some((name) => name === classType.details.name) ||
+                classArray.some((name) => name === classType.aliasName)
+            );
         }
 
         return true;
@@ -774,6 +795,7 @@ export namespace ClassType {
         if (recursionCount > maxTypeRecursionCount) {
             return true;
         }
+        recursionCount++;
 
         // If the class details match, it's definitely the same class.
         if (classType.details === type2.details) {
@@ -818,7 +840,7 @@ export namespace ClassType {
                     class2Details.baseClasses[i],
                     /* ignorePseudoGeneric */ true,
                     /* ignoreTypeFlags */ undefined,
-                    recursionCount + 1
+                    recursionCount
                 )
             ) {
                 return false;
@@ -834,7 +856,7 @@ export namespace ClassType {
                     class2Details.declaredMetaclass,
                     /* ignorePseudoGeneric */ true,
                     /* ignoreTypeFlags */ undefined,
-                    recursionCount + 1
+                    recursionCount
                 )
             ) {
                 return false;
@@ -848,7 +870,7 @@ export namespace ClassType {
                     class2Details.typeParameters[i],
                     /* ignorePseudoGeneric */ true,
                     /* ignoreTypeFlags */ undefined,
-                    recursionCount + 1
+                    recursionCount
                 )
             ) {
                 return false;
@@ -1045,6 +1067,7 @@ export interface FunctionType extends TypeBase {
 export interface ParamSpecValue {
     flags: FunctionTypeFlags;
     parameters: ParamSpecEntry[];
+    typeVarScopeId: TypeVarScopeId | undefined;
     docString: string | undefined;
     paramSpec: TypeVarType | undefined;
 }
@@ -1263,6 +1286,17 @@ export namespace FunctionType {
         return newFunction;
     }
 
+    export function cloneWithNewFlags(type: FunctionType, flags: FunctionTypeFlags) {
+        const newFunction = { ...type };
+
+        // Make a shallow clone of the details.
+        newFunction.details = { ...type.details };
+
+        newFunction.details.flags = flags;
+
+        return newFunction;
+    }
+
     export function cloneForParamSpecApplication(type: FunctionType, paramSpecValue: ParamSpecValue) {
         const newFunction = { ...type };
 
@@ -1274,6 +1308,18 @@ export namespace FunctionType {
             0,
             newFunction.details.parameters.length - 2
         );
+
+        // If there is a position-only separator in the captured param spec signature,
+        // remove the position-only separator in the existing signature. Otherwise,
+        // we'll end up with redundant position-only separators.
+        if (paramSpecValue.parameters.some((entry) => entry.category === ParameterCategory.Simple && !entry.name)) {
+            if (newFunction.details.parameters.length > 0) {
+                const lastParam = newFunction.details.parameters[newFunction.details.parameters.length - 1];
+                if (lastParam.category === ParameterCategory.Simple && !lastParam.name) {
+                    newFunction.details.parameters.pop();
+                }
+            }
+        }
 
         paramSpecValue.parameters.forEach((specEntry) => {
             newFunction.details.parameters.push({
@@ -1341,6 +1387,35 @@ export namespace FunctionType {
             type: useUnknown ? UnknownType.create() : AnyType.create(),
             hasDeclaredType: !useUnknown,
         });
+    }
+
+    // Indicates whether the input signature consists of (*args: Any, **kwargs: Any).
+    export function hasDefaultParameters(functionType: FunctionType) {
+        let sawArgs = false;
+        let sawKwargs = false;
+
+        for (let i = 0; i < functionType.details.parameters.length; i++) {
+            const param = functionType.details.parameters[i];
+
+            // Ignore nameless separator parameters.
+            if (!param.name) {
+                continue;
+            }
+
+            if (param.category === ParameterCategory.Simple) {
+                return false;
+            } else if (param.category === ParameterCategory.VarArgList) {
+                sawArgs = true;
+            } else if (param.category === ParameterCategory.VarArgDictionary) {
+                sawKwargs = true;
+            }
+
+            if (!isAnyOrUnknown(FunctionType.getEffectiveParameterType(functionType, i))) {
+                return false;
+            }
+        }
+
+        return sawArgs && sawKwargs;
     }
 
     export function isInstanceMethod(type: FunctionType): boolean {
@@ -1625,7 +1700,7 @@ export interface UnionType extends TypeBase {
     category: TypeCategory.Union;
     subtypes: UnionableType[];
     literalStrMap?: Map<string, UnionableType> | undefined;
-    literalIntMap?: Map<number, UnionableType> | undefined;
+    literalIntMap?: Map<bigint, UnionableType> | undefined;
     typeAliasSources?: Set<UnionType>;
 }
 
@@ -1661,9 +1736,9 @@ export namespace UnionType {
             newType.condition === undefined
         ) {
             if (unionType.literalIntMap === undefined) {
-                unionType.literalIntMap = new Map<number, UnionableType>();
+                unionType.literalIntMap = new Map<bigint, UnionableType>();
             }
-            unionType.literalIntMap.set(newType.literalValue as number, newType);
+            unionType.literalIntMap.set(BigInt(newType.literalValue as number | bigint), newType);
         }
 
         unionType.flags &= newType.flags;
@@ -1685,7 +1760,7 @@ export namespace UnionType {
                 subtype.literalValue !== undefined &&
                 unionType.literalIntMap !== undefined
             ) {
-                return unionType.literalIntMap.has(subtype.literalValue as number);
+                return unionType.literalIntMap.has(BigInt(subtype.literalValue as number | bigint));
             }
         }
 
@@ -1696,7 +1771,7 @@ export namespace UnionType {
                     subtype,
                     /* ignorePseudoGeneric */ undefined,
                     /* ignoreTypeFlags */ undefined,
-                    recursionCount + 1
+                    recursionCount
                 )
             ) !== undefined
         );
@@ -1996,6 +2071,18 @@ export function isUnpackedVariadicTypeVar(type: Type): boolean {
     return type.category === TypeCategory.TypeVar && type.details.isVariadic && !!type.isVariadicUnpacked;
 }
 
+export function isUnpackedTuple(type: Type): type is ClassType {
+    if (!isClass(type) || !type.isUnpackedTuple) {
+        return false;
+    }
+
+    return true;
+}
+
+export function isUnpacked(type: Type): boolean {
+    return isUnpackedVariadicTypeVar(type) || isUnpackedTuple(type);
+}
+
 export function isParamSpec(type: Type): type is TypeVarType {
     return type.category === TypeCategory.TypeVar && type.details.isParamSpec;
 }
@@ -2043,20 +2130,21 @@ export function isTypeSame(
         return false;
     }
 
-    if (recursionCount > maxTypeRecursionCount) {
-        return true;
-    }
-
     if (!ignoreTypeFlags && type1.flags !== type2.flags) {
         return false;
     }
+
+    if (recursionCount > maxTypeRecursionCount) {
+        return true;
+    }
+    recursionCount++;
 
     switch (type1.category) {
         case TypeCategory.Class: {
             const classType2 = type2 as ClassType;
 
             // If the details are not the same it's not the same class.
-            if (!ClassType.isSameGenericClass(type1, classType2, recursionCount + 1)) {
+            if (!ClassType.isSameGenericClass(type1, classType2, recursionCount)) {
                 return false;
             }
 
@@ -2076,13 +2164,17 @@ export function isTypeSame(
                     for (let i = 0; i < type1TupleTypeArgs.length; i++) {
                         if (
                             !isTypeSame(
-                                type1TupleTypeArgs[i],
-                                type2TupleTypeArgs[i],
+                                type1TupleTypeArgs[i].type,
+                                type2TupleTypeArgs[i].type,
                                 ignorePseudoGeneric,
                                 /* ignoreTypeFlags */ false,
-                                recursionCount + 1
+                                recursionCount
                             )
                         ) {
+                            return false;
+                        }
+
+                        if (type1TupleTypeArgs[i].isUnbounded !== type2TupleTypeArgs[i].isUnbounded) {
                             return false;
                         }
                     }
@@ -2102,7 +2194,7 @@ export function isTypeSame(
                                 typeArg2,
                                 ignorePseudoGeneric,
                                 /* ignoreTypeFlags */ false,
-                                recursionCount + 1
+                                recursionCount
                             )
                         ) {
                             return false;
@@ -2165,7 +2257,7 @@ export function isTypeSame(
                         param2Type,
                         ignorePseudoGeneric,
                         /* ignoreTypeFlags */ false,
-                        recursionCount + 1
+                        recursionCount
                     )
                 ) {
                     return false;
@@ -2198,7 +2290,7 @@ export function isTypeSame(
                         return2Type,
                         ignorePseudoGeneric,
                         /* ignoreTypeFlags */ false,
-                        recursionCount + 1
+                        recursionCount
                     )
                 ) {
                     return false;
@@ -2224,7 +2316,7 @@ export function isTypeSame(
                         functionType2.overloads[i],
                         ignorePseudoGeneric,
                         ignoreTypeFlags,
-                        recursionCount + 1
+                        recursionCount
                     )
                 ) {
                     return false;
@@ -2246,7 +2338,7 @@ export function isTypeSame(
             // The types do not have a particular order, so we need to
             // do the comparison in an order-independent manner.
             return (
-                findSubtype(type1, (subtype) => !UnionType.containsType(unionType2, subtype, recursionCount + 1)) ===
+                findSubtype(type1, (subtype) => !UnionType.containsType(unionType2, subtype, recursionCount)) ===
                 undefined
             );
         }
@@ -2260,25 +2352,27 @@ export function isTypeSame(
 
             // Handle the case where this is a generic recursive type alias. Make
             // sure that the type argument types match.
-            const type1TypeArgs = type1?.typeAliasInfo?.typeArguments || [];
-            const type2TypeArgs = type2?.typeAliasInfo?.typeArguments || [];
-            const typeArgCount = Math.max(type1TypeArgs.length, type2TypeArgs.length);
+            if (type1.details.recursiveTypeParameters && type2TypeVar.details.recursiveTypeParameters) {
+                const type1TypeArgs = type1?.typeAliasInfo?.typeArguments || [];
+                const type2TypeArgs = type2?.typeAliasInfo?.typeArguments || [];
+                const typeArgCount = Math.max(type1TypeArgs.length, type2TypeArgs.length);
 
-            for (let i = 0; i < typeArgCount; i++) {
-                // Assume that missing type args are "Any".
-                const typeArg1 = i < type1TypeArgs.length ? type1TypeArgs[i] : AnyType.create();
-                const typeArg2 = i < type2TypeArgs.length ? type2TypeArgs[i] : AnyType.create();
+                for (let i = 0; i < typeArgCount; i++) {
+                    // Assume that missing type args are "Any".
+                    const typeArg1 = i < type1TypeArgs.length ? type1TypeArgs[i] : AnyType.create();
+                    const typeArg2 = i < type2TypeArgs.length ? type2TypeArgs[i] : AnyType.create();
 
-                if (
-                    !isTypeSame(
-                        typeArg1,
-                        typeArg2,
-                        ignorePseudoGeneric,
-                        /* ignoreTypeFlags */ false,
-                        recursionCount + 1
-                    )
-                ) {
-                    return false;
+                    if (
+                        !isTypeSame(
+                            typeArg1,
+                            typeArg2,
+                            ignorePseudoGeneric,
+                            /* ignoreTypeFlags */ false,
+                            recursionCount
+                        )
+                    ) {
+                        return false;
+                    }
                 }
             }
 
@@ -2291,7 +2385,8 @@ export function isTypeSame(
                 type1.details.isParamSpec !== type2TypeVar.details.isParamSpec ||
                 type1.details.isVariadic !== type2TypeVar.details.isVariadic ||
                 type1.details.isSynthesized !== type2TypeVar.details.isSynthesized ||
-                type1.details.variance !== type2TypeVar.details.variance
+                type1.details.variance !== type2TypeVar.details.variance ||
+                type1.scopeId !== type2TypeVar.scopeId
             ) {
                 return false;
             }
@@ -2306,7 +2401,7 @@ export function isTypeSame(
                         boundType2,
                         ignorePseudoGeneric,
                         /* ignoreTypeFlags */ false,
-                        recursionCount + 1
+                        recursionCount
                     )
                 ) {
                     return false;
@@ -2330,7 +2425,7 @@ export function isTypeSame(
                         constraints2[i],
                         ignorePseudoGeneric,
                         /* ignoreTypeFlags */ false,
-                        recursionCount + 1
+                        recursionCount
                     )
                 ) {
                     return false;
@@ -2562,7 +2657,7 @@ function _addTypeIfUnique(unionType: UnionType, typeToAdd: UnionableType) {
             typeToAdd.literalValue !== undefined &&
             unionType.literalIntMap !== undefined
         ) {
-            if (!unionType.literalIntMap.has(typeToAdd.literalValue as number)) {
+            if (!unionType.literalIntMap.has(BigInt(typeToAdd.literalValue as number | bigint))) {
                 UnionType.addType(unionType, typeToAdd);
             }
             return;

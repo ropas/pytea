@@ -316,17 +316,24 @@ export function synthesizeTypedDictClassMethods(
             type: ClassType.cloneAsInstance(classType),
             hasDeclaredType: true,
         };
-        const typeVarScopeId = evaluator.getScopeIdForNode(node);
-        let defaultTypeVar = TypeVarType.createInstance(`__${classType.details.name}_default`);
-        defaultTypeVar.details.isSynthesized = true;
-        defaultTypeVar = TypeVarType.cloneForScopeId(
-            defaultTypeVar,
-            typeVarScopeId,
-            classType.details.name,
-            TypeVarScopeType.Function
-        );
+        const createDefaultTypeVar = (func: FunctionType) => {
+            let defaultTypeVar = TypeVarType.createInstance(`__${func.details.name}_default`);
+            defaultTypeVar.details.isSynthesized = true;
+            defaultTypeVar = TypeVarType.cloneForScopeId(
+                defaultTypeVar,
+                func.details.typeVarScopeId!,
+                classType.details.name,
+                TypeVarScopeType.Function
+            );
+            return defaultTypeVar;
+        };
 
-        const createGetMethod = (keyType: Type, valueType: Type, includeDefault: boolean) => {
+        const createGetMethod = (
+            keyType: Type,
+            valueType: Type,
+            includeDefault: boolean,
+            defaultTypeMatchesField = false
+        ) => {
             const getOverload = FunctionType.createInstance(
                 'get',
                 '',
@@ -334,6 +341,7 @@ export function synthesizeTypedDictClassMethods(
                 FunctionTypeFlags.SynthesizedMethod | FunctionTypeFlags.Overloaded
             );
             FunctionType.addParameter(getOverload, selfParam);
+            getOverload.details.typeVarScopeId = evaluator.getScopeIdForNode(node);
             FunctionType.addParameter(getOverload, {
                 category: ParameterCategory.Simple,
                 name: 'k',
@@ -341,14 +349,16 @@ export function synthesizeTypedDictClassMethods(
                 hasDeclaredType: true,
             });
             if (includeDefault) {
+                const defaultTypeVar = createDefaultTypeVar(getOverload);
                 FunctionType.addParameter(getOverload, {
                     category: ParameterCategory.Simple,
                     name: 'default',
-                    type: valueType,
+                    type: defaultTypeMatchesField ? valueType : defaultTypeVar,
                     hasDeclaredType: true,
-                    hasDefault: true,
                 });
-                getOverload.details.declaredReturnType = valueType;
+                getOverload.details.declaredReturnType = defaultTypeMatchesField
+                    ? valueType
+                    : combineTypes([valueType, defaultTypeVar]);
             } else {
                 getOverload.details.declaredReturnType = combineTypes([valueType, NoneType.createInstance()]);
             }
@@ -381,6 +391,8 @@ export function synthesizeTypedDictClassMethods(
             );
             FunctionType.addParameter(popOverload2, selfParam);
             FunctionType.addParameter(popOverload2, keyParam);
+            popOverload2.details.typeVarScopeId = evaluator.getScopeIdForNode(node);
+            const defaultTypeVar = createDefaultTypeVar(popOverload2);
             FunctionType.addParameter(popOverload2, {
                 category: ParameterCategory.Simple,
                 name: 'default',
@@ -389,11 +401,10 @@ export function synthesizeTypedDictClassMethods(
                 hasDefault: true,
             });
             popOverload2.details.declaredReturnType = combineTypes([valueType, defaultTypeVar]);
-            popOverload2.details.typeVarScopeId = typeVarScopeId;
             return [popOverload1, popOverload2];
         };
 
-        const createSetDefaultMethod = (keyType: Type, valueType: Type, isEntryRequired = false) => {
+        const createSetDefaultMethod = (keyType: Type, valueType: Type) => {
             const setDefaultOverload = FunctionType.createInstance(
                 'setdefault',
                 '',
@@ -411,13 +422,9 @@ export function synthesizeTypedDictClassMethods(
                 category: ParameterCategory.Simple,
                 name: 'default',
                 hasDeclaredType: true,
-                type: isEntryRequired ? AnyType.create() : defaultTypeVar,
-                hasDefault: true,
+                type: valueType,
             });
-            setDefaultOverload.details.declaredReturnType = isEntryRequired
-                ? valueType
-                : combineTypes([valueType, defaultTypeVar]);
-            setDefaultOverload.details.typeVarScopeId = typeVarScopeId;
+            setDefaultOverload.details.declaredReturnType = valueType;
             return setDefaultOverload;
         };
 
@@ -446,34 +453,49 @@ export function synthesizeTypedDictClassMethods(
         entries.forEach((entry, name) => {
             const nameLiteralType = ClassType.cloneAsInstance(ClassType.cloneWithLiteral(strClass, name));
 
-            if (!entry.isRequired) {
-                getOverloads.push(createGetMethod(nameLiteralType, entry.valueType, /* includeDefault */ false));
-            }
-            getOverloads.push(createGetMethod(nameLiteralType, entry.valueType, /* includeDefault */ true));
+            getOverloads.push(createGetMethod(nameLiteralType, entry.valueType, /* includeDefault */ false));
+            getOverloads.push(
+                createGetMethod(
+                    nameLiteralType,
+                    entry.valueType,
+                    /* includeDefault */ true,
+                    /* defaultTypeMatchesField */ true
+                )
+            );
+            getOverloads.push(
+                createGetMethod(
+                    nameLiteralType,
+                    entry.valueType,
+                    /* includeDefault */ true,
+                    /* defaultTypeMatchesField */ false
+                )
+            );
             popOverloads.push(...createPopMethods(nameLiteralType, entry.valueType));
-            setDefaultOverloads.push(createSetDefaultMethod(nameLiteralType, entry.valueType, entry.isRequired));
+            setDefaultOverloads.push(createSetDefaultMethod(nameLiteralType, entry.valueType));
         });
 
-        // Provide a final overload that handles the general case where the key is
-        // a str but the literal value isn't known.
+        // Provide a final `get` overload that handles the general case where
+        // the key is a str but the literal value isn't known.
         const strType = ClassType.cloneAsInstance(strClass);
         getOverloads.push(createGetMethod(strType, AnyType.create(), /* includeDefault */ false));
         getOverloads.push(createGetMethod(strType, AnyType.create(), /* includeDefault */ true));
-        popOverloads.push(...createPopMethods(strType, AnyType.create()));
-        setDefaultOverloads.push(createSetDefaultMethod(strType, AnyType.create()));
 
         symbolTable.set(
             'get',
             Symbol.createWithType(SymbolFlags.ClassMember, OverloadedFunctionType.create(getOverloads))
         );
-        symbolTable.set(
-            'pop',
-            Symbol.createWithType(SymbolFlags.ClassMember, OverloadedFunctionType.create(popOverloads))
-        );
-        symbolTable.set(
-            'setdefault',
-            Symbol.createWithType(SymbolFlags.ClassMember, OverloadedFunctionType.create(setDefaultOverloads))
-        );
+        if (popOverloads.length > 0) {
+            symbolTable.set(
+                'pop',
+                Symbol.createWithType(SymbolFlags.ClassMember, OverloadedFunctionType.create(popOverloads))
+            );
+        }
+        if (setDefaultOverloads.length > 0) {
+            symbolTable.set(
+                'setdefault',
+                Symbol.createWithType(SymbolFlags.ClassMember, OverloadedFunctionType.create(setDefaultOverloads))
+            );
+        }
         symbolTable.set('__delitem__', Symbol.createWithType(SymbolFlags.ClassMember, createDelItemMethod(strType)));
     }
 }
@@ -514,10 +536,11 @@ function getTypedDictMembersForClassRecursive(
     if (recursionCount > maxTypeRecursionCount) {
         return;
     }
+    recursionCount++;
 
     classType.details.baseClasses.forEach((baseClassType) => {
         if (isInstantiableClass(baseClassType) && ClassType.isTypedDictClass(baseClassType)) {
-            getTypedDictMembersForClassRecursive(evaluator, baseClassType, keyMap, recursionCount + 1);
+            getTypedDictMembersForClassRecursive(evaluator, baseClassType, keyMap, recursionCount);
         }
     });
 
@@ -623,7 +646,7 @@ export function canAssignTypedDict(
                     /* diag */ undefined,
                     /* typeVarMap */ undefined,
                     /* flags */ undefined,
-                    recursionCount + 1
+                    recursionCount
                 )
             ) {
                 if (diag) {
@@ -748,7 +771,7 @@ export function getTypeFromIndexedTypedDict(
         return undefined;
     }
 
-    const entries = getTypedDictMembersForClass(evaluator, baseType, /* allowNarrowed */ true);
+    const entries = getTypedDictMembersForClass(evaluator, baseType, /* allowNarrowed */ usage.method === 'get');
 
     const indexTypeResult = evaluator.getTypeOfExpression(node.items[0].valueExpression);
     const indexType = indexTypeResult.type;
@@ -791,7 +814,9 @@ export function getTypeFromIndexedTypedDict(
             }
 
             if (usage.method === 'set') {
-                evaluator.canAssignType(entry.valueType, usage.setType || AnyType.create(), diag);
+                if (!evaluator.canAssignType(entry.valueType, usage.setType || AnyType.create(), diag)) {
+                    allDiagsInvolveNotRequiredKeys = false;
+                }
             } else if (usage.method === 'del' && entry.isRequired) {
                 diag.addMessage(
                     Localizer.DiagnosticAddendum.keyRequiredDeleted().format({

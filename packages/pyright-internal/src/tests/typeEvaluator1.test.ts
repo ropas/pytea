@@ -496,7 +496,7 @@ test('Expressions9', () => {
 test('Unpack1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['unpack1.py']);
 
-    TestUtils.validateResults(analysisResults, 2);
+    TestUtils.validateResults(analysisResults, 4);
 });
 
 test('Unpack2', () => {
@@ -541,6 +541,12 @@ test('Lambda4', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['lambda4.py']);
 
     TestUtils.validateResults(analysisResults, 1);
+});
+
+test('Lambda5', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['lambda5.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
 });
 
 test('Call1', () => {
@@ -901,6 +907,12 @@ test('Operators7', () => {
     TestUtils.validateResults(analysisResults, 1);
 });
 
+test('Operators8', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['operators8.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
 test('Optional1', () => {
     const configOptions = new ConfigOptions('.');
 
@@ -952,7 +964,7 @@ test('Optional2', () => {
 test('Tuples1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['tuples1.py']);
 
-    TestUtils.validateResults(analysisResults, 11);
+    TestUtils.validateResults(analysisResults, 14);
 });
 
 test('Tuples2', () => {
@@ -1117,6 +1129,18 @@ test('Self3', () => {
     TestUtils.validateResults(analysisResults, 0);
 });
 
+test('Self4', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['self4.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('Self5', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['self5.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
 test('UnusedVariable1', () => {
     const configOptions = new ConfigOptions('.');
 
@@ -1171,4 +1195,22 @@ test('TotalOrdering1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['totalOrdering1.py']);
 
     TestUtils.validateResults(analysisResults, 1);
+});
+
+test('TupleUnpack1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['tupleUnpack1.py']);
+
+    TestUtils.validateResults(analysisResults, 3);
+});
+
+test('TupleUnpack2', () => {
+    const configOptions = new ConfigOptions('.');
+
+    configOptions.defaultPythonVersion = PythonVersion.V3_10;
+    const analysisResults1 = TestUtils.typeAnalyzeSampleFiles(['tupleUnpack2.py'], configOptions);
+    TestUtils.validateResults(analysisResults1, 16);
+
+    configOptions.defaultPythonVersion = PythonVersion.V3_11;
+    const analysisResults2 = TestUtils.typeAnalyzeSampleFiles(['tupleUnpack2.py'], configOptions);
+    TestUtils.validateResults(analysisResults2, 3);
 });

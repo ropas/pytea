@@ -10,7 +10,7 @@
 import { CancellationToken } from 'vscode-languageserver';
 import { TextDocumentContentChangeEvent } from 'vscode-languageserver-textdocument';
 
-import { BackgroundAnalysisBase } from '../backgroundAnalysisBase';
+import { BackgroundAnalysisBase, IndexOptions } from '../backgroundAnalysisBase';
 import { ConfigOptions, ExecutionEnvironment } from '../common/configOptions';
 import { ConsoleInterface } from '../common/console';
 import { Diagnostic } from '../common/diagnostic';
@@ -160,20 +160,23 @@ export class BackgroundAnalysisProgram {
         }
     }
 
-    startIndexing() {
-        if (!this._configOptions.indexing) {
-            return;
-        }
-
-        this._backgroundAnalysis?.startIndexing(this._configOptions, this.host.kind, this._getIndices());
+    startIndexing(indexOptions: IndexOptions) {
+        this._backgroundAnalysis?.startIndexing(
+            indexOptions,
+            this._configOptions,
+            this.importResolver,
+            this.host.kind,
+            this._getIndices()
+        );
     }
 
     refreshIndexing() {
-        if (!this._configOptions.indexing) {
-            return;
-        }
-
-        this._backgroundAnalysis?.refreshIndexing(this._configOptions, this.host.kind, this._indices);
+        this._backgroundAnalysis?.refreshIndexing(
+            this._configOptions,
+            this.importResolver,
+            this.host.kind,
+            this._indices
+        );
     }
 
     cancelIndexing() {

@@ -305,10 +305,22 @@
       "title": "Controls reporting of overrides in subclasses that redefine a variable in an incompatible way",
       "default": "none"
     },
+    "reportInconsistentConstructor": {
+      "$id": "#/properties/reportInconsistentConstructor",
+      "$ref": "#/definitions/diagnostic",
+      "title": "Controls reporting of __init__ and __new__ methods whose signatures are inconsistent",
+      "default": "none"
+    },
     "reportOverlappingOverload": {
       "$id": "#/properties/reportOverlappingOverload",
       "$ref": "#/definitions/diagnostic",
       "title": "Controls reporting of function overloads that overlap in signature and obscure each other or do not agree on return type",
+      "default": "none"
+    },
+    "reportMissingSuperCall": {
+      "$id": "#/properties/reportMissingSuperCall",
+      "$ref": "#/definitions/diagnostic",
+      "title": "Controls reporting of missing call to parent class for inherited `__init__` methods",
       "default": "none"
     },
     "reportUninitializedInstanceVariable": {
@@ -454,6 +466,18 @@
       "$ref": "#/definitions/diagnostic",
       "title": "Controls reporting of call expressions that returns Coroutine whose results are not consumed",
       "default": "error"
+    },
+    "reportUnnecessaryTypeIgnoreComment": {
+      "$id": "#/properties/reportUnnecessaryTypeIgnoreComment",
+      "$ref": "#/definitions/diagnostic",
+      "title": "Controls reporting of '# type: ignore' comments that have no effect'",
+      "default": "none"
+    },
+    "reportMatchNotExhaustive": {
+      "$id": "#/properties/reportMatchNotExhaustive",
+      "$ref": "#/definitions/diagnostic",
+      "title": "Controls reporting of 'match' statements that do not exhaustively match all possible values",
+      "default": "none"
     },
     "extraPaths": {
       "$id": "#/properties/extraPaths",

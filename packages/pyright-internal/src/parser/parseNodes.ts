@@ -122,6 +122,7 @@ export const enum ErrorExpressionCategory {
     MissingPattern,
     MissingPatternSubject,
     MissingDictValue,
+    MaxDepthExceeded,
 }
 
 export interface ParseNodeBase extends TextRange {
@@ -131,6 +132,12 @@ export interface ParseNodeBase extends TextRange {
     id: number;
 
     parent?: ParseNode | undefined;
+
+    // For some parse nodes, each child's depth is calculated,
+    // and the max child depth is recorded here. This is used
+    // to detect long chains of operations that can result in
+    // stack overflows during evaluation.
+    maxChildDepth?: number;
 }
 
 let _nextNodeId = 1;
@@ -784,6 +791,7 @@ export namespace UnaryOperationNode {
         };
 
         expression.parent = node;
+        node.maxChildDepth = 1 + (expression.maxChildDepth ?? 0);
 
         extendRange(node, expression);
 
@@ -820,6 +828,8 @@ export namespace BinaryOperationNode {
 
         leftExpression.parent = node;
         rightExpression.parent = node;
+
+        node.maxChildDepth = 1 + Math.max(leftExpression.maxChildDepth ?? 0, rightExpression.maxChildDepth ?? 0);
 
         extendRange(node, rightExpression);
 
@@ -1085,20 +1095,29 @@ export interface CallNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.Call;
     leftExpression: ExpressionNode;
     arguments: ArgumentNode[];
+    trailingComma: boolean;
 }
 
 export namespace CallNode {
-    export function create(leftExpression: ExpressionNode) {
+    export function create(leftExpression: ExpressionNode, argList: ArgumentNode[], trailingComma: boolean) {
         const node: CallNode = {
             start: leftExpression.start,
             length: leftExpression.length,
             nodeType: ParseNodeType.Call,
             id: _nextNodeId++,
             leftExpression,
-            arguments: [],
+            arguments: argList,
+            trailingComma,
         };
 
         leftExpression.parent = node;
+
+        if (argList.length > 0) {
+            argList.forEach((arg) => {
+                arg.parent = node;
+            });
+            extendRange(node, argList[argList.length - 1]);
+        }
 
         return node;
     }
@@ -1108,6 +1127,7 @@ export interface ListComprehensionNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.ListComprehension;
     expression: ParseNode;
     comprehensions: ListComprehensionIterNode[];
+    isParenthesized?: boolean;
 }
 
 export namespace ListComprehensionNode {
@@ -1339,7 +1359,7 @@ export namespace EllipsisNode {
 
 export interface NumberNode extends ParseNodeBase {
     readonly nodeType: ParseNodeType.Number;
-    value: number;
+    value: number | bigint;
     isInteger: boolean;
     isImaginary: boolean;
 }

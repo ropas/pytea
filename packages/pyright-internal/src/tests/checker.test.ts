@@ -125,6 +125,12 @@ test('NoReturn2', () => {
     TestUtils.validateResults(analysisResults, 0);
 });
 
+test('NoReturn4', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['noreturn4.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
 test('With1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['with1.py']);
 
@@ -262,6 +268,28 @@ test('TypeIgnore3', () => {
     configOptions.diagnosticRuleSet.enableTypeIgnoreComments = false;
     analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeIgnore3.py'], configOptions);
     TestUtils.validateResults(analysisResults, 4);
+});
+
+test('TypeIgnore4', () => {
+    const configOptions = new ConfigOptions('.');
+
+    let analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeIgnore4.py'], configOptions);
+    TestUtils.validateResults(analysisResults, 0);
+
+    configOptions.diagnosticRuleSet.reportUnnecessaryTypeIgnoreComment = 'error';
+    analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeIgnore4.py'], configOptions);
+    TestUtils.validateResults(analysisResults, 2);
+});
+
+test('TypeIgnore5', () => {
+    const configOptions = new ConfigOptions('.');
+
+    let analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeIgnore5.py'], configOptions);
+    TestUtils.validateResults(analysisResults, 0);
+
+    configOptions.diagnosticRuleSet.reportUnnecessaryTypeIgnoreComment = 'warning';
+    analysisResults = TestUtils.typeAnalyzeSampleFiles(['typeIgnore5.py'], configOptions);
+    TestUtils.validateResults(analysisResults, 0, 1);
 });
 
 test('DuplicateImports1', () => {

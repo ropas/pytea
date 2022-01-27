@@ -53,6 +53,7 @@ import {
     Location,
     MarkupKind,
     ParameterInformation,
+    PublishDiagnosticsParams,
     ReferenceParams,
     RemoteWindow,
     RenameParams,
@@ -90,6 +91,7 @@ import { ConsoleInterface, ConsoleWithLogLevel, LogLevel } from './common/consol
 import { createDeferred, Deferred } from './common/deferred';
 import { Diagnostic as AnalyzerDiagnostic, DiagnosticCategory } from './common/diagnostic';
 import { DiagnosticRule } from './common/diagnosticRules';
+import { FileDiagnostics } from './common/diagnosticSink';
 import { LanguageServiceExtension } from './common/extensibility';
 import { FileSystem, FileWatcherEventType, FileWatcherProvider } from './common/fileSystem';
 import { Host } from './common/host';
@@ -99,7 +101,7 @@ import { DocumentRange, Position } from './common/textRange';
 import { UriParser } from './common/uriParser';
 import { convertWorkspaceEdits } from './common/workspaceEditUtils';
 import { AnalyzerServiceExecutor } from './languageService/analyzerServiceExecutor';
-import { CompletionItemData, CompletionResults } from './languageService/completionProvider';
+import { CompletionItemData, CompletionResultsList } from './languageService/completionProvider';
 import { DefinitionFilter } from './languageService/definitionProvider';
 import { convertToFlatSymbols, WorkspaceSymbolCallback } from './languageService/documentSymbolProvider';
 import { convertHoverResults } from './languageService/hoverProvider';
@@ -185,7 +187,6 @@ export interface ServerOptions {
     disableChecker?: boolean;
     supportedCommands?: string[];
     supportedCodeActions?: string[];
-    uriParser: UriParser;
 }
 
 interface ClientCapabilities {
@@ -274,8 +275,9 @@ export abstract class LanguageServerBase implements LanguageServerInterface {
 
         this._workspaceMap = this._serverOptions.workspaceMap;
         this._fileWatcherProvider = this._serverOptions.fileWatcherProvider;
-        this.fs = this._serverOptions.fileSystem;
-        this._uriParser = this._serverOptions.uriParser;
+
+        this.fs = new PyrightFileSystem(this._serverOptions.fileSystem);
+        this._uriParser = new UriParser(this.fs);
 
         // Set the working directory to a known location within
         // the extension directory. Otherwise the execution of
@@ -1174,7 +1176,7 @@ export abstract class LanguageServerBase implements LanguageServerInterface {
         position: Position,
         workspacePath: string,
         token: CancellationToken
-    ): Promise<CompletionResults | undefined> {
+    ): Promise<CompletionResultsList | undefined> {
         return workspace.serviceInstance.getCompletionsForPosition(
             filePath,
             position,
@@ -1214,6 +1216,16 @@ export abstract class LanguageServerBase implements LanguageServerInterface {
         };
     }
 
+    protected convertDiagnostics(fileDiagnostics: FileDiagnostics): PublishDiagnosticsParams[] {
+        return [
+            {
+                uri: convertPathToUri(this.fs, fileDiagnostics.filePath),
+                version: fileDiagnostics.version,
+                diagnostics: this._convertDiagnostics(fileDiagnostics.diagnostics),
+            },
+        ];
+    }
+
     protected onAnalysisCompletedHandler(results: AnalysisResults): void {
         // Send the computed diagnostics to the client.
         results.diagnostics.forEach((fileDiag) => {
@@ -1221,12 +1233,7 @@ export abstract class LanguageServerBase implements LanguageServerInterface {
                 return;
             }
 
-            this._connection.sendDiagnostics({
-                uri: convertPathToUri(this.fs, fileDiag.filePath),
-                version: fileDiag.version,
-                diagnostics: this._convertDiagnostics(fileDiag.diagnostics),
-            });
-
+            this._sendDiagnostics(this.convertDiagnostics(fileDiag));
             (this.fs as PyrightFileSystem).pendingRequest(fileDiag.filePath, fileDiag.diagnostics.length > 0);
         });
 
@@ -1300,6 +1307,12 @@ export abstract class LanguageServerBase implements LanguageServerInterface {
 
             default:
                 return LogLevel.Info;
+        }
+    }
+
+    private _sendDiagnostics(params: PublishDiagnosticsParams[]) {
+        for (const param of params) {
+            this._connection.sendDiagnostics(param);
         }
     }
 
@@ -1433,7 +1446,12 @@ export abstract class LanguageServerBase implements LanguageServerInterface {
             if (trimmedName === 'env:HOME' && process.env.HOME !== undefined) {
                 return process.env.HOME;
             }
-
+            if (trimmedName === 'env:USERNAME' && process.env.USERNAME !== undefined) {
+                return process.env.USERNAME;
+            }
+            if (trimmedName === 'env:VIRTUAL_ENV' && process.env.VIRTUAL_ENV !== undefined) {
+                return process.env.VIRTUAL_ENV;
+            }
             return match;
         });
     }

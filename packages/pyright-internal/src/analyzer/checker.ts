@@ -17,6 +17,7 @@ import { DiagnosticLevel } from '../common/configOptions';
 import { assert } from '../common/debug';
 import { Diagnostic, DiagnosticAddendum } from '../common/diagnostic';
 import { DiagnosticRule } from '../common/diagnosticRules';
+import { getFileExtension } from '../common/pathUtils';
 import { PythonVersion, versionToString } from '../common/pythonVersion';
 import { TextRange } from '../common/textRange';
 import { Localizer } from '../localization/localize';
@@ -99,6 +100,7 @@ import {
     ClassType,
     combineTypes,
     FunctionType,
+    FunctionTypeFlags,
     isAnyOrUnknown,
     isClass,
     isClassInstance,
@@ -138,16 +140,17 @@ import {
     getGeneratorTypeArgs,
     getGeneratorYieldType,
     getParameterListDetails,
+    getProtocolSymbols,
     getTypeVarArgumentsRecursive,
     getTypeVarScopeId,
     isEllipsisType,
     isLiteralType,
     isLiteralTypeOrUnion,
     isNoReturnType,
-    isOpenEndedTupleClass,
     isPartlyUnknown,
     isProperty,
     isTupleClass,
+    isUnboundedTupleClass,
     lookUpClassMember,
     mapSubtypes,
     partiallySpecializeType,
@@ -323,6 +326,8 @@ export class Checker extends ParseTreeWalker {
 
             this._validateMultipleInheritanceCompatibility(classTypeResult.classType, node.name);
 
+            this._validateConstructorConsistency(classTypeResult.classType);
+
             this._validateFinalMemberOverrides(classTypeResult.classType);
 
             this._validateInstanceVariableInitialization(classTypeResult.classType);
@@ -330,6 +335,8 @@ export class Checker extends ParseTreeWalker {
             this._validateFinalClassNotAbstract(classTypeResult.classType, node);
 
             this._validateDataClassPostInit(classTypeResult.classType, node);
+
+            this._validateProtocolCompatibility(classTypeResult.classType, node);
 
             this._reportDuplicateEnumMembers(classTypeResult.classType);
 
@@ -349,7 +356,7 @@ export class Checker extends ParseTreeWalker {
 
     override visitFunction(node: FunctionNode): boolean {
         const functionTypeResult = this._evaluator.getTypeOfFunction(node);
-        const containingClassNode = ParseTreeUtils.getEnclosingClass(node, true);
+        const containingClassNode = ParseTreeUtils.getEnclosingClass(node, /* stopAtFunction */ true);
 
         if (functionTypeResult) {
             // Track whether we have seen a *args: P.args parameter. Named
@@ -457,14 +464,13 @@ export class Checker extends ParseTreeWalker {
             });
 
             // Check for invalid use of ParamSpec P.args and P.kwargs.
-            const paramSpecParams = node.parameters.filter((param, index) => {
-                const paramInfo = functionTypeResult.functionType.details.parameters[index];
-                if (paramInfo.typeAnnotation && isTypeVar(paramInfo.type) && isParamSpec(paramInfo.type)) {
-                    if (paramInfo.category !== ParameterCategory.Simple) {
+            const paramSpecParams = functionTypeResult.functionType.details.parameters.filter((param) => {
+                if (param.typeAnnotation && isTypeVar(param.type) && isParamSpec(param.type)) {
+                    if (param.category !== ParameterCategory.Simple && param.name) {
                         const paramAnnotation =
-                            paramInfo.typeAnnotation.nodeType === ParseNodeType.StringList
-                                ? paramInfo.typeAnnotation.typeAnnotation
-                                : paramInfo.typeAnnotation;
+                            param.typeAnnotation.nodeType === ParseNodeType.StringList
+                                ? param.typeAnnotation.typeAnnotation
+                                : param.typeAnnotation;
                         if (paramAnnotation?.nodeType === ParseNodeType.MemberAccess) {
                             return true;
                         }
@@ -474,10 +480,10 @@ export class Checker extends ParseTreeWalker {
                 return false;
             });
 
-            if (paramSpecParams.length === 1) {
+            if (paramSpecParams.length === 1 && paramSpecParams[0].typeAnnotation) {
                 this._evaluator.addError(
                     Localizer.Diagnostic.paramSpecArgsKwargsUsage(),
-                    paramSpecParams[0].typeAnnotation || paramSpecParams[0].typeAnnotationComment!
+                    paramSpecParams[0].typeAnnotation
                 );
             }
 
@@ -558,6 +564,14 @@ export class Checker extends ParseTreeWalker {
 
             // Verify common dunder signatures.
             this._validateDunderSignatures(node, functionTypeResult.functionType, containingClassNode !== undefined);
+
+            // Verify that strict type guard functions don't violate the constraints
+            // of strict type guards.
+            this._validateStrictTypeGuardFunction(
+                node,
+                functionTypeResult.functionType,
+                containingClassNode !== undefined
+            );
         }
 
         // If we're at the module level within a stub file, report a diagnostic
@@ -665,9 +679,11 @@ export class Checker extends ParseTreeWalker {
             this._fileInfo.diagnosticRuleSet.reportUnusedCoroutine !== 'none'
         ) {
             if (node.parent?.nodeType === ParseNodeType.StatementList) {
+                const isRevealTypeCall =
+                    node.leftExpression.nodeType === ParseNodeType.Name && node.leftExpression.value === 'reveal_type';
                 const returnType = this._evaluator.getType(node);
 
-                if (returnType && this._isTypeValidForUnusedValueTest(returnType)) {
+                if (!isRevealTypeCall && returnType && this._isTypeValidForUnusedValueTest(returnType)) {
                     this._evaluator.addDiagnostic(
                         this._fileInfo.diagnosticRuleSet.reportUnusedCallResult,
                         DiagnosticRule.reportUnusedCallResult,
@@ -880,18 +896,26 @@ export class Checker extends ParseTreeWalker {
 
     override visitYieldFrom(node: YieldFromNode) {
         const yieldFromType = this._evaluator.getType(node.expression) || UnknownType.create();
-        let yieldType =
-            this._evaluator.getTypeFromIterable(yieldFromType, /* isAsync */ false, node) || UnknownType.create();
+        let yieldType: Type | undefined;
 
-        // Does the iterator return a Generator? If so, get the yield type from it.
-        // If the iterator doesn't return a Generator, use the iterator return type
-        // directly.
-        const generatorTypeArgs = getGeneratorTypeArgs(yieldType);
-        if (generatorTypeArgs) {
-            yieldType = generatorTypeArgs.length >= 1 ? generatorTypeArgs[0] : UnknownType.create();
+        if (isClassInstance(yieldFromType) && ClassType.isBuiltIn(yieldFromType, 'Coroutine')) {
+            // Handle the case of old-style (pre-await) coroutines.
+            yieldType = UnknownType.create();
         } else {
             yieldType =
-                this._evaluator.getTypeFromIterator(yieldFromType, /* isAsync */ false, node) || UnknownType.create();
+                this._evaluator.getTypeFromIterable(yieldFromType, /* isAsync */ false, node) || UnknownType.create();
+
+            // Does the iterator return a Generator? If so, get the yield type from it.
+            // If the iterator doesn't return a Generator, use the iterator return type
+            // directly.
+            const generatorTypeArgs = getGeneratorTypeArgs(yieldType);
+            if (generatorTypeArgs) {
+                yieldType = generatorTypeArgs.length >= 1 ? generatorTypeArgs[0] : UnknownType.create();
+            } else {
+                yieldType =
+                    this._evaluator.getTypeFromIterator(yieldFromType, /* isAsync */ false, node) ||
+                    UnknownType.create();
+            }
         }
 
         this._validateYieldType(node, yieldType);
@@ -969,7 +993,7 @@ export class Checker extends ParseTreeWalker {
         if (type && isClassInstance(type)) {
             if (isTupleClass(type) && type.tupleTypeArguments) {
                 if (type.tupleTypeArguments.length > 0) {
-                    if (!isOpenEndedTupleClass(type)) {
+                    if (!isUnboundedTupleClass(type)) {
                         this._evaluator.addDiagnosticForTextRange(
                             this._fileInfo,
                             this._fileInfo.diagnosticRuleSet.reportAssertAlwaysTrue,
@@ -1010,40 +1034,43 @@ export class Checker extends ParseTreeWalker {
         // If the index is a literal integer, see if this is a tuple with
         // a known length and the integer value exceeds the length.
         const baseType = this._evaluator.getType(node.baseExpression);
-        if (baseType && isClassInstance(baseType) && baseType.tupleTypeArguments && !isOpenEndedTupleClass(baseType)) {
-            const tupleLength = baseType.tupleTypeArguments.length;
-
-            if (
-                node.items.length === 1 &&
-                !node.trailingComma &&
-                node.items[0].argumentCategory === ArgumentCategory.Simple &&
-                !node.items[0].name
-            ) {
-                const subscriptType = this._evaluator.getType(node.items[0].valueExpression);
-                if (
-                    subscriptType &&
-                    isClassInstance(subscriptType) &&
-                    ClassType.isBuiltIn(subscriptType, 'int') &&
-                    isLiteralType(subscriptType)
-                ) {
-                    const subscriptValue = subscriptType.literalValue as number;
+        if (baseType) {
+            doForEachSubtype(baseType, (subtype) => {
+                if (isClassInstance(subtype) && subtype.tupleTypeArguments && !isUnboundedTupleClass(subtype)) {
+                    const tupleLength = subtype.tupleTypeArguments.length;
 
                     if (
-                        (subscriptValue >= 0 && subscriptValue >= tupleLength) ||
-                        (subscriptValue < 0 && subscriptValue + tupleLength < 0)
+                        node.items.length === 1 &&
+                        !node.trailingComma &&
+                        node.items[0].argumentCategory === ArgumentCategory.Simple &&
+                        !node.items[0].name
                     ) {
-                        this._evaluator.addDiagnostic(
-                            this._fileInfo.diagnosticRuleSet.reportGeneralTypeIssues,
-                            DiagnosticRule.reportGeneralTypeIssues,
-                            Localizer.Diagnostic.tupleIndexOutOfRange().format({
-                                length: tupleLength,
-                                index: subscriptValue,
-                            }),
-                            node
-                        );
+                        const subscriptType = this._evaluator.getType(node.items[0].valueExpression);
+                        if (
+                            subscriptType &&
+                            isClassInstance(subscriptType) &&
+                            ClassType.isBuiltIn(subscriptType, 'int') &&
+                            isLiteralType(subscriptType) &&
+                            typeof subscriptType.literalValue === 'number'
+                        ) {
+                            if (
+                                (subscriptType.literalValue >= 0 && subscriptType.literalValue >= tupleLength) ||
+                                (subscriptType.literalValue < 0 && subscriptType.literalValue + tupleLength < 0)
+                            ) {
+                                this._evaluator.addDiagnostic(
+                                    this._fileInfo.diagnosticRuleSet.reportGeneralTypeIssues,
+                                    DiagnosticRule.reportGeneralTypeIssues,
+                                    Localizer.Diagnostic.tupleIndexOutOfRange().format({
+                                        index: subscriptType.literalValue,
+                                        type: this._evaluator.printType(subtype),
+                                    }),
+                                    node
+                                );
+                            }
+                        }
                     }
                 }
-            }
+            });
         }
 
         return true;
@@ -1261,6 +1288,7 @@ export class Checker extends ParseTreeWalker {
 
     override visitMatch(node: MatchNode): boolean {
         this._evaluator.getType(node.subjectExpression);
+        this._validateExhaustiveMatch(node);
         return true;
     }
 
@@ -1292,6 +1320,34 @@ export class Checker extends ParseTreeWalker {
 
         // Don't explore further.
         return false;
+    }
+
+    private _validateExhaustiveMatch(node: MatchNode) {
+        // This check can be expensive, so skip it if it's disabled.
+        if (this._fileInfo.diagnosticRuleSet.reportMatchNotExhaustive === 'none') {
+            return;
+        }
+
+        const narrowedTypeResult = this._evaluator.evaluateTypeForSubnode(node, () => {
+            this._evaluator.evaluateTypesForMatchNode(node);
+        });
+
+        if (narrowedTypeResult && !isNever(narrowedTypeResult.type)) {
+            const diagAddendum = new DiagnosticAddendum();
+            diagAddendum.addMessage(
+                Localizer.DiagnosticAddendum.matchIsNotExhaustiveType().format({
+                    type: this._evaluator.printType(narrowedTypeResult.type),
+                })
+            );
+            diagAddendum.addMessage(Localizer.DiagnosticAddendum.matchIsNotExhaustiveHint());
+
+            this._evaluator.addDiagnostic(
+                this._fileInfo.diagnosticRuleSet.reportMatchNotExhaustive,
+                DiagnosticRule.reportMatchNotExhaustive,
+                Localizer.Diagnostic.matchIsNotExhaustive() + diagAddendum.getString(),
+                node.subjectExpression
+            );
+        }
     }
 
     private _suppressUnboundCheck(callback: () => void) {
@@ -2096,7 +2152,28 @@ export class Checker extends ParseTreeWalker {
         if (!sawAssignment && !this._fileInfo.isStubFile) {
             const firstDecl = decls.find((decl) => decl.type === DeclarationType.Variable && decl.isFinal);
             if (firstDecl) {
-                this._evaluator.addError(Localizer.Diagnostic.finalUnassigned().format({ name }), firstDecl.node);
+                // Is this an instance variable declared within a dataclass? If so, it
+                // is implicitly initialized by the synthesized `__init__` method and
+                // therefore has an implied assignment.
+                let isImplicitlyAssigned = false;
+
+                if (symbol.isClassMember() && !symbol.isClassVar()) {
+                    const containingClass = ParseTreeUtils.getEnclosingClass(firstDecl.node, /* stopAtFunction */ true);
+                    if (containingClass) {
+                        const classType = this._evaluator.getTypeOfClass(containingClass);
+                        if (
+                            classType &&
+                            isClass(classType.decoratedType) &&
+                            ClassType.isDataClass(classType.decoratedType)
+                        ) {
+                            isImplicitlyAssigned = true;
+                        }
+                    }
+                }
+
+                if (!isImplicitlyAssigned) {
+                    this._evaluator.addError(Localizer.Diagnostic.finalUnassigned().format({ name }), firstDecl.node);
+                }
             }
         }
     }
@@ -2149,20 +2226,21 @@ export class Checker extends ParseTreeWalker {
                     return true;
                 }
 
+                const decoratedType = primaryDeclTypeInfo
+                    ? this._evaluator.makeTopLevelTypeVarsConcrete(primaryDeclTypeInfo.decoratedType)
+                    : undefined;
+
                 // We need to handle properties in a careful manner because of
                 // the way that setters and deleters are often defined using multiple
                 // methods with the same name.
                 if (
-                    primaryDeclTypeInfo &&
-                    isClassInstance(primaryDeclTypeInfo.decoratedType) &&
-                    ClassType.isPropertyClass(primaryDeclTypeInfo.decoratedType) &&
+                    decoratedType &&
+                    isClassInstance(decoratedType) &&
+                    ClassType.isPropertyClass(decoratedType) &&
                     isClassInstance(funcTypeInfo.decoratedType) &&
                     ClassType.isPropertyClass(funcTypeInfo.decoratedType)
                 ) {
-                    return (
-                        funcTypeInfo.decoratedType.details.typeSourceId !==
-                        primaryDeclTypeInfo!.decoratedType.details.typeSourceId
-                    );
+                    return funcTypeInfo.decoratedType.details.typeSourceId !== decoratedType.details.typeSourceId;
                 }
 
                 return !FunctionType.isOverloaded(funcTypeInfo.functionType);
@@ -2507,7 +2585,7 @@ export class Checker extends ParseTreeWalker {
             if (isClassInstance(arg1Subtype) && ClassType.isTupleClass(arg1Subtype) && arg1Subtype.tupleTypeArguments) {
                 if (
                     arg1Subtype.tupleTypeArguments.some(
-                        (typeArg) => !this._isTypeSupportedTypeForIsInstance(typeArg, isInstanceCheck)
+                        (typeArg) => !this._isTypeSupportedTypeForIsInstance(typeArg.type, isInstanceCheck)
                     )
                 ) {
                     isValidType = false;
@@ -2584,10 +2662,10 @@ export class Checker extends ParseTreeWalker {
                     if (isTupleClass(arg1Subtype)) {
                         if (arg1Subtype.tupleTypeArguments) {
                             arg1Subtype.tupleTypeArguments.forEach((typeArg) => {
-                                if (isInstantiableClass(typeArg)) {
-                                    classTypeList.push(typeArg);
+                                if (isInstantiableClass(typeArg.type)) {
+                                    classTypeList.push(typeArg.type);
 
-                                    if (typeArg.includeSubclasses) {
+                                    if (typeArg.type.includeSubclasses) {
                                         arg1IncludesSubclasses = true;
                                     }
                                 } else {
@@ -3051,6 +3129,48 @@ export class Checker extends ParseTreeWalker {
         });
     }
 
+    private _validateStrictTypeGuardFunction(node: FunctionNode, functionType: FunctionType, isMethod: boolean) {
+        // Is this a strict type guard function?
+        if (!functionType.details.declaredReturnType) {
+            return;
+        }
+
+        if (
+            !isClassInstance(functionType.details.declaredReturnType) ||
+            !ClassType.isBuiltIn(functionType.details.declaredReturnType, 'StrictTypeGuard') ||
+            !functionType.details.declaredReturnType.typeArguments ||
+            functionType.details.declaredReturnType.typeArguments.length < 1
+        ) {
+            return;
+        }
+
+        const typeGuardType = functionType.details.declaredReturnType.typeArguments[0];
+
+        // Determine the type of the first parameter.
+        const paramIndex = isMethod && !FunctionType.isStaticMethod(functionType) ? 1 : 0;
+        if (paramIndex >= functionType.details.parameters.length) {
+            return;
+        }
+
+        const paramType = FunctionType.getEffectiveParameterType(functionType, paramIndex);
+
+        // Verify that the typeGuardType is a narrower type than the paramType.
+        if (!this._evaluator.canAssignType(paramType, typeGuardType)) {
+            const returnAnnotation = node.returnTypeAnnotation || node.functionAnnotationComment?.returnTypeAnnotation;
+            if (returnAnnotation) {
+                this._evaluator.addDiagnostic(
+                    this._fileInfo.diagnosticRuleSet.reportGeneralTypeIssues,
+                    DiagnosticRule.reportGeneralTypeIssues,
+                    Localizer.Diagnostic.strictTypeGuardReturnType().format({
+                        type: this._evaluator.printType(paramType),
+                        returnType: this._evaluator.printType(typeGuardType),
+                    }),
+                    returnAnnotation
+                );
+            }
+        }
+    }
+
     private _validateDunderSignatures(node: FunctionNode, functionType: FunctionType, isMethod: boolean) {
         const functionName = functionType.details.name;
 
@@ -3240,9 +3360,88 @@ export class Checker extends ParseTreeWalker {
 
             const decls = symbol.getDeclarations();
             if (decls.length >= 2 && decls[0].type === DeclarationType.Variable) {
-                this._evaluator.addError(Localizer.Diagnostic.duplicateEnumMember().format({ name }), decls[1].node);
+                const symbolType = this._evaluator.getEffectiveTypeOfSymbol(symbol);
+
+                // Is this symbol a literal instance of the enum class?
+                if (
+                    isClassInstance(symbolType) &&
+                    ClassType.isSameGenericClass(symbolType, classType) &&
+                    symbolType.literalValue !== undefined
+                ) {
+                    this._evaluator.addError(
+                        Localizer.Diagnostic.duplicateEnumMember().format({ name }),
+                        decls[1].node
+                    );
+                }
             }
         });
+    }
+
+    // If a non-protocol class explicitly inherits from a protocol class, this method
+    // verifies that any class or instance variables declared but not assigned
+    // in the protocol class are implemented in the subclass. It also checks that any
+    // empty functions declared in the protocol are implemented in the subclass.
+    private _validateProtocolCompatibility(classType: ClassType, errorNode: ClassNode) {
+        if (ClassType.isProtocolClass(classType)) {
+            return;
+        }
+
+        const diagAddendum = new DiagnosticAddendum();
+
+        classType.details.baseClasses.forEach((baseClass) => {
+            if (!isClass(baseClass) || !ClassType.isProtocolClass(baseClass)) {
+                return;
+            }
+
+            const protocolSymbols = getProtocolSymbols(baseClass);
+
+            protocolSymbols.forEach((member, name) => {
+                const decls = member.symbol.getDeclarations();
+
+                if (decls.length === 0 || !isClass(member.classType)) {
+                    return;
+                }
+
+                if (decls[0].type === DeclarationType.Variable) {
+                    // If none of the declarations involve assignments, assume it's
+                    // not implemented in the protocol.
+                    if (!decls.some((decl) => decl.type === DeclarationType.Variable && !!decl.inferredTypeSource)) {
+                        // This is a variable declaration that is not implemented in the
+                        // protocol base class. Make sure it's implemented in the derived class.
+                        if (!classType.details.fields.has(name)) {
+                            diagAddendum.addMessage(
+                                Localizer.DiagnosticAddendum.missingProtocolMember().format({
+                                    name,
+                                    classType: member.classType.details.name,
+                                })
+                            );
+                        }
+                    }
+                } else if (decls[0].type === DeclarationType.Function) {
+                    if (ParseTreeUtils.isSuiteEmpty(decls[0].node.suite) && decls[0]) {
+                        if (getFileExtension(decls[0].path).toLowerCase() !== '.pyi') {
+                            if (!classType.details.fields.has(name)) {
+                                diagAddendum.addMessage(
+                                    Localizer.DiagnosticAddendum.missingProtocolMember().format({
+                                        name,
+                                        classType: member.classType.details.name,
+                                    })
+                                );
+                            }
+                        }
+                    }
+                }
+            });
+        });
+
+        if (!diagAddendum.isEmpty()) {
+            this._evaluator.addDiagnostic(
+                this._fileInfo.diagnosticRuleSet.reportGeneralTypeIssues,
+                DiagnosticRule.reportGeneralTypeIssues,
+                Localizer.Diagnostic.missingProtocolMembers() + diagAddendum.getString(),
+                errorNode.name
+            );
+        }
     }
 
     // If a class is a dataclass with a `__post_init__` method, verify that its
@@ -3587,6 +3786,190 @@ export class Checker extends ParseTreeWalker {
         });
     }
 
+    // Validates that the __init__ and __new__ method signatures are consistent.
+    private _validateConstructorConsistency(classType: ClassType) {
+        const initMember = lookUpClassMember(
+            classType,
+            '__init__',
+            ClassMemberLookupFlags.SkipObjectBaseClass | ClassMemberLookupFlags.SkipInstanceVariables
+        );
+        const newMember = lookUpClassMember(
+            classType,
+            '__new__',
+            ClassMemberLookupFlags.SkipObjectBaseClass | ClassMemberLookupFlags.SkipInstanceVariables
+        );
+
+        if (!initMember || !newMember || !isClass(initMember.classType) || !isClass(newMember.classType)) {
+            return;
+        }
+
+        // If both the __new__ and __init__ come from subclasses, don't bother
+        // checking for this class.
+        if (
+            !ClassType.isSameGenericClass(newMember.classType, classType) &&
+            !ClassType.isSameGenericClass(initMember.classType, classType)
+        ) {
+            return;
+        }
+
+        // If the class that provides the __new__ method has a custom metaclass with a
+        // __call__ method, skip this check.
+        const metaclass = newMember.classType.details.effectiveMetaclass;
+        if (metaclass && isClass(metaclass) && !ClassType.isBuiltIn(metaclass, 'type')) {
+            const callMethod = lookUpClassMember(
+                metaclass,
+                '__call__',
+                ClassMemberLookupFlags.SkipTypeBaseClass | ClassMemberLookupFlags.SkipInstanceVariables
+            );
+            if (callMethod) {
+                return;
+            }
+        }
+
+        let newMemberType: Type | undefined = this._evaluator.getTypeOfMember(newMember);
+        if (!isFunction(newMemberType) && !isOverloadedFunction(newMemberType)) {
+            return;
+        }
+        newMemberType = this._evaluator.bindFunctionToClassOrObject(
+            classType,
+            newMemberType,
+            /* memberClass */ undefined,
+            /* errorNode */ undefined,
+            /* recursionCount */ undefined,
+            /* treatConstructorAsClassMember */ true
+        );
+        if (!newMemberType) {
+            return;
+        }
+
+        if (isOverloadedFunction(newMemberType)) {
+            // Find the implementation, not the overloaded signatures.
+            newMemberType = newMemberType.overloads.find((func) => !FunctionType.isOverloaded(func));
+
+            if (!newMemberType) {
+                return;
+            }
+        }
+
+        let initMemberType: Type | undefined = this._evaluator.getTypeOfMember(initMember);
+        if (!isFunction(initMemberType) && !isOverloadedFunction(initMemberType)) {
+            return;
+        }
+        initMemberType = this._evaluator.bindFunctionToClassOrObject(
+            ClassType.cloneAsInstance(classType),
+            initMemberType
+        );
+
+        if (!initMemberType) {
+            return;
+        }
+
+        if (isOverloadedFunction(initMemberType)) {
+            // Find the implementation, not the overloaded signatures.
+            initMemberType = initMemberType.overloads.find((func) => !FunctionType.isOverloaded(func));
+
+            if (!initMemberType) {
+                return;
+            }
+        }
+
+        if (!isFunction(initMemberType) || !isFunction(newMemberType)) {
+            return;
+        }
+
+        // If either of the functions has a default parameter signature
+        // (* args: Any, ** kwargs: Any), don't proceed with the check.
+        if (FunctionType.hasDefaultParameters(initMemberType) || FunctionType.hasDefaultParameters(newMemberType)) {
+            return;
+        }
+
+        // We'll set the "SkipArgsKwargs" flag for pragmatic reasons since __new__
+        // often has an *args and/or **kwargs. We'll also set the ParamSpecValue
+        // because we don't care about the return type for this check.
+        initMemberType = FunctionType.cloneWithNewFlags(
+            initMemberType,
+            initMemberType.details.flags |
+                FunctionTypeFlags.SkipArgsKwargsCompatibilityCheck |
+                FunctionTypeFlags.ParamSpecValue
+        );
+        newMemberType = FunctionType.cloneWithNewFlags(
+            newMemberType,
+            initMemberType.details.flags |
+                FunctionTypeFlags.SkipArgsKwargsCompatibilityCheck |
+                FunctionTypeFlags.ParamSpecValue
+        );
+
+        if (
+            !this._evaluator.canAssignType(
+                newMemberType,
+                initMemberType,
+                /* diag */ undefined,
+                /* typeVarMap */ undefined,
+                CanAssignFlags.SkipFunctionReturnTypeCheck
+            ) ||
+            !this._evaluator.canAssignType(
+                initMemberType,
+                newMemberType,
+                /* diag */ undefined,
+                /* typeVarMap */ undefined,
+                CanAssignFlags.SkipFunctionReturnTypeCheck
+            )
+        ) {
+            const displayOnInit = ClassType.isSameGenericClass(initMember.classType, classType);
+            const initDecl = getLastTypedDeclaredForSymbol(initMember.symbol);
+            const newDecl = getLastTypedDeclaredForSymbol(newMember.symbol);
+
+            if (initDecl && newDecl) {
+                const mainDecl = displayOnInit ? initDecl : newDecl;
+                const mainDeclNode =
+                    mainDecl.node.nodeType === ParseNodeType.Function ? mainDecl.node.name : mainDecl.node;
+
+                const diagAddendum = new DiagnosticAddendum();
+                const initSignature = this._evaluator.printType(initMemberType);
+                const newSignature = this._evaluator.printType(newMemberType);
+
+                diagAddendum.addMessage(
+                    Localizer.DiagnosticAddendum.initMethodSignature().format({
+                        type: initSignature,
+                    })
+                );
+                diagAddendum.addMessage(
+                    Localizer.DiagnosticAddendum.newMethodSignature().format({
+                        type: newSignature,
+                    })
+                );
+
+                const diagnostic = this._evaluator.addDiagnostic(
+                    this._fileInfo.diagnosticRuleSet.reportInconsistentConstructor,
+                    DiagnosticRule.reportInconsistentConstructor,
+                    Localizer.Diagnostic.constructorParametersMismatch().format({
+                        classType: this._evaluator.printType(
+                            ClassType.cloneAsInstance(displayOnInit ? initMember.classType : newMember.classType)
+                        ),
+                    }) + diagAddendum.getString(),
+                    mainDeclNode
+                );
+
+                if (diagnostic) {
+                    const secondaryDecl = displayOnInit ? newDecl : initDecl;
+
+                    diagnostic.addRelatedInfo(
+                        (displayOnInit
+                            ? Localizer.DiagnosticAddendum.newMethodLocation()
+                            : Localizer.DiagnosticAddendum.initMethodLocation()
+                        ).format({
+                            type: this._evaluator.printType(
+                                ClassType.cloneAsInstance(displayOnInit ? newMember.classType : initMember.classType)
+                            ),
+                        }),
+                        secondaryDecl.path,
+                        secondaryDecl.range
+                    );
+                }
+            }
+        }
+    }
+
     // Validates that any methods in multiple base classes are compatible with each other.
     private _validateMultipleInheritanceCompatibility(classType: ClassType, errorNode: ParseNode) {
         // Skip this check if reportIncompatibleMethodOverride is disabled because it's
@@ -3652,9 +4035,13 @@ export class Checker extends ParseTreeWalker {
 
                     if (overrideClassAndSymbol) {
                         let baseType = this._evaluator.getEffectiveTypeOfSymbol(baseClassAndSymbol.symbol);
-                        baseType = partiallySpecializeType(baseType, baseClasses[symbolMapBaseIndex]);
+                        if (isClass(baseClassAndSymbol.classType)) {
+                            baseType = partiallySpecializeType(baseType, baseClassAndSymbol.classType);
+                        }
                         let overrideType = this._evaluator.getEffectiveTypeOfSymbol(overrideClassAndSymbol.symbol);
-                        overrideType = partiallySpecializeType(overrideType, baseClasses[symbolMapOverrideIndex]);
+                        if (isClass(overrideClassAndSymbol.classType)) {
+                            overrideType = partiallySpecializeType(overrideType, overrideClassAndSymbol.classType);
+                        }
 
                         if (isFunction(baseType) || isOverloadedFunction(baseType)) {
                             const diagAddendum = new DiagnosticAddendum();
@@ -3813,8 +4200,9 @@ export class Checker extends ParseTreeWalker {
                                     enforceParamNameMatch
                                 )
                             ) {
-                                const decl = overrideFunction.details.declaration;
-                                if (decl && decl.type === DeclarationType.Function) {
+                                const decl =
+                                    overrideFunction.details.declaration ?? getLastTypedDeclaredForSymbol(symbol);
+                                if (decl) {
                                     const diag = this._evaluator.addDiagnostic(
                                         this._fileInfo.diagnosticRuleSet.reportIncompatibleMethodOverride,
                                         DiagnosticRule.reportIncompatibleMethodOverride,
@@ -3822,7 +4210,7 @@ export class Checker extends ParseTreeWalker {
                                             name,
                                             className: baseClassAndSymbol.classType.details.name,
                                         }) + diagAddendum.getString(),
-                                        decl.node.name
+                                        decl.type === DeclarationType.Function ? decl.node.name : decl.node
                                     );
 
                                     const origDecl = getLastTypedDeclaredForSymbol(baseClassAndSymbol.symbol);
@@ -4080,6 +4468,19 @@ export class Checker extends ParseTreeWalker {
         const classTypeInfo = this._evaluator.getTypeOfClass(classNode);
         const classType = classTypeInfo?.classType;
 
+        if (node.name && classType) {
+            const superCheckMethods = ['__init__', '__init_subclass__', '__enter__', '__exit__'];
+            if (superCheckMethods.some((name) => name === node.name.value)) {
+                if (
+                    !FunctionType.isAbstractMethod(functionType) &&
+                    !FunctionType.isOverloaded(functionType) &&
+                    !this._fileInfo.isStubFile
+                ) {
+                    this._validateSuperCallForMethod(node, functionType, classType);
+                }
+            }
+        }
+
         if (node.name && node.name.value === '__new__') {
             // __new__ overrides should have a "cls" parameter.
             if (
@@ -4216,6 +4617,72 @@ export class Checker extends ParseTreeWalker {
             if (classType) {
                 this._validateClsSelfParameterType(functionType, classType, /* isCls */ false);
             }
+        }
+    }
+
+    // Determines whether the method properly calls through to the same method in all
+    // parent classes that expose a same-named method.
+    private _validateSuperCallForMethod(node: FunctionNode, methodType: FunctionType, classType: ClassType) {
+        // This is an expensive test, so if it's not enabled, don't do any work.
+        if (this._fileInfo.diagnosticRuleSet.reportMissingSuperCall === 'none') {
+            return;
+        }
+
+        // If the class is marked final, we can skip the "object" base class
+        // because we know that the `__init__` method in `object` doesn't do
+        // anything. It's not safe to do this if the class isn't final because
+        // it could be combined with other classes in a multi-inheritance
+        // situation that effectively adds new superclasses that we don't know
+        // about statically.
+        let effectiveFlags = ClassMemberLookupFlags.SkipInstanceVariables | ClassMemberLookupFlags.SkipOriginalClass;
+        if (ClassType.isFinal(classType)) {
+            effectiveFlags |= ClassMemberLookupFlags.SkipObjectBaseClass;
+        }
+
+        const methodMember = lookUpClassMember(classType, methodType.details.name, effectiveFlags);
+        if (!methodMember) {
+            return;
+        }
+
+        let foundCallOfMember = false;
+
+        // Now scan the implementation of the method to determine whether
+        // super().<method> has been called for all of the required base classes.
+        const callNodeWalker = new ParseTreeUtils.CallNodeWalker((node) => {
+            if (node.leftExpression.nodeType === ParseNodeType.MemberAccess) {
+                // Is it accessing the method by the same name?
+                if (node.leftExpression.memberName.value === methodType.details.name) {
+                    const memberBaseExpr = node.leftExpression.leftExpression;
+
+                    // Is it a "super" call?
+                    if (
+                        memberBaseExpr.nodeType === ParseNodeType.Call &&
+                        memberBaseExpr.leftExpression.nodeType === ParseNodeType.Name &&
+                        memberBaseExpr.leftExpression.value === 'super'
+                    ) {
+                        foundCallOfMember = true;
+                    } else {
+                        // Is it an X.<method> direct call?
+                        const baseType = this._evaluator.getType(memberBaseExpr);
+                        if (baseType && isInstantiableClass(baseType)) {
+                            foundCallOfMember = true;
+                        }
+                    }
+                }
+            }
+        });
+        callNodeWalker.walk(node.suite);
+
+        // If we didn't find a call to at least one base class, report the problem.
+        if (!foundCallOfMember) {
+            this._evaluator.addDiagnostic(
+                this._fileInfo.diagnosticRuleSet.reportMissingSuperCall,
+                DiagnosticRule.reportMissingSuperCall,
+                Localizer.Diagnostic.missingSuperCall().format({
+                    methodName: methodType.details.name,
+                }),
+                node.name
+            );
         }
     }
 

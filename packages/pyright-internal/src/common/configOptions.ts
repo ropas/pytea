@@ -44,7 +44,7 @@ export class ExecutionEnvironment {
         this.root = root || undefined;
         this.pythonVersion = defaultPythonVersion || latestStablePythonVersion;
         this.pythonPlatform = defaultPythonPlatform;
-        this.extraPaths = defaultExtraPaths || [];
+        this.extraPaths = [...(defaultExtraPaths ?? [])];
     }
 
     // Root directory for execution - absolute or relative to the
@@ -188,9 +188,15 @@ export interface DiagnosticRuleSet {
     // the base class symbol of the same name?
     reportIncompatibleVariableOverride: DiagnosticLevel;
 
+    // Report inconsistencies between __init__ and __new__ signatures.
+    reportInconsistentConstructor: DiagnosticLevel;
+
     // Report function overloads that overlap in signature but have
     // incompatible return types.
     reportOverlappingOverload: DiagnosticLevel;
+
+    // Report failure to call super().__init__() in __init__ method.
+    reportMissingSuperCall: DiagnosticLevel;
 
     // Report instance variables that are not initialized within
     // the constructor.
@@ -271,6 +277,14 @@ export interface DiagnosticRuleSet {
     // Report cases where a call expression's return result is Coroutine
     // and is not used in any way.
     reportUnusedCoroutine: DiagnosticLevel;
+
+    // Report cases where the removal of a "# type: ignore" comment would
+    // have no effect.
+    reportUnnecessaryTypeIgnoreComment: DiagnosticLevel;
+
+    // Report cases where the a "match" statement is not exhaustive in
+    // covering all possible cases.
+    reportMatchNotExhaustive: DiagnosticLevel;
 }
 
 export function cloneDiagnosticRuleSet(diagSettings: DiagnosticRuleSet): DiagnosticRuleSet {
@@ -323,7 +337,9 @@ export function getDiagLevelDiagnosticRules() {
         DiagnosticRule.reportConstantRedefinition,
         DiagnosticRule.reportIncompatibleMethodOverride,
         DiagnosticRule.reportIncompatibleVariableOverride,
+        DiagnosticRule.reportInconsistentConstructor,
         DiagnosticRule.reportOverlappingOverload,
+        DiagnosticRule.reportMissingSuperCall,
         DiagnosticRule.reportUninitializedInstanceVariable,
         DiagnosticRule.reportInvalidStringEscapeSequence,
         DiagnosticRule.reportUnknownParameterType,
@@ -348,6 +364,8 @@ export function getDiagLevelDiagnosticRules() {
         DiagnosticRule.reportUnsupportedDunderAll,
         DiagnosticRule.reportUnusedCallResult,
         DiagnosticRule.reportUnusedCoroutine,
+        DiagnosticRule.reportUnnecessaryTypeIgnoreComment,
+        DiagnosticRule.reportMatchNotExhaustive,
     ];
 }
 
@@ -398,7 +416,9 @@ export function getOffDiagnosticRuleSet(): DiagnosticRuleSet {
         reportConstantRedefinition: 'none',
         reportIncompatibleMethodOverride: 'none',
         reportIncompatibleVariableOverride: 'none',
+        reportInconsistentConstructor: 'none',
         reportOverlappingOverload: 'none',
+        reportMissingSuperCall: 'none',
         reportUninitializedInstanceVariable: 'none',
         reportInvalidStringEscapeSequence: 'none',
         reportUnknownParameterType: 'none',
@@ -423,6 +443,8 @@ export function getOffDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUnsupportedDunderAll: 'none',
         reportUnusedCallResult: 'none',
         reportUnusedCoroutine: 'none',
+        reportUnnecessaryTypeIgnoreComment: 'none',
+        reportMatchNotExhaustive: 'none',
     };
 
     return diagSettings;
@@ -469,7 +491,9 @@ export function getBasicDiagnosticRuleSet(): DiagnosticRuleSet {
         reportConstantRedefinition: 'none',
         reportIncompatibleMethodOverride: 'none',
         reportIncompatibleVariableOverride: 'none',
+        reportInconsistentConstructor: 'none',
         reportOverlappingOverload: 'none',
+        reportMissingSuperCall: 'none',
         reportUninitializedInstanceVariable: 'none',
         reportInvalidStringEscapeSequence: 'warning',
         reportUnknownParameterType: 'none',
@@ -494,6 +518,8 @@ export function getBasicDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUnsupportedDunderAll: 'warning',
         reportUnusedCallResult: 'none',
         reportUnusedCoroutine: 'error',
+        reportUnnecessaryTypeIgnoreComment: 'none',
+        reportMatchNotExhaustive: 'none',
     };
 
     return diagSettings;
@@ -515,7 +541,7 @@ export function getStrictDiagnosticRuleSet(): DiagnosticRuleSet {
         reportPropertyTypeMismatch: 'none',
         reportFunctionMemberAccess: 'error',
         reportMissingImports: 'error',
-        reportMissingModuleSource: 'warning',
+        reportMissingModuleSource: 'warning', // Not overridden by strict mode
         reportMissingTypeStubs: 'error',
         reportImportCycles: 'error',
         reportUnusedImport: 'error',
@@ -540,7 +566,9 @@ export function getStrictDiagnosticRuleSet(): DiagnosticRuleSet {
         reportConstantRedefinition: 'error',
         reportIncompatibleMethodOverride: 'error',
         reportIncompatibleVariableOverride: 'error',
+        reportInconsistentConstructor: 'error',
         reportOverlappingOverload: 'error',
+        reportMissingSuperCall: 'none',
         reportUninitializedInstanceVariable: 'none',
         reportInvalidStringEscapeSequence: 'error',
         reportUnknownParameterType: 'error',
@@ -565,6 +593,8 @@ export function getStrictDiagnosticRuleSet(): DiagnosticRuleSet {
         reportUnsupportedDunderAll: 'error',
         reportUnusedCallResult: 'none',
         reportUnusedCoroutine: 'error',
+        reportUnnecessaryTypeIgnoreComment: 'none',
+        reportMatchNotExhaustive: 'error',
     };
 
     return diagSettings;
@@ -1114,11 +1144,25 @@ export class ConfigOptions {
                 defaultSettings.reportIncompatibleVariableOverride
             ),
 
+            // Read the "reportInconsistentConstructor" entry.
+            reportInconsistentConstructor: this._convertDiagnosticLevel(
+                configObj.reportInconsistentConstructor,
+                DiagnosticRule.reportInconsistentConstructor,
+                defaultSettings.reportInconsistentConstructor
+            ),
+
             // Read the "reportOverlappingOverload" entry.
             reportOverlappingOverload: this._convertDiagnosticLevel(
                 configObj.reportOverlappingOverload,
                 DiagnosticRule.reportOverlappingOverload,
                 defaultSettings.reportOverlappingOverload
+            ),
+
+            // Read the "reportMissingSuperCall" entry.
+            reportMissingSuperCall: this._convertDiagnosticLevel(
+                configObj.reportMissingSuperCall,
+                DiagnosticRule.reportMissingSuperCall,
+                defaultSettings.reportMissingSuperCall
             ),
 
             // Read the "reportUninitializedInstanceVariable" entry.
@@ -1287,6 +1331,20 @@ export class ConfigOptions {
                 configObj.reportUnusedCoroutine,
                 DiagnosticRule.reportUnusedCoroutine,
                 defaultSettings.reportUnusedCoroutine
+            ),
+
+            // Read the "reportUnusedCoroutine" entry.
+            reportUnnecessaryTypeIgnoreComment: this._convertDiagnosticLevel(
+                configObj.reportUnnecessaryTypeIgnoreComment,
+                DiagnosticRule.reportUnnecessaryTypeIgnoreComment,
+                defaultSettings.reportUnnecessaryTypeIgnoreComment
+            ),
+
+            // Read the "reportUnusedCoroutine" entry.
+            reportMatchNotExhaustive: this._convertDiagnosticLevel(
+                configObj.reportMatchNotExhaustive,
+                DiagnosticRule.reportMatchNotExhaustive,
+                defaultSettings.reportMatchNotExhaustive
             ),
         };
 

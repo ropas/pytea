@@ -1076,7 +1076,7 @@ export class Binder extends ParseTreeWalker {
     }
 
     override visitYield(node: YieldNode): boolean {
-        if (this._isInListComprehension(node)) {
+        if (this._isInListComprehension(node, /* ignoreOutermostIterable */ true)) {
             this._addError(Localizer.Diagnostic.yieldWithinListCompr(), node);
         }
 
@@ -1085,7 +1085,7 @@ export class Binder extends ParseTreeWalker {
     }
 
     override visitYieldFrom(node: YieldFromNode): boolean {
-        if (this._isInListComprehension(node)) {
+        if (this._isInListComprehension(node, /* ignoreOutermostIterable */ true)) {
             this._addError(Localizer.Diagnostic.yieldWithinListCompr(), node);
         }
 
@@ -1532,7 +1532,7 @@ export class Binder extends ParseTreeWalker {
     }
 
     override visitImportFrom(node: ImportFromNode): boolean {
-        const typingSymbolsOfInterest = ['Final', 'TypeAlias', 'ClassVar', 'Required', 'NotRequired'];
+        const typingSymbolsOfInterest = ['Final', 'TypeAlias', 'ClassVar', 'Required', 'NotRequired', 'Annotated'];
         const dataclassesSymbolsOfInterest = ['InitVar'];
         const importInfo = AnalyzerNodeInfo.getImportInfo(node.module);
 
@@ -2151,12 +2151,27 @@ export class Binder extends ParseTreeWalker {
         }
     }
 
-    private _isInListComprehension(node: ParseNode) {
+    private _isInListComprehension(node: ParseNode, ignoreOutermostIterable = false) {
         let curNode: ParseNode | undefined = node;
+        let prevNode: ParseNode | undefined;
+        let prevPrevNode: ParseNode | undefined;
+
         while (curNode) {
             if (curNode.nodeType === ParseNodeType.ListComprehension) {
+                if (ignoreOutermostIterable && curNode.comprehensions.length > 0) {
+                    const outermostCompr = curNode.comprehensions[0];
+                    if (prevNode === outermostCompr && outermostCompr.nodeType === ParseNodeType.ListComprehensionFor) {
+                        if (prevPrevNode === outermostCompr.iterableExpression) {
+                            return false;
+                        }
+                    }
+                }
+
                 return true;
             }
+
+            prevPrevNode = prevNode;
+            prevNode = curNode;
             curNode = curNode.parent;
         }
         return false;
@@ -2889,37 +2904,6 @@ export class Binder extends ParseTreeWalker {
             };
 
             this._currentFlowNode = flowNode;
-
-            // See if this might be a call to a TypeGuard function.
-            // If so, add the expression in the first argument as
-            // as narrowable expression.
-
-            // Special-case "reveal_type" calls because we know they're not TypeGuard
-            // functions, and we don't want their presence to alter the evaluation ordering.
-            const isRevealTypeCall =
-                node.leftExpression.nodeType === ParseNodeType.Name && node.leftExpression.value === 'reveal_type';
-
-            if (
-                !isRevealTypeCall &&
-                node.arguments.length > 0 &&
-                node.arguments[0].argumentCategory === ArgumentCategory.Simple &&
-                !node.arguments[0].name
-            ) {
-                const argExpression = node.arguments[0].valueExpression;
-                if (
-                    argExpression.nodeType === ParseNodeType.Name ||
-                    argExpression.nodeType === ParseNodeType.MemberAccess ||
-                    argExpression.nodeType === ParseNodeType.Index
-                ) {
-                    const expressionList: CodeFlowReferenceExpressionNode[] = [];
-
-                    if (this._isNarrowingExpression(argExpression, expressionList) && expressionList.length === 1) {
-                        const referenceKey = createKeyForReference(expressionList[0]);
-                        this._currentScopeCodeFlowExpressions!.add(referenceKey);
-                        flowNode.typeGuardArgExpression = expressionList[0];
-                    }
-                }
-            }
         }
 
         AnalyzerNodeInfo.setFlowNode(node, this._currentFlowNode!);
@@ -3438,11 +3422,22 @@ export class Binder extends ParseTreeWalker {
                         symbolWithScope.symbol.setIsInstanceMember();
                     }
 
-                    if (
-                        typeAnnotation.nodeType === ParseNodeType.Index &&
-                        this._isDataclassesAnnotation(typeAnnotation.baseExpression, 'InitVar')
-                    ) {
-                        symbolWithScope.symbol.setIsInitVar();
+                    // Look for an 'InitVar' either by itself or wrapped in an 'Annotated'.
+                    if (typeAnnotation.nodeType === ParseNodeType.Index) {
+                        if (this._isDataclassesAnnotation(typeAnnotation.baseExpression, 'InitVar')) {
+                            symbolWithScope.symbol.setIsInitVar();
+                        } else if (
+                            this._isTypingAnnotation(typeAnnotation.baseExpression, 'Annotated') &&
+                            typeAnnotation.items.length > 0
+                        ) {
+                            const item0Expr = typeAnnotation.items[0].valueExpression;
+                            if (
+                                item0Expr.nodeType === ParseNodeType.Index &&
+                                this._isDataclassesAnnotation(item0Expr.baseExpression, 'InitVar')
+                            ) {
+                                symbolWithScope.symbol.setIsInitVar();
+                            }
+                        }
                     }
                 }
 
@@ -3744,7 +3739,7 @@ export class Binder extends ParseTreeWalker {
             return undefined;
         }
 
-        const classNode = ParseTreeUtils.getEnclosingClass(methodNode);
+        const classNode = ParseTreeUtils.getEnclosingClass(methodNode, /* stopAtFunction */ true);
         if (!classNode) {
             return undefined;
         }
@@ -3868,6 +3863,7 @@ export class Binder extends ParseTreeWalker {
             ['OrderedDict', true],
             ['Concatenate', true],
             ['TypeGuard', true],
+            ['StrictTypeGuard', true],
             ['Unpack', true],
             ['Self', true],
             ['NoReturn', true],

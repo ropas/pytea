@@ -52,6 +52,8 @@ export const enum PrintExpressionFlags {
     ForwardDeclarations = 1 << 0,
 }
 
+// Returns the depth of the node as measured from the root
+// of the parse tree.
 export function getNodeDepth(node: ParseNode): number {
     let depth = 0;
     let curNode: ParseNode | undefined = node;
@@ -187,6 +189,12 @@ export function printExpression(node: ExpressionNode, flags = PrintExpressionFla
 
         case ParseNodeType.Number: {
             let value = node.value.toString();
+
+            // If it's stored as a bigint, strip off the "n".
+            if (value.endsWith('n')) {
+                value = value.substring(0, value.length - 1);
+            }
+
             if (node.isImaginary) {
                 value += 'j';
             }
@@ -324,7 +332,7 @@ export function printExpression(node: ExpressionNode, flags = PrintExpressionFla
                 listStr = `${keyStr}: ${valueStr}`;
             }
 
-            return (
+            listStr =
                 listStr +
                 ' ' +
                 node.comprehensions
@@ -339,8 +347,9 @@ export function printExpression(node: ExpressionNode, flags = PrintExpressionFla
                             return `if ${printExpression(expr.testExpression, flags)}`;
                         }
                     })
-                    .join(' ')
-            );
+                    .join(' ');
+
+            return node.isParenthesized ? `(${listStr}})` : listStr;
         }
 
         case ParseNodeType.Slice: {
@@ -576,15 +585,21 @@ export function getEnclosingClassOrModule(node: ParseNode, stopAtFunction = fals
 
 export function getEnclosingFunction(node: ParseNode): FunctionNode | undefined {
     let curNode = node.parent;
+    let prevNode: ParseNode | undefined;
+
     while (curNode) {
         if (curNode.nodeType === ParseNodeType.Function) {
-            return curNode;
+            // Don't treat a decorator as being "enclosed" in the function.
+            if (!curNode.decorators.some((decorator) => decorator === prevNode)) {
+                return curNode;
+            }
         }
 
         if (curNode.nodeType === ParseNodeType.Class) {
             return undefined;
         }
 
+        prevNode = curNode;
         curNode = curNode.parent;
     }
 
@@ -1350,6 +1365,17 @@ export class NameNodeWalker extends ParseTreeWalker {
         this._baseExpression = prevBaseExpression;
 
         return false;
+    }
+}
+
+export class CallNodeWalker extends ParseTreeWalker {
+    constructor(private _callback: (node: CallNode) => void) {
+        super();
+    }
+
+    override visitCall(node: CallNode) {
+        this._callback(node);
+        return true;
     }
 }
 

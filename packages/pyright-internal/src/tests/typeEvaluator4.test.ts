@@ -93,7 +93,7 @@ test('AssignmentExpr1', () => {
 
 test('AssignmentExpr2', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['assignmentExpr2.py']);
-    TestUtils.validateResults(analysisResults, 5);
+    TestUtils.validateResults(analysisResults, 6);
 });
 
 test('AssignmentExpr3', () => {
@@ -310,6 +310,11 @@ test('Final4', () => {
     TestUtils.validateResults(analysisResults, 3);
 });
 
+test('Final5', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['final5.py']);
+    TestUtils.validateResults(analysisResults, 0);
+});
+
 test('InferredTypes1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['inferredTypes1.py']);
     TestUtils.validateResults(analysisResults, 0);
@@ -436,6 +441,11 @@ test('MemberAccess16', () => {
 
 test('MemberAccess17', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['memberAccess17.py']);
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('MemberAccess18', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['memberAccess18.py']);
     TestUtils.validateResults(analysisResults, 0);
 });
 
@@ -587,6 +597,12 @@ test('Callable5', () => {
     TestUtils.validateResults(analysisResults, 2);
 });
 
+test('Callable6', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['callable6.py']);
+
+    TestUtils.validateResults(analysisResults, 9);
+});
+
 test('ThreePartVersion1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['threePartVersion1.py']);
 
@@ -681,7 +697,7 @@ test('ParamSpec4', () => {
 
     configOptions.defaultPythonVersion = PythonVersion.V3_10;
     const results = TestUtils.typeAnalyzeSampleFiles(['paramSpec4.py'], configOptions);
-    TestUtils.validateResults(results, 5);
+    TestUtils.validateResults(results, 7);
 });
 
 test('ParamSpec5', () => {
@@ -979,11 +995,11 @@ test('Annotated1', () => {
 
     configOptions.defaultPythonVersion = PythonVersion.V3_8;
     const analysisResults38 = TestUtils.typeAnalyzeSampleFiles(['annotated1.py'], configOptions);
-    TestUtils.validateResults(analysisResults38, 1);
+    TestUtils.validateResults(analysisResults38, 2);
 
     configOptions.defaultPythonVersion = PythonVersion.V3_9;
     const analysisResults39 = TestUtils.typeAnalyzeSampleFiles(['annotated1.py'], configOptions);
-    TestUtils.validateResults(analysisResults39, 2);
+    TestUtils.validateResults(analysisResults39, 3);
 });
 
 test('Circular1', () => {
@@ -1044,6 +1060,11 @@ test('TryExcept8', () => {
     const configOptions = new ConfigOptions('.');
 
     configOptions.defaultPythonVersion = PythonVersion.V3_11;
-    const analysisResults2 = TestUtils.typeAnalyzeSampleFiles(['tryExcept8.py'], configOptions);
-    TestUtils.validateResults(analysisResults2, 3);
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['tryExcept8.py'], configOptions);
+    TestUtils.validateResults(analysisResults, 3);
+});
+
+test('TryExcept9', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['tryExcept9.py']);
+    TestUtils.validateResults(analysisResults, 0);
 });

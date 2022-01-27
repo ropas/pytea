@@ -15,6 +15,7 @@ import {
     ClassType,
     maxTypeRecursionCount,
     ParamSpecValue,
+    TupleTypeArgument,
     Type,
     TypeCategory,
     TypeVarScopeId,
@@ -41,7 +42,7 @@ export interface ParamSpecMapEntry {
 
 export interface VariadicTypeVarMapEntry {
     typeVar: TypeVarType;
-    types: Type[];
+    types: TupleTypeArgument[];
 }
 
 export class TypeVarMap {
@@ -173,11 +174,11 @@ export class TypeVarMap {
         this._typeVarMap.set(key, { typeVar: reference, narrowBound, wideBound, retainLiteral });
     }
 
-    getVariadicTypeVar(reference: TypeVarType): Type[] | undefined {
+    getVariadicTypeVar(reference: TypeVarType): TupleTypeArgument[] | undefined {
         return this._variadicTypeVarMap?.get(this._getKey(reference))?.types;
     }
 
-    setVariadicTypeVar(reference: TypeVarType, types: Type[]) {
+    setVariadicTypeVar(reference: TypeVarType, types: TupleTypeArgument[]) {
         assert(!this._isLocked);
         const key = this._getKey(reference);
 
@@ -261,6 +262,7 @@ export class TypeVarMap {
         if (recursionCount > maxTypeRecursionCount) {
             return 1;
         }
+        recursionCount++;
 
         switch (type.category) {
             case TypeCategory.Unknown:
@@ -283,7 +285,7 @@ export class TypeVarMap {
                 // accurately computing the score. Assume a fixed value.
                 if (type.subtypes.length < 16) {
                     doForEachSubtype(type, (subtype) => {
-                        const subtypeScore = this._getComplexityScoreForType(subtype, recursionCount + 1);
+                        const subtypeScore = this._getComplexityScoreForType(subtype, recursionCount);
                         maxScore = Math.max(maxScore, subtypeScore);
                     });
                 }
@@ -293,7 +295,7 @@ export class TypeVarMap {
             }
 
             case TypeCategory.Class: {
-                return this._getComplexityScoreForClass(type, recursionCount + 1);
+                return this._getComplexityScoreForClass(type, recursionCount);
             }
         }
 
@@ -306,18 +308,18 @@ export class TypeVarMap {
         let typeArgCount = 0;
 
         if (classType.tupleTypeArguments) {
-            classType.tupleTypeArguments.forEach((type) => {
-                typeArgScoreSum += this._getComplexityScoreForType(type, recursionCount + 1);
+            classType.tupleTypeArguments.forEach((typeArg) => {
+                typeArgScoreSum += this._getComplexityScoreForType(typeArg.type, recursionCount);
                 typeArgCount++;
             });
         } else if (classType.typeArguments) {
             classType.typeArguments.forEach((type) => {
-                typeArgScoreSum += this._getComplexityScoreForType(type, recursionCount + 1);
+                typeArgScoreSum += this._getComplexityScoreForType(type, recursionCount);
                 typeArgCount++;
             });
         } else if (classType.details.typeParameters) {
             classType.details.typeParameters.forEach((type) => {
-                typeArgScoreSum += this._getComplexityScoreForType(AnyType.create(), recursionCount + 1);
+                typeArgScoreSum += this._getComplexityScoreForType(AnyType.create(), recursionCount);
                 typeArgCount++;
             });
         }

@@ -145,10 +145,10 @@ export interface TokenizerOutput {
     lines: TextRangeCollection<TextRange>;
 
     // Map of all line numbers that end in a "type: ignore" comment.
-    typeIgnoreLines: { [line: number]: boolean };
+    typeIgnoreLines: Map<number, TextRange>;
 
     // Program starts with a "type: ignore" comment.
-    typeIgnoreAll: boolean;
+    typeIgnoreAll: TextRange | undefined;
 
     // Line-end sequence ('/n', '/r', or '/r/n').
     predominantEndOfLineSequence: string;
@@ -180,8 +180,8 @@ export class Tokenizer {
     private _parenDepth = 0;
     private _lineRanges: TextRange[] = [];
     private _indentAmounts: IndentInfo[] = [];
-    private _typeIgnoreAll = false;
-    private _typeIgnoreLines: { [line: number]: boolean } = {};
+    private _typeIgnoreAll: TextRange | undefined;
+    private _typeIgnoreLines = new Map<number, TextRange>();
     private _comments: Comment[] | undefined;
 
     // Total times CR, CR/LF, and LF are used to terminate
@@ -230,6 +230,11 @@ export class Tokenizer {
         this._indentAmounts = [];
 
         const end = start + length;
+
+        if (start === 0) {
+            this._readIndentationAfterNewLine();
+        }
+
         while (!this._cs.isEndOfStream()) {
             this._addNextToken();
 
@@ -749,9 +754,18 @@ export class Tokenizer {
 
             if (radix > 0) {
                 const text = this._cs.getText().substr(start, this._cs.position - start);
-                const value = parseInt(text.substr(leadingChars).replace(/_/g, ''), radix);
-                if (!isNaN(value)) {
-                    this._tokens.push(NumberToken.create(start, text.length, value, true, false, this._getComments()));
+                const simpleIntText = text.replace(/_/g, '');
+                let intValue: number | bigint = parseInt(simpleIntText.substr(leadingChars), radix);
+
+                if (!isNaN(intValue)) {
+                    const bigIntValue = BigInt(simpleIntText);
+                    if (!isFinite(intValue) || BigInt(intValue) !== bigIntValue) {
+                        intValue = bigIntValue;
+                    }
+
+                    this._tokens.push(
+                        NumberToken.create(start, text.length, intValue, true, false, this._getComments())
+                    );
                     return true;
                 }
             }
@@ -788,16 +802,25 @@ export class Tokenizer {
 
         if (isDecimalInteger) {
             let text = this._cs.getText().substr(start, this._cs.position - start);
-            const value = parseInt(text.replace(/_/g, ''), 10);
-            if (!isNaN(value)) {
+            const simpleIntText = text.replace(/_/g, '');
+            let intValue: number | bigint = parseInt(simpleIntText, 10);
+
+            if (!isNaN(intValue)) {
                 let isImaginary = false;
+
+                const bigIntValue = BigInt(simpleIntText);
+                if (!isFinite(intValue) || BigInt(intValue) !== bigIntValue) {
+                    intValue = bigIntValue;
+                }
+
                 if (this._cs.currentChar === Char.j || this._cs.currentChar === Char.J) {
                     isImaginary = true;
                     text += String.fromCharCode(this._cs.currentChar);
                     this._cs.moveNext();
                 }
+
                 this._tokens.push(
-                    NumberToken.create(start, text.length, value, true, isImaginary, this._getComments())
+                    NumberToken.create(start, text.length, intValue, true, isImaginary, this._getComments())
                 );
                 return true;
             }
@@ -999,11 +1022,17 @@ export class Tokenizer {
         // ignore comments of the form ignore[errorCode, ...]. We'll treat
         // these as regular ignore statements (as though no errorCodes were
         // included).
-        if (value.match(/^\s*type:\s*ignore(\s|\[|$)/)) {
+        const regexMatch = value.match(/^\s*type:\s*ignore(\s|\[|$)/);
+        if (regexMatch) {
+            const textRange: TextRange = { start, length: regexMatch[0].length };
+            if (regexMatch[0].endsWith('[')) {
+                textRange.length--;
+            }
+
             if (this._tokens.findIndex((t) => t.type !== TokenType.NewLine && t && t.type !== TokenType.Indent) < 0) {
-                this._typeIgnoreAll = true;
+                this._typeIgnoreAll = textRange;
             } else {
-                this._typeIgnoreLines[this._lineRanges.length] = true;
+                this._typeIgnoreLines.set(this._lineRanges.length, textRange);
             }
         }
 

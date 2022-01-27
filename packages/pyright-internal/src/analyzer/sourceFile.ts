@@ -28,6 +28,7 @@ import { TextEditAction } from '../common/editAction';
 import { FileSystem } from '../common/fileSystem';
 import { LogTracker } from '../common/logTracker';
 import { getFileName, normalizeSlashes, stripFileExtension } from '../common/pathUtils';
+import { convertOffsetsToRange } from '../common/positionUtils';
 import * as StringUtils from '../common/stringUtils';
 import { DocumentRange, getEmptyRange, Position, TextRange } from '../common/textRange';
 import { TextRangeCollection } from '../common/textRangeCollection';
@@ -71,9 +72,6 @@ const _maxSourceFileSize = 50 * 1024 * 1024;
 interface ResolveImportResult {
     imports: ImportResult[];
     builtinsImportResult?: ImportResult | undefined;
-    typingModulePath?: string | undefined;
-    typeshedModulePath?: string | undefined;
-    collectionsModulePath?: string | undefined;
 }
 
 export class SourceFile {
@@ -147,8 +145,8 @@ export class SourceFile {
     private _parseDiagnostics: Diagnostic[] = [];
     private _bindDiagnostics: Diagnostic[] = [];
     private _checkerDiagnostics: Diagnostic[] = [];
-    private _typeIgnoreLines: { [line: number]: boolean } = {};
-    private _typeIgnoreAll = false;
+    private _typeIgnoreLines = new Map<number, TextRange>();
+    private _typeIgnoreAll: TextRange | undefined;
 
     // Settings that control which diagnostics should be output.
     private _diagnosticRuleSet = getBasicDiagnosticRuleSet();
@@ -171,9 +169,6 @@ export class SourceFile {
     // Information about implicit and explicit imports from this file.
     private _imports: ImportResult[] | undefined;
     private _builtinsImport: ImportResult | undefined;
-    private _typingModulePath: string | undefined;
-    private _typeshedModulePath: string | undefined;
-    private _collectionsModulePath: string | undefined;
 
     private _logTracker: LogTracker;
     readonly fileSystem: FileSystem;
@@ -254,16 +249,18 @@ export class SourceFile {
             includeWarningsAndErrors = false;
         }
 
-        let diagList: Diagnostic[] = [];
-        diagList = diagList.concat(this._parseDiagnostics, this._bindDiagnostics, this._checkerDiagnostics);
+        let diagList = [...this._parseDiagnostics, ...this._bindDiagnostics, ...this._checkerDiagnostics];
+        const prefilteredDiagList = diagList;
+        const typeIgnoreLinesClone = new Map(this._typeIgnoreLines);
 
         // Filter the diagnostics based on "type: ignore" lines.
-        if (options.diagnosticRuleSet.enableTypeIgnoreComments) {
-            if (Object.keys(this._typeIgnoreLines).length > 0) {
+        if (this._diagnosticRuleSet.enableTypeIgnoreComments) {
+            if (this._typeIgnoreLines.size > 0) {
                 diagList = diagList.filter((d) => {
                     if (d.category !== DiagnosticCategory.UnusedCode && d.category !== DiagnosticCategory.Deprecated) {
                         for (let line = d.range.start.line; line <= d.range.end.line; line++) {
-                            if (this._typeIgnoreLines[line]) {
+                            if (this._typeIgnoreLines.has(line)) {
+                                typeIgnoreLinesClone.delete(line);
                                 return false;
                             }
                         }
@@ -274,8 +271,51 @@ export class SourceFile {
             }
         }
 
-        if (options.diagnosticRuleSet.reportImportCycles !== 'none' && this._circularDependencies.length > 0) {
-            const category = convertLevelToCategory(options.diagnosticRuleSet.reportImportCycles);
+        const unnecessaryTypeIgnoreDiags: Diagnostic[] = [];
+
+        if (this._diagnosticRuleSet.reportUnnecessaryTypeIgnoreComment !== 'none') {
+            const diagCategory = convertLevelToCategory(this._diagnosticRuleSet.reportUnnecessaryTypeIgnoreComment);
+
+            const prefilteredErrorList = prefilteredDiagList.filter(
+                (diag) =>
+                    diag.category === DiagnosticCategory.Error ||
+                    diag.category === DiagnosticCategory.Warning ||
+                    diag.category === DiagnosticCategory.Information
+            );
+
+            if (prefilteredErrorList.length === 0 && this._typeIgnoreAll !== undefined) {
+                unnecessaryTypeIgnoreDiags.push(
+                    new Diagnostic(
+                        diagCategory,
+                        Localizer.Diagnostic.unnecessaryTypeIgnore(),
+                        convertOffsetsToRange(
+                            this._typeIgnoreAll.start,
+                            this._typeIgnoreAll.start + this._typeIgnoreAll.length,
+                            this._parseResults!.tokenizerOutput.lines!
+                        )
+                    )
+                );
+            }
+
+            typeIgnoreLinesClone.forEach((textRange) => {
+                if (this._parseResults?.tokenizerOutput.lines) {
+                    unnecessaryTypeIgnoreDiags.push(
+                        new Diagnostic(
+                            diagCategory,
+                            Localizer.Diagnostic.unnecessaryTypeIgnore(),
+                            convertOffsetsToRange(
+                                textRange.start,
+                                textRange.start + textRange.length,
+                                this._parseResults!.tokenizerOutput.lines!
+                            )
+                        )
+                    );
+                }
+            });
+        }
+
+        if (this._diagnosticRuleSet.reportImportCycles !== 'none' && this._circularDependencies.length > 0) {
+            const category = convertLevelToCategory(this._diagnosticRuleSet.reportImportCycles);
 
             this._circularDependencies.forEach((cirDep) => {
                 diagList.push(
@@ -309,12 +349,20 @@ export class SourceFile {
         }
 
         // If there is a "type: ignore" comment at the top of the file, clear
-        // the diagnostic list.
-        if (options.diagnosticRuleSet.enableTypeIgnoreComments) {
-            if (this._typeIgnoreAll) {
-                diagList = [];
+        // the diagnostic list of all error, warning, and information diagnostics.
+        if (this._diagnosticRuleSet.enableTypeIgnoreComments) {
+            if (this._typeIgnoreAll !== undefined) {
+                diagList = diagList.filter(
+                    (diag) =>
+                        diag.category !== DiagnosticCategory.Error &&
+                        diag.category !== DiagnosticCategory.Warning &&
+                        diag.category !== DiagnosticCategory.Information
+                );
             }
         }
+
+        // Now add in the "unnecessary type ignore" diagnostics.
+        diagList.push(...unnecessaryTypeIgnoreDiags);
 
         // If we're not returning any diagnostics, filter out all of
         // the errors and warnings, leaving only the unreachable code
@@ -608,9 +656,6 @@ export class SourceFile {
 
                     this._imports = importResult.imports;
                     this._builtinsImport = importResult.builtinsImportResult;
-                    this._typingModulePath = importResult.typingModulePath;
-                    this._typeshedModulePath = importResult.typeshedModulePath;
-                    this._collectionsModulePath = importResult.collectionsModulePath;
 
                     this._parseDiagnostics = diagSink.fetchAndClear();
                 });
@@ -643,13 +688,14 @@ export class SourceFile {
                     tokenizerOutput: {
                         tokens: new TextRangeCollection<Token>([]),
                         lines: new TextRangeCollection<TextRange>([]),
-                        typeIgnoreAll: false,
-                        typeIgnoreLines: {},
+                        typeIgnoreAll: undefined,
+                        typeIgnoreLines: new Map<number, TextRange>(),
                         predominantEndOfLineSequence: '\n',
                         predominantTabSequence: '    ',
                         predominantSingleQuoteCharacter: "'",
                     },
                     containsWildcardImport: false,
+                    typingSymbolAliases: new Map<string, string>(),
                 };
                 this._imports = undefined;
                 this._builtinsImport = undefined;
@@ -1121,14 +1167,12 @@ export class SourceFile {
             importLookup,
             futureImports: this._parseResults!.futureImports,
             builtinsScope,
-            typingModulePath: this._typingModulePath,
-            typeshedModulePath: this._typeshedModulePath,
-            collectionsModulePath: this._collectionsModulePath,
             diagnosticSink: analysisDiagnostics,
             executionEnvironment: configOptions.findExecEnvironment(this._filePath),
             diagnosticRuleSet: this._diagnosticRuleSet,
             fileContents,
             lines: this._parseResults!.tokenizerOutput.lines,
+            typingSymbolAliases: this._parseResults!.typingSymbolAliases,
             filePath: this._filePath,
             moduleName: this._moduleName,
             isStubFile: this._isStubFile,
@@ -1175,56 +1219,12 @@ export class SourceFile {
             builtinsImportResult = undefined;
         }
 
-        // Always include an implicit import of the typing module.
-        const typingImportResult: ImportResult | undefined = importResolver.resolveImport(this._filePath, execEnv, {
-            leadingDots: 0,
-            nameParts: ['typing'],
-            importedSymbols: undefined,
-        });
-
-        // Avoid importing typing from the typing.pyi file itself.
-        let typingModulePath: string | undefined;
-        if (
-            typingImportResult.resolvedPaths.length === 0 ||
-            typingImportResult.resolvedPaths[0] !== this.getFilePath()
-        ) {
-            imports.push(typingImportResult);
-            typingModulePath = typingImportResult.resolvedPaths[0];
-        }
-
-        // Always include an implicit import of the _typeshed module.
-        const typeshedImportResult: ImportResult | undefined = importResolver.resolveImport(this._filePath, execEnv, {
-            leadingDots: 0,
-            nameParts: ['_typeshed'],
-            importedSymbols: undefined,
-        });
-
-        let typeshedModulePath: string | undefined;
-        if (
-            typeshedImportResult.resolvedPaths.length === 0 ||
-            typeshedImportResult.resolvedPaths[0] !== this.getFilePath()
-        ) {
-            imports.push(typeshedImportResult);
-            typeshedModulePath = typeshedImportResult.resolvedPaths[0];
-        }
-
-        let collectionsModulePath: string | undefined;
-
         for (const moduleImport of moduleImports) {
             const importResult = importResolver.resolveImport(this._filePath, execEnv, {
                 leadingDots: moduleImport.leadingDots,
                 nameParts: moduleImport.nameParts,
                 importedSymbols: moduleImport.importedSymbols,
             });
-
-            // If the file imports the stdlib 'collections' module, stash
-            // away its file path. The type analyzer may need this to
-            // access types defined in the collections module.
-            if (importResult.isImportFound && importResult.isTypeshedFile) {
-                if (moduleImport.nameParts.length >= 1 && moduleImport.nameParts[0] === 'collections') {
-                    collectionsModulePath = importResult.resolvedPaths[importResult.resolvedPaths.length - 1];
-                }
-            }
 
             imports.push(importResult);
 
@@ -1237,9 +1237,6 @@ export class SourceFile {
         return {
             imports,
             builtinsImportResult,
-            typingModulePath,
-            typeshedModulePath,
-            collectionsModulePath,
         };
     }
 

@@ -46,7 +46,9 @@ export enum DiagnosticRule {
     reportConstantRedefinition = 'reportConstantRedefinition',
     reportIncompatibleMethodOverride = 'reportIncompatibleMethodOverride',
     reportIncompatibleVariableOverride = 'reportIncompatibleVariableOverride',
+    reportInconsistentConstructor = 'reportInconsistentConstructor',
     reportOverlappingOverload = 'reportOverlappingOverload',
+    reportMissingSuperCall = 'reportMissingSuperCall',
     reportUninitializedInstanceVariable = 'reportUninitializedInstanceVariable',
     reportInvalidStringEscapeSequence = 'reportInvalidStringEscapeSequence',
     reportUnknownParameterType = 'reportUnknownParameterType',
@@ -71,4 +73,6 @@ export enum DiagnosticRule {
     reportUnsupportedDunderAll = 'reportUnsupportedDunderAll',
     reportUnusedCallResult = 'reportUnusedCallResult',
     reportUnusedCoroutine = 'reportUnusedCoroutine',
+    reportUnnecessaryTypeIgnoreComment = 'reportUnnecessaryTypeIgnoreComment',
+    reportMatchNotExhaustive = 'reportMatchNotExhaustive',
 }
