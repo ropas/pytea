@@ -3,19 +3,15 @@
  * Copyright: Seoul National University 2020
  */
 
-/* eslint-disable @typescript-eslint/no-var-requires */
-//@ts-check
-
 const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
-const { TsconfigPathsPlugin } = require('tsconfig-paths-webpack-plugin');
-const { CleanWebpackPlugin } = require('clean-webpack-plugin');
-const { monorepoResourceNameMapper } = require('../../build/lib/webpack');
+const { cacheConfig, monorepoResourceNameMapper, tsconfigResolveAliases } = require('../../build/lib/webpack');
 
 const outPath = path.resolve(__dirname, 'dist');
 const pylibImplements = path.resolve(__dirname, '..', 'pytea', 'pylib');
 const z3wrapper = path.resolve(__dirname, '..', 'pytea', 'z3wrapper');
 
+/**@type {(env: any, argv: { mode: 'production' | 'development' | 'none' }) => import('webpack').Configuration}*/
 module.exports = (_, { mode }) => {
     return {
         context: __dirname,
@@ -32,6 +28,7 @@ module.exports = (_, { mode }) => {
                 mode === 'development' ? '../[resource-path]' : monorepoResourceNameMapper('vscode-pytea'),
         },
         devtool: mode === 'development' ? 'source-map' : 'nosources-source-map',
+        cache: mode === 'development' ? cacheConfig(__dirname, __filename) : false,
         stats: {
             all: false,
             errors: true,
@@ -39,11 +36,7 @@ module.exports = (_, { mode }) => {
         },
         resolve: {
             extensions: ['.ts', '.js'],
-            plugins: [
-                new TsconfigPathsPlugin({
-                    extensions: ['.ts', '.js'],
-                }),
-            ],
+            alias: tsconfigResolveAliases('tsconfig.json'),
         },
         externals: {
             vscode: 'commonjs vscode',
@@ -61,7 +54,6 @@ module.exports = (_, { mode }) => {
             ],
         },
         plugins: [
-            new CleanWebpackPlugin(),
             new CopyPlugin({
                 patterns: [
                     { from: pylibImplements, to: 'pylib' },

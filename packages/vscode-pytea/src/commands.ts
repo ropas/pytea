@@ -7,7 +7,7 @@
  * Command identifier strings.
  */
 
-export const enum PyteaCommands {
+export const enum Commands {
     restartServer = 'pytea.restartserver',
     analyzeFile = 'pytea.analyzefile',
     selectPath = 'pytea.selectPath',

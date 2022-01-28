@@ -13,29 +13,29 @@ export interface PyteaOptions {
     // Absolute path to pyteaconfig.json
     configPath: string;
 
-    // Path of PyTea implementation of Python builtins.
-    // Absolute or relative to configPath
+    // Path to PyTea implementation of Python builtins.
+    // Absolute or relative to configPath.
     pyteaLibPath: string;
 
-    // Python entry point. Absolute or relative to configPath
+    // Python entry point. Absolute or relative to configPath.
     entryPath: string;
 
-    // Python command line arguments.
+    // Python command line arguments. Injected to Python argparse methods.
     pythonCmdArgs: PyCmdArgs;
 
-    // 'dest' of argparse.add_subparsers(...)
+    // 'dest' value of argparse.add_subparsers.
     pythonSubcommand: string;
 
-    // Severity of analysis result (default: reduced)
+    // Severity of analysis result. (default: reduced)
     logLevel: PyteaLogLevel;
 
-    // Check and discard trivial constraints (default: true)
+    // Discard trivial constraints. (default: true)
     immediateConstraintCheck: boolean;
 
     // Ignore assert statements of Python. (default: false)
     ignoreAssert: boolean;
 
-    // Extract internal representation to file (TorchIR)
+    // Extract Internal Representation of entry script. (TorchIR)
     extractIR: boolean;
 
     // Explicit range of random variables.
@@ -58,10 +58,10 @@ export interface PyteaOptions {
     boxDataLoader: boolean;
 
     // Analyzer timeout in millisecond. undefined means no timeout (default: no timeout)
-    timeout: number | undefined;
+    timeout: number | null | undefined;
 
     // Set max path count, throw runtime error if path count exceeds it (default: 1000)
-    maxPath: number | undefined;
+    maxPath: number | null | undefined;
 
     // Port to Python Z3 server (default: 17851)
     z3Port: number;

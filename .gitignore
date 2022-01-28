@@ -128,3 +128,4 @@ packages/pytea/build
 
 bin/
 constraint.json
+**/__pycache__

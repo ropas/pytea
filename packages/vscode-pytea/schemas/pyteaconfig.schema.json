@@ -6,7 +6,7 @@
     "configPath": {
       "$id": "#/properties/configPath",
       "type": "string",
-      "title": "Path to pyteaconfig.json. It may be overidden by VSCode settings which are set explicitly",
+      "title": "Absolute path to pyteaconfig.json. It may be overidden by VSCode settings",
       "pattern": "^(.*)$"
     },
     "pyteaLibPath": {
@@ -18,13 +18,13 @@
     "entryPath": {
       "$id": "#/properties/entryPath",
       "type": "string",
-      "title": "File path to start tensor shape analysis",
+      "title": "Python entry point. Absolute or relative to configPath",
       "pattern": "^(.*)$"
     },
     "pythonCmdArgs": {
       "$id": "#/properties/pythonCmdArgs",
       "type": "object",
-      "title": "Python command line arguments. Injected to Python argparse functions"
+      "title": "Python command line arguments. Injected to Python argparse methods"
     },
     "pythonSubcommand": {
       "$id": "#/properties/pythonSubcommand",
@@ -41,13 +41,13 @@
         "reduced",
         "full"
       ],
-      "title": "Verbosity of Pytea analysis log",
+      "title": "Severity of analysis result",
       "default": "result-only"
     },
     "immediateConstraintCheck": {
       "$id": "#/properties/immediateConstraintCheck",
       "type": "boolean",
-      "title": "Check and discard trivial integer constraints",
+      "title": "Discard trivial constraints",
       "default": true
     },
     "ignoreAssert": {
@@ -59,13 +59,13 @@
     "extractIR": {
       "$id": "#/properties/extractIR",
       "type": "boolean",
-      "title": "Extract internal representation of Python workspace",
+      "title": "Extract Internal Representation of entry script. (TorchIR)",
       "default": false
     },
     "variableRange": {
       "$id": "#/properties/variableRange",
       "type": "object",
-      "title": "Explicit range of random variables. null means unbounded.",
+      "title": "Explicit range of random variables. null means unbounded",
       "patternProperties": {
         "^(.*)$": {
           "oneOf": [
@@ -82,11 +82,24 @@
         }
       }
     },
-    "runZ3": {
-      "$id": "#/properties/runZ3",
+    "variableSeed": {
+      "$id": "#/properties/variableRange",
+      "type": "object",
+      "title": "Assign random concrete value to some random variable by seed (if set)",
+      "patternProperties": {
+        "^(.*)$": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "number" }
+          ]
+        }
+      }
+    },
+    "boxDataLoader": {
+      "$id": "#/properties/boxDataLoader",
       "type": "boolean",
-      "title": "Pass analysis result to Python Z3 server",
-      "default": false
+      "title": "Iterate torch DataLoader only once",
+      "default": true
     },
     "z3Port": {
       "$id": "#/properties/z3Port",
@@ -97,14 +110,14 @@
     "timeout": {
       "$id": "#/properties/timeout",
       "type": "number",
-      "title": "Analyzer timeout in millisecond. undefined means no timeout",
-      "default": 0
+      "title": "Analyzer timeout in millisecond. null means no timeout",
+      "default": 60000
     },
     "maxPath": {
       "$id": "#/properties/maxPath",
       "type": "number",
       "title": "Set max path count, throw runtime error if path count exceeds it",
-      "default": 0
+      "default": 120
     }
   }
 }
