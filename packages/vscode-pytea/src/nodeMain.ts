@@ -7,12 +7,13 @@
  */
 
 // import { BackgroundAnalysisRunner } from './backgroundAnalysis';
-import { PyteaServer } from './nodeServer';
 import { Connection, ConnectionOptions } from 'vscode-languageserver';
 import { createConnection } from 'vscode-languageserver/node';
 import { isMainThread } from 'worker_threads';
 
 import { getCancellationStrategyFromArgv } from 'pyright-internal/common/fileBasedCancellationUtils';
+
+import { PyteaServer } from './nodeServer';
 
 export function run(runServer: (connection: Connection) => void, runBackgroundThread: () => void) {
     if (process.env.NODE_ENV === 'production') {
@@ -24,6 +25,7 @@ export function run(runServer: (connection: Connection) => void, runBackgroundTh
         console.log('running on main thread');
         runServer(createConnection(getConnectionOptions()));
     } else {
+        console.log('running on background thread');
         runBackgroundThread();
     }
 }

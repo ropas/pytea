@@ -4,6 +4,10 @@
  * Implements pyright language server.
  */
 
+import { ExecutionPath, ExecutionPathStatus } from 'pytea/service/executionPaths';
+import { defaultOptions, PyteaLogLevel, PyteaOptions } from 'pytea/service/pyteaOptions';
+import { PyteaService } from 'pytea/service/pyteaService';
+import { buildPyteaOption } from 'pytea/service/pyteaUtils';
 import {
     CancellationToken,
     CodeAction,
@@ -36,9 +40,14 @@ import { LanguageServerBase, ServerSettings, WorkspaceServiceInstance } from 'py
 import { CodeActionProvider } from 'pyright-internal/languageService/codeActionProvider';
 import { WorkspaceMap } from 'pyright-internal/workspaceMap';
 
-import { PyteaOptions, defaultOptions, PyteaLogLevel } from 'pytea/service/pyteaOptions';
-
 const maxAnalysisTimeInForeground = { openFilesTimeInMs: 50, noOpenFilesTimeInMs: 200 };
+
+export interface PyteaWorkspaceInstance extends WorkspaceServiceInstance {
+    pyteaService: PyteaService;
+    pyteaOptions: PyteaOptions;
+    selectedPath: number;
+    paths: ExecutionPath[];
+}
 
 export class PyteaServer extends LanguageServerBase {
     private _controller: CommandController;
@@ -166,99 +175,6 @@ export class PyteaServer extends LanguageServerBase {
                     pyteaOptions.logLevel = logLevel as PyteaLogLevel;
                 }
             }
-
-            // const pythonAnalysisSection = await this.getConfiguration(workspace.rootUri, 'python.analysis');
-            // if (pythonAnalysisSection) {
-            //     const typeshedPaths = pythonAnalysisSection.typeshedPaths;
-            //     if (typeshedPaths && Array.isArray(typeshedPaths) && typeshedPaths.length > 0) {
-            //         const typeshedPath = typeshedPaths[0];
-            //         if (typeshedPath && isString(typeshedPath)) {
-            //             serverSettings.typeshedPath = resolvePaths(
-            //                 workspace.rootPath,
-            //                 this.expandPathVariables(workspace.rootPath, typeshedPath)
-            //             );
-            //         }
-            //     }
-
-            //     const stubPath = pythonAnalysisSection.stubPath;
-            //     if (stubPath && isString(stubPath)) {
-            //         serverSettings.stubPath = resolvePaths(
-            //             workspace.rootPath,
-            //             this.expandPathVariables(workspace.rootPath, stubPath)
-            //         );
-            //     }
-
-            //     const diagnosticSeverityOverrides = pythonAnalysisSection.diagnosticSeverityOverrides;
-            //     if (diagnosticSeverityOverrides) {
-            //         for (const [name, value] of Object.entries(diagnosticSeverityOverrides)) {
-            //             const ruleName = this.getDiagnosticRuleName(name);
-            //             const severity = this.getSeverityOverrides(value as string);
-            //             if (ruleName && severity) {
-            //                 serverSettings.diagnosticSeverityOverrides![ruleName] = severity!;
-            //             }
-            //         }
-            //     }
-
-            //     if (pythonAnalysisSection.diagnosticMode !== undefined) {
-            //         serverSettings.openFilesOnly = this.isOpenFilesOnly(pythonAnalysisSection.diagnosticMode);
-            //     } else if (pythonAnalysisSection.openFilesOnly !== undefined) {
-            //         serverSettings.openFilesOnly = !!pythonAnalysisSection.openFilesOnly;
-            //     }
-
-            //     if (pythonAnalysisSection.useLibraryCodeForTypes !== undefined) {
-            //         serverSettings.useLibraryCodeForTypes = !!pythonAnalysisSection.useLibraryCodeForTypes;
-            //     }
-
-            //     serverSettings.logLevel = this.convertLogLevel(pythonAnalysisSection.logLevel);
-            //     serverSettings.autoSearchPaths = !!pythonAnalysisSection.autoSearchPaths;
-
-            //     const extraPaths = pythonAnalysisSection.extraPaths;
-            //     if (extraPaths && Array.isArray(extraPaths) && extraPaths.length > 0) {
-            //         serverSettings.extraPaths = extraPaths
-            //             .filter((p) => p && isString(p))
-            //             .map((p) => resolvePaths(workspace.rootPath, this.expandPathVariables(workspace.rootPath, p)));
-            //     }
-
-            //     if (pythonAnalysisSection.typeCheckingMode !== undefined) {
-            //         serverSettings.typeCheckingMode = pythonAnalysisSection.typeCheckingMode;
-            //     }
-
-            //     if (pythonAnalysisSection.autoImportCompletions !== undefined) {
-            //         serverSettings.autoImportCompletions = pythonAnalysisSection.autoImportCompletions;
-            //     }
-
-            //     if (
-            //         serverSettings.logLevel === LogLevel.Log &&
-            //         pythonAnalysisSection.logTypeEvaluationTime !== undefined
-            //     ) {
-            //         serverSettings.logTypeEvaluationTime = pythonAnalysisSection.logTypeEvaluationTime;
-            //     }
-
-            //     if (pythonAnalysisSection.typeEvaluationTimeThreshold !== undefined) {
-            //         serverSettings.typeEvaluationTimeThreshold = pythonAnalysisSection.typeEvaluationTimeThreshold;
-            //     }
-            // } else {
-            //     serverSettings.autoSearchPaths = true;
-            // }
-
-            // const pyrightSection = await this.getConfiguration(workspace.rootUri, 'pyright');
-            // if (pyrightSection) {
-            //     if (pyrightSection.openFilesOnly !== undefined) {
-            //         serverSettings.openFilesOnly = !!pyrightSection.openFilesOnly;
-            //     }
-
-            //     if (pyrightSection.useLibraryCodeForTypes !== undefined) {
-            //         serverSettings.useLibraryCodeForTypes = !!pyrightSection.useLibraryCodeForTypes;
-            //     }
-
-            //     serverSettings.disableLanguageServices = !!pyrightSection.disableLanguageServices;
-            //     serverSettings.disableOrganizeImports = !!pyrightSection.disableOrganizeImports;
-
-            //     const typeCheckingMode = pyrightSection.typeCheckingMode;
-            //     if (typeCheckingMode && isString(typeCheckingMode)) {
-            //         serverSettings.typeCheckingMode = typeCheckingMode;
-            //     }
-            // }
         } catch (error) {
             this.console.error(`Error reading settings: ${error}`);
         }
@@ -278,8 +194,16 @@ export class PyteaServer extends LanguageServerBase {
     async analyze(entryPath: string) {
         this.console.info(`analyzing ${entryPath}...`);
 
-        const workspace = this._workspaceMap.getWorkspaceForFile(entryPath);
-        this._selectedWorkspace = workspace;
+        const ws = this._workspaceMap.getWorkspaceForFile(this, entryPath);
+        const workspace = ws as PyteaWorkspaceInstance;
+
+        // inject pytea service
+        if (!('pyteaService' in ws)) {
+            workspace.pyteaOptions = defaultOptions;
+            workspace.paths = [];
+            workspace.selectedPath = 0;
+            workspace.pyteaService = new PyteaService(ws.serviceInstance, undefined, this.console);
+        }
 
         const baseOptions = workspace.pyteaOptions;
         baseOptions.entryPath = resolvePaths(
@@ -297,7 +221,7 @@ export class PyteaServer extends LanguageServerBase {
         const pyteaService = workspace.pyteaService;
         pyteaService.setOptions(options);
 
-        this.console.info(`options: ${inspect(options)}`);
+        // this.console.info(`options: ${inspect(options)}`);
         if (!pyteaService.validate()) {
             return;
         }
