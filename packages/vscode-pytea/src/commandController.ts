@@ -12,8 +12,8 @@ import { CancellationToken, ExecuteCommandParams, ResponseError } from 'vscode-l
 import { ServerCommand } from 'pyright-internal/commands/commandController';
 import { convertUriToPath } from 'pyright-internal/common/pathUtils';
 
-import { PyteaServer } from './nodeServer';
 import { Commands } from './commands';
+import { PyteaServer } from './nodeServer';
 
 export class RestartServerCommand implements ServerCommand {
     constructor(private _ls: PyteaServer) {}

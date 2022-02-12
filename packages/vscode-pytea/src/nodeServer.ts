@@ -27,7 +27,7 @@ import { BackgroundAnalysisBase } from 'pyright-internal/backgroundAnalysisBase'
 import { CommandController } from 'pyright-internal/commands/commandController';
 import { getCancellationFolderName } from 'pyright-internal/common/cancellationUtils';
 import { ConfigOptions } from 'pyright-internal/common/configOptions';
-import { ConsoleInterface, ConsoleWithLogLevel, LogLevel } from 'pyright-internal/common/console';
+import { ConsoleWithLogLevel, LogLevel } from 'pyright-internal/common/console';
 import { isDebugMode, isString } from 'pyright-internal/common/core';
 import { FileBasedCancellationProvider } from 'pyright-internal/common/fileBasedCancellationUtils';
 import { FileSystem } from 'pyright-internal/common/fileSystem';
@@ -37,7 +37,6 @@ import { resolvePaths } from 'pyright-internal/common/pathUtils';
 import { ProgressReporter } from 'pyright-internal/common/progressReporter';
 import { createFromRealFileSystem, WorkspaceFileWatcherProvider } from 'pyright-internal/common/realFileSystem';
 import { LanguageServerBase, ServerSettings, WorkspaceServiceInstance } from 'pyright-internal/languageServerBase';
-import { CodeActionProvider } from 'pyright-internal/languageService/codeActionProvider';
 import { WorkspaceMap } from 'pyright-internal/workspaceMap';
 
 const maxAnalysisTimeInForeground = { openFilesTimeInMs: 50, noOpenFilesTimeInMs: 200 };

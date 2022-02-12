@@ -10,18 +10,8 @@
  */
 
 import * as path from 'path';
-import {
-    commands,
-    ExtensionContext,
-    extensions,
-    OutputChannel,
-    Position,
-    Range,
-    TextEditor,
-    TextEditorEdit,
-    Uri,
-    window,
-} from 'vscode';
+import { ExecutionPathProps } from 'pytea/service/executionPaths';
+import { commands, ExtensionContext, extensions, OutputChannel, TextEditor, TextEditorEdit, Uri } from 'vscode';
 import {
     CancellationToken,
     ConfigurationParams,
@@ -32,14 +22,14 @@ import {
     LanguageClientOptions,
     ResponseError,
     ServerOptions,
-    TextEdit,
     TransportKind,
 } from 'vscode-languageclient/node';
 
-import { Commands } from './commands';
 import { isThenable } from 'pyright-internal/common/core';
 
 import { FileBasedCancellationStrategy } from './cancellationUtils';
+import { Commands } from './commands';
+import { PathManager } from './pathTreeProvider';
 
 let cancellationStrategy: FileBasedCancellationStrategy | undefined;
 
@@ -148,51 +138,45 @@ export function activate(context: ExtensionContext) {
     // client can be deactivated on extension deactivation.
     context.subscriptions.push(disposable);
 
-    // Register our custom commands.
-    // const textEditorCommands = [Commands.orderImports, Commands.addMissingOptionalToParam];
-    // textEditorCommands.forEach((commandName) => {
-    //     context.subscriptions.push(
-    //         commands.registerTextEditorCommand(
-    //             commandName,
-    //             (editor: TextEditor, edit: TextEditorEdit, ...args: any[]) => {
-    //                 const cmd = {
-    //                     command: commandName,
-    //                     arguments: [editor.document.uri.toString(), ...args],
-    //                 };
+    const restartCommand = Commands.restartServer;
+    context.subscriptions.push(
+        commands.registerCommand(restartCommand, (...args: any[]) => {
+            languageClient.sendRequest<string>('workspace/executeCommand', {
+                command: restartCommand,
+                arguments: args,
+            });
+        })
+    );
 
-    //                 languageClient
-    //                     .sendRequest<TextEdit[] | undefined>('workspace/executeCommand', cmd)
-    //                     .then((edits) => {
-    //                         if (edits && edits.length > 0) {
-    //                             editor.edit((editBuilder) => {
-    //                                 edits.forEach((edit) => {
-    //                                     const startPos = new Position(
-    //                                         edit.range.start.line,
-    //                                         edit.range.start.character
-    //                                     );
-    //                                     const endPos = new Position(edit.range.end.line, edit.range.end.character);
-    //                                     const range = new Range(startPos, endPos);
-    //                                     editBuilder.replace(range, edit.newText);
-    //                                 });
-    //                             });
-    //                         }
-    //                     });
-    //             },
-    //             () => {
-    //                 // Error received. For now, do nothing.
-    //             }
-    //         )
-    //     );
-    // });
+    const pathManager = new PathManager(context, {
+        selectPath: (pathId) => {
+            console.log(`send ${pathId}`);
+            languageClient.sendRequest('workspace/executeCommand', {
+                command: Commands.selectPath,
+                arguments: [pathId],
+            });
+        },
+    });
 
-    // const genericCommands = [Commands.createTypeStub, Commands.restartServer];
-    // genericCommands.forEach((command) => {
-    //     context.subscriptions.push(
-    //         commands.registerCommand(command, (...args: any[]) => {
-    //             languageClient.sendRequest('workspace/executeCommand', { command, arguments: args });
-    //         })
-    //     );
-    // });
+    const analyzeFileCommand = Commands.analyzeFile;
+    context.subscriptions.push(
+        commands.registerTextEditorCommand(
+            analyzeFileCommand,
+            (editor: TextEditor, edit: TextEditorEdit, ...args: any[]) => {
+                const cmd = {
+                    command: analyzeFileCommand,
+                    arguments: [editor.document.uri.toString(), ...args],
+                };
+                console.log(`execute analyze ${editor.document.uri.toString()}`);
+                languageClient
+                    .sendRequest<ExecutionPathProps[]>('workspace/executeCommand', cmd)
+                    .then(async (response) => {
+                        pathManager.applyPathProps(response);
+                        // window.showInformationMessage(response);
+                    });
+            }
+        )
+    );
 }
 
 export function deactivate() {

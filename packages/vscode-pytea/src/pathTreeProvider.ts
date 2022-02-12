@@ -20,7 +20,7 @@ import {
     window,
 } from 'vscode';
 
-import { PyteaCommands } from '../src/commands';
+import { Commands } from './commands';
 
 interface PyteaTreeProvider {
     refresh(props?: ExecutionPathProps): void;
@@ -245,7 +245,7 @@ export class PathManager {
         context.subscriptions.push(this._pathCtrTree);
         context.subscriptions.push(this._hardCtrTree);
 
-        commands.registerCommand(PyteaCommands.selectPath, (pathId) => {
+        commands.registerCommand(Commands.selectPath, (pathId) => {
             if (callback.selectPath) callback.selectPath(pathId);
 
             if (pathId < 0 || pathId >= this._pathProps.length) {
