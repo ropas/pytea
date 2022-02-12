@@ -9,7 +9,7 @@
     },
     "publisher": "Microsoft Corporation",
     "engines": {
-        "node": ">=12.0.0"
+        "node": ">=16.0.0"
     },
     "repository": {
         "type": "git",
@@ -24,7 +24,7 @@
     },
     "devDependencies": {
         "@types/copy-webpack-plugin": "^10.1.0",
-        "@types/node": "^12.20.42",
+        "@types/node": "^16.11.7",
         "copy-webpack-plugin": "^10.2.1",
         "shx": "^0.3.4",
         "ts-loader": "^9.2.6",

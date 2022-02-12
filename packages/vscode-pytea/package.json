@@ -217,10 +217,10 @@
     },
     "devDependencies": {
         "@types/copy-webpack-plugin": "^10.1.0",
-        "@types/node": "^12.20.42",
+        "@types/node": "^16.11.7",
         "@types/vscode": "~1.63.1",
         "chalk": "^4.1.2",
-        "copy-webpack-plugin": "^10.1.0",
+        "copy-webpack-plugin": "^10.2.1",
         "detect-indent": "^6.1.0",
         "fs-extra": "^10.0.0",
         "shx": "^0.3.4",

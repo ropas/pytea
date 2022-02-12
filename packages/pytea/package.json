@@ -1,69 +1,69 @@
 {
-    "name": "pytea",
-    "displayName": "pytea",
-    "description": "PyTea: PyTorch Tensor Error Analyzer",
-    "version": "0.1.0",
-    "license": "MIT",
-    "author": {
-        "name": "SNU SFLab / ROPAS"
-    },
-    "publisher": "Seoul National University",
-    "engines": {
-        "node": ">=12.0.0"
-    },
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/ropas/pytea",
-        "directory": "packages/pytea"
-    },
-    "scripts": {
-        "build": "webpack --mode production --progress",
-        "clean": "shx rm -rf ./dist ./out",
-        "webpack": "webpack --mode development --progress",
-        "prepack": "npm run clean && shx cp ../../README.md . && npm run build",
-        "test": "cross-env NODE_DEBUG=torch_debug jest --detectOpenHandles --forceExit torch",
-        "test:unit": "cross-env NODE_DEBUG=torch_debug jest --detectOpenHandles --forceExit pytea.unit"
-    },
-    "dependencies": {
-        "assert": "^2.0.0",
-        "axios": "^0.25.0",
-        "chalk": "^4.1.2",
-        "chokidar": "^3.5.3",
-        "command-line-args": "^5.2.0",
-        "immutable": "^4.0.0",
-        "source-map-support": "^0.5.21",
-        "tmp": "^0.2.1",
-        "typescript-char": "^0.0.0"
-    },
-    "devDependencies": {
-        "@types/chokidar": "^2.1.3",
-        "@types/command-line-args": "^5.2.0",
-        "@types/copy-webpack-plugin": "^10.0.1",
-        "@types/jest": "^27.4.0",
-        "@types/node": "^12.20.42",
-        "@types/tmp": "^0.2.3",
-        "clean-webpack-plugin": "^3.0.0",
-        "copy-webpack-plugin": "^10.2.1",
-        "cross-env": "^7.0.3",
-        "jest": "^27.4.7",
-        "jest-junit": "^12.3.0",
-        "shx": "^0.3.4",
-        "ts-jest": "^27.1.3",
-        "ts-loader": "^9.2.6",
-        "tsconfig-paths-webpack-plugin": "^3.5.2",
-        "typescript": "^4.4.4",
-        "vscode-jsonrpc": "6.0.0",
-        "vscode-languageserver": "7.0.0",
-        "vscode-languageserver-textdocument": "^1.0.3",
-        "vscode-languageserver-types": "3.16.0",
-        "webpack": "^5.67.0",
-        "webpack-cli": "^4.9.2"
-    },
-    "files": [
-        "/dist"
-    ],
-    "main": "index.js",
-    "bin": {
-        "pytea": "index.js"
-    }
+	"name": "pytea",
+	"displayName": "pytea",
+	"description": "PyTea: PyTorch Tensor Error Analyzer",
+	"version": "0.1.0",
+	"license": "MIT",
+	"author": {
+		"name": "SNU SFLab / ROPAS"
+	},
+	"publisher": "Seoul National University",
+	"engines": {
+		"node": ">=16.0.0"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/ropas/pytea",
+		"directory": "packages/pytea"
+	},
+	"scripts": {
+		"build": "webpack --mode production --progress",
+		"clean": "shx rm -rf ./dist ./out",
+		"webpack": "webpack --mode development --progress",
+		"prepack": "npm run clean && shx cp ../../README.md . && npm run build",
+		"test": "cross-env NODE_DEBUG=torch_debug jest --detectOpenHandles --forceExit torch",
+		"test:unit": "cross-env NODE_DEBUG=torch_debug jest --detectOpenHandles --forceExit pytea.unit"
+	},
+	"dependencies": {
+		"assert": "^2.0.0",
+		"axios": "^0.25.0",
+		"chalk": "^4.1.2",
+		"chokidar": "^3.5.3",
+		"command-line-args": "^5.2.0",
+		"immutable": "^4.0.0",
+		"source-map-support": "^0.5.21",
+		"tmp": "^0.2.1",
+		"typescript-char": "^0.0.0"
+	},
+	"devDependencies": {
+		"@types/chokidar": "^2.1.3",
+		"@types/command-line-args": "^5.2.0",
+		"@types/copy-webpack-plugin": "^10.0.1",
+		"@types/jest": "^27.4.0",
+		"@types/node": "^16.11.7",
+		"@types/tmp": "^0.2.3",
+		"clean-webpack-plugin": "^3.0.0",
+		"copy-webpack-plugin": "^10.2.1",
+		"cross-env": "^7.0.3",
+		"jest": "^27.4.7",
+		"jest-junit": "^12.3.0",
+		"shx": "^0.3.4",
+		"ts-jest": "^27.1.3",
+		"ts-loader": "^9.2.6",
+		"tsconfig-paths-webpack-plugin": "^3.5.2",
+		"typescript": "^4.4.4",
+		"vscode-jsonrpc": "6.0.0",
+		"vscode-languageserver": "7.0.0",
+		"vscode-languageserver-textdocument": "^1.0.3",
+		"vscode-languageserver-types": "3.16.0",
+		"webpack": "^5.67.0",
+		"webpack-cli": "^4.9.2"
+	},
+	"files": [
+		"/dist"
+	],
+	"main": "index.js",
+	"bin": {
+		"pytea": "index.js"
+	}
 }
