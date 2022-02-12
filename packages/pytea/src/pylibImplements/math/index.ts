@@ -1,9 +1,8 @@
-import { TorchBackend } from 'src/backend/torchBackend';
-
 import { fetchAddr } from '../../backend/backUtils';
 import { Context, ContextSet } from '../../backend/context';
 import { CodeSource, ShValue, SVFloat, SVInt, SVType, svTypeToString } from '../../backend/sharpValues';
 import { ExpNum, NumUopType } from '../../backend/symExpressions';
+import { TorchBackend } from '../../backend/torchBackend';
 import { LCImpl } from '..';
 import { LCBase } from '../libcall';
 

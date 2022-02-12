@@ -1,5 +1,3 @@
-import { formatCodeSource } from 'src/service/pyteaUtils';
-
 import { fetchAddr, fetchSize, sanitizeAddr, trackMro } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
 import { isInstanceOf, simplifyNum, strLen } from '../backend/expUtils';
@@ -22,6 +20,7 @@ import {
 import { ExpNum, ExpNumSymbol, NumBopType, NumUopType, StringOpType, SymExp } from '../backend/symExpressions';
 import { TorchBackend } from '../backend/torchBackend';
 import { PyteaService } from '../service/pyteaService';
+import { formatCodeSource } from '../service/pyteaUtils';
 import { LCImpl } from '.';
 import { LCBase } from './libcall';
 

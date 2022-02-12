@@ -128,8 +128,8 @@ export namespace TorchBackend {
         ctxSet: ContextSet<T>,
         stmt: ThStmt,
         console: ConsoleInterface,
-        timeout?: number,
-        maxPath?: number
+        timeout?: number | null,
+        maxPath?: number | null
     ): ContextSet<ShValue | ShContFlag> {
         const pathLimit = maxPath ? (maxPath > 0 ? maxPath : 0) : 0;
         ContextSet.setMaxPaths(pathLimit);

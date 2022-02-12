@@ -11,8 +11,6 @@ import chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';
 import { performance } from 'perf_hooks';
-import { fetchAddr } from 'src/backend/backUtils';
-import { RandomGen } from 'src/backend/randomGen';
 
 import { getFileInfo } from 'pyright-internal/analyzer/analyzerNodeInfo';
 import { AnalyzerService } from 'pyright-internal/analyzer/service';
@@ -21,7 +19,9 @@ import { convertOffsetToPosition } from 'pyright-internal/common/positionUtils';
 import { Range } from 'pyright-internal/common/textRange';
 import { ParseNodeType } from 'pyright-internal/parser/parseNodes';
 
+import { fetchAddr } from '../backend/backUtils';
 import { Context, ContextSet } from '../backend/context';
+import { RandomGen } from '../backend/randomGen';
 import { CodeSource, ShContFlag, ShValue, SVAddr, SVObject, SVString, SVType } from '../backend/sharpValues';
 import { TorchBackend } from '../backend/torchBackend';
 import { IRWriter } from '../frontend/IRReaderWriter';

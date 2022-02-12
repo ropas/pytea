@@ -4,6 +4,7 @@
  * Implements pyright language server.
  */
 
+import { SVErrorLevel, SVType } from 'pytea/backend/sharpValues';
 import { ExecutionPath, ExecutionPathStatus } from 'pytea/service/executionPaths';
 import { defaultOptions, PyteaLogLevel, PyteaOptions } from 'pytea/service/pyteaOptions';
 import { PyteaService } from 'pytea/service/pyteaService';
@@ -29,6 +30,8 @@ import { getCancellationFolderName } from 'pyright-internal/common/cancellationU
 import { ConfigOptions } from 'pyright-internal/common/configOptions';
 import { ConsoleWithLogLevel, LogLevel } from 'pyright-internal/common/console';
 import { isDebugMode, isString } from 'pyright-internal/common/core';
+import { Diagnostic as AnalyzerDiagnostic, DiagnosticCategory } from 'pyright-internal/common/diagnostic';
+import { FileDiagnostics } from 'pyright-internal/common/diagnosticSink';
 import { FileBasedCancellationProvider } from 'pyright-internal/common/fileBasedCancellationUtils';
 import { FileSystem } from 'pyright-internal/common/fileSystem';
 import { FullAccessHost } from 'pyright-internal/common/fullAccessHost';
@@ -50,6 +53,7 @@ export interface PyteaWorkspaceInstance extends WorkspaceServiceInstance {
 
 export class PyteaServer extends LanguageServerBase {
     private _controller: CommandController;
+    private _selectedWorkspace?: PyteaWorkspaceInstance;
 
     constructor(connection: Connection) {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -194,7 +198,8 @@ export class PyteaServer extends LanguageServerBase {
         this.console.info(`analyzing ${entryPath}...`);
 
         const ws = this._workspaceMap.getWorkspaceForFile(this, entryPath);
-        const workspace = ws as PyteaWorkspaceInstance;
+        this._selectedWorkspace = ws as PyteaWorkspaceInstance;
+        const workspace = this._selectedWorkspace;
 
         // inject pytea service
         if (!('pyteaService' in ws)) {
@@ -300,6 +305,71 @@ export class PyteaServer extends LanguageServerBase {
         } catch (e) {
             this.console.error(`Found error while analyzing ${options.entryPath}\n  ${e}`);
         }
+    }
+
+    selectPath(pathId: number): void {
+        const service = this._selectedWorkspace?.pyteaService;
+        const paths = this._selectedWorkspace?.paths;
+
+        // TODO: pop-up error message
+        if (!(service && paths && paths[pathId])) {
+            return;
+        }
+
+        const currPath = paths[pathId];
+        const currProps = currPath.props;
+        const ctx = currPath.ctx;
+        const diagMap: Map<string, AnalyzerDiagnostic[]> = new Map();
+
+        function severityMap(level: SVErrorLevel): DiagnosticCategory {
+            switch (level) {
+                case SVErrorLevel.Error:
+                    return DiagnosticCategory.Error;
+                case SVErrorLevel.Warning:
+                    return DiagnosticCategory.Warning;
+                case SVErrorLevel.Log:
+                    return DiagnosticCategory.Information;
+            }
+        }
+
+        ctx.logs.forEach((log) => {
+            if (log.type === SVType.Error) {
+                const sourceRange = service.getSourceRange(log.source);
+                if (sourceRange) {
+                    const [filePath, range] = sourceRange;
+                    if (!diagMap.has(filePath)) {
+                        diagMap.set(filePath, []);
+                    }
+                    const diagnostics = diagMap.get(filePath)!;
+                    diagnostics.push(new AnalyzerDiagnostic(severityMap(log.level), log.reason, range));
+                }
+            }
+        });
+
+        if (currProps.status === ExecutionPathStatus.Stopped || currProps.status === ExecutionPathStatus.Failed) {
+            const retVal = ctx.retVal;
+            if (typeof retVal === 'object') {
+                const sourceRange = service.getSourceRange(retVal.source);
+                if (sourceRange) {
+                    const [filePath, range] = sourceRange;
+                    if (!diagMap.has(filePath)) {
+                        diagMap.set(filePath, []);
+                    }
+                    const diagnostics = diagMap.get(filePath)!;
+                    const reason = retVal.type === SVType.Error ? retVal.reason : 'unknown error';
+                    diagnostics.push(new AnalyzerDiagnostic(DiagnosticCategory.Error, reason, range));
+                }
+            }
+        }
+
+        diagMap.forEach((diagnostics, filePath) => {
+            const fileDiag: FileDiagnostics = { filePath, version: undefined, diagnostics };
+            const publishParams = this.convertDiagnostics(fileDiag);
+
+            for (const param of publishParams) {
+                this._connection.sendDiagnostics(param);
+            }
+        });
     }
 
     protected override createHost() {
