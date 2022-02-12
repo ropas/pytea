@@ -44,7 +44,6 @@ export class PathSelectionProvider implements TreeDataProvider<NumId> {
 
     public refresh(pathProps: ExecutionPathProps[]): void {
         this.pathProps = pathProps;
-        console.log(`refresh with ${pathProps.length}`);
         this._onDidChangeTreeData.fire(undefined);
     }
 

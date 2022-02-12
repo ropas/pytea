@@ -13,5 +13,6 @@ model = resnet50()
 output = model(input)
 
 # fail
-diff = output - torch.rand(batch, 10)
+test = torch.xx()
+diff = output - torch.rand(batch, 1000)
 

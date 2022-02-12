@@ -25,7 +25,6 @@ import { ImportResolver } from 'pyright-internal/analyzer/importResolver';
 import { isPythonBinary } from 'pyright-internal/analyzer/pythonPathUtils';
 import { BackgroundAnalysis } from 'pyright-internal/backgroundAnalysis';
 import { BackgroundAnalysisBase } from 'pyright-internal/backgroundAnalysisBase';
-import { CommandController } from 'pyright-internal/commands/commandController';
 import { getCancellationFolderName } from 'pyright-internal/common/cancellationUtils';
 import { ConfigOptions } from 'pyright-internal/common/configOptions';
 import { ConsoleWithLogLevel, LogLevel } from 'pyright-internal/common/console';
@@ -42,6 +41,8 @@ import { createFromRealFileSystem, WorkspaceFileWatcherProvider } from 'pyright-
 import { LanguageServerBase, ServerSettings, WorkspaceServiceInstance } from 'pyright-internal/languageServerBase';
 import { WorkspaceMap } from 'pyright-internal/workspaceMap';
 
+import { PyteaCommandController } from './commandController';
+
 const maxAnalysisTimeInForeground = { openFilesTimeInMs: 50, noOpenFilesTimeInMs: 200 };
 
 export interface PyteaWorkspaceInstance extends WorkspaceServiceInstance {
@@ -52,8 +53,9 @@ export interface PyteaWorkspaceInstance extends WorkspaceServiceInstance {
 }
 
 export class PyteaServer extends LanguageServerBase {
-    private _controller: CommandController;
+    private _controller: PyteaCommandController;
     private _selectedWorkspace?: PyteaWorkspaceInstance;
+    private _lastDiagMap?: Map<string, AnalyzerDiagnostic[]>;
 
     constructor(connection: Connection) {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -85,7 +87,7 @@ export class PyteaServer extends LanguageServerBase {
             console
         );
 
-        this._controller = new CommandController(this);
+        this._controller = new PyteaCommandController(this);
     }
 
     async getSettings(workspace: WorkspaceServiceInstance): Promise<ServerSettings> {
@@ -196,6 +198,8 @@ export class PyteaServer extends LanguageServerBase {
 
     async analyze(entryPath: string) {
         this.console.info(`analyzing ${entryPath}...`);
+
+        this._clearDiagnostics();
 
         const ws = this._workspaceMap.getWorkspaceForFile(this, entryPath);
         this._selectedWorkspace = ws as PyteaWorkspaceInstance;
@@ -316,6 +320,8 @@ export class PyteaServer extends LanguageServerBase {
             return;
         }
 
+        this._clearDiagnostics();
+
         const currPath = paths[pathId];
         const currProps = currPath.props;
         const ctx = currPath.ctx;
@@ -332,8 +338,11 @@ export class PyteaServer extends LanguageServerBase {
             }
         }
 
+        // TODO: clear error log in diagnostics
+        // TODO: for a succeed calculation, return empty array in diagnostics
+        // TODO: clear every diagnostic on new analysis
         ctx.logs.forEach((log) => {
-            if (log.type === SVType.Error) {
+            if (log.type === SVType.Error && log.level === SVErrorLevel.Warning) {
                 const sourceRange = service.getSourceRange(log.source);
                 if (sourceRange) {
                     const [filePath, range] = sourceRange;
@@ -370,6 +379,14 @@ export class PyteaServer extends LanguageServerBase {
                 this._connection.sendDiagnostics(param);
             }
         });
+
+        this._lastDiagMap = diagMap;
+    }
+
+    protected override onAnalysisCompletedHandler(results: AnalysisResults): void {
+        // Ignore super send diagnostics
+        const emptyResult = { ...results, diagnostics: [] };
+        super.onAnalysisCompletedHandler(emptyResult);
     }
 
     protected override createHost() {
@@ -395,8 +412,10 @@ export class PyteaServer extends LanguageServerBase {
         // this.recordUserInteractionTime();
 
         // const filePath = this._uriParser.decodeTextDocumentUri(params.textDocument.uri);
+        // this.console.log(`codeaction on ${filePath}`);
         // const workspace = await this.getWorkspaceForFile(filePath);
         // return CodeActionProvider.getCodeActionsForPosition(workspace, filePath, params.range, token);
+
         return null;
     }
 
@@ -443,5 +462,16 @@ export class PyteaServer extends LanguageServerBase {
                 }
             },
         };
+    }
+
+    private _clearDiagnostics() {
+        this._lastDiagMap?.forEach((diagnostics, filePath) => {
+            const fileDiag: FileDiagnostics = { filePath, version: undefined, diagnostics: [] };
+            const publishParams = this.convertDiagnostics(fileDiag);
+
+            for (const param of publishParams) {
+                this._connection.sendDiagnostics(param);
+            }
+        });
     }
 }

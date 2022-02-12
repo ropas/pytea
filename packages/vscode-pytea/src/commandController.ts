@@ -63,4 +63,8 @@ export class PyteaCommandController implements ServerCommand {
             }
         }
     }
+
+    isLongRunningCommand(command: string): boolean {
+        return command === Commands.analyzeFile;
+    }
 }

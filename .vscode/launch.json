@@ -52,7 +52,7 @@
             "type": "node",
             "request": "attach",
             "protocol": "inspector",
-            "port": 6800,
+            "port": 6600,
             "smartStep": true,
             "sourceMaps": true,
             "outFiles": [

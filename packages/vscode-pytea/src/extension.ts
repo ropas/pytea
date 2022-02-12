@@ -150,7 +150,6 @@ export function activate(context: ExtensionContext) {
 
     const pathManager = new PathManager(context, {
         selectPath: (pathId) => {
-            console.log(`send ${pathId}`);
             languageClient.sendRequest('workspace/executeCommand', {
                 command: Commands.selectPath,
                 arguments: [pathId],
@@ -167,7 +166,6 @@ export function activate(context: ExtensionContext) {
                     command: analyzeFileCommand,
                     arguments: [editor.document.uri.toString(), ...args],
                 };
-                console.log(`execute analyze ${editor.document.uri.toString()}`);
                 languageClient
                     .sendRequest<ExecutionPathProps[]>('workspace/executeCommand', cmd)
                     .then(async (response) => {

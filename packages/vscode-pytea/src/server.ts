@@ -1,4 +1,4 @@
-import { main } from 'pyright-internal/nodeMain';
+import { main } from './nodeMain';
 
 Error.stackTraceLimit = 256;
 
