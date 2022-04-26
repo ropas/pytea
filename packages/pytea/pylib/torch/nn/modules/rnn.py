@@ -15,7 +15,9 @@ class RNNBase(Module):
         batch_first=False,
         dropout=0.0,
         bidirectional=False,
-        **kwargs
+        proj_size=0,
+        device=None,
+        dtype=None,
     ):
         super(RNNBase, self).__init__()
         self.mode = mode
@@ -26,6 +28,7 @@ class RNNBase(Module):
         self.batch_first = batch_first
         self.dropout = float(dropout)
         self.bidirectional = bidirectional
+        self.proj_size = proj_size
         if bidirectional:
             self.num_directions = 2
         else:
@@ -42,33 +45,53 @@ class RNN(RNNBase):
     def forward(self, input, hx=None):
         # TODO: resolve packed sequence
 
-        assert LibCall.guard.require_eq(input.ndim, 3, "input rank is not 3")
+        ndim = input.ndim
         input_shape = input.shape
 
-        if self.batch_first:
-            batch = input_shape[0]
-            seq_len = input_shape[1]
-            h_0_require = torch.Size(
-                (batch, self.num_layers * self.num_directions, self.hidden_size)
+        D_nl = self.num_directions * self.num_layers
+        D_h = self.num_directions * self.hidden_size
+        if ndim == 3:
+            input_size = input_shape[2]
+            assert LibCall.guard.require_eq(
+                input_size,
+                self.input_size,
+                "input.size(-1) must be equal to input_size",
             )
-            output_shape = (batch, seq_len, self.num_directions * self.hidden_size)
-            h_n_shape = (
-                batch,
-                self.num_layers * self.num_directions,
-                self.hidden_size,
-            )
-        else:
-            batch = input_shape[1]
+
+            if self.batch_first:
+                batch = input_shape[0]
+                seq_len = input_shape[1]
+                h_0_require = torch.Size((D_nl, batch, self.hidden_size))
+                output_shape = (batch, seq_len, D_h)
+                h_n_shape = (
+                    D_nl,
+                    batch,
+                    self.hidden_size,
+                )
+            else:
+                batch = input_shape[1]
+                seq_len = input_shape[0]
+                h_0_require = torch.Size((D_nl, batch, self.hidden_size))
+                output_shape = (seq_len, batch, D_h)
+                h_n_shape = (
+                    D_nl,
+                    batch,
+                    self.hidden_size,
+                )
+        elif ndim == 2:
             seq_len = input_shape[0]
-            h_0_require = torch.Size(
-                (self.num_layers * self.num_directions, batch, self.hidden_size)
+            input_size = input_shape[1]
+            assert LibCall.guard.require_eq(
+                input_size,
+                self.input_size,
+                "input.size(-1) must be equal to input_size",
             )
-            output_shape = (seq_len, batch, self.num_directions * self.hidden_size)
-            h_n_shape = (
-                self.num_layers * self.num_directions,
-                batch,
-                self.hidden_size,
-            )
+
+            h_0_require = torch.Size((D_nl, self.hidden_size))
+            output_shape = (seq_len, D_h)
+            h_n_shape = (D_nl, self.hidden_size)
+        else:
+            raise ValueError("input rank is not between 2 and 3")
 
         if hx is not None:
             assert LibCall.guard.require_shape_eq(
@@ -87,34 +110,53 @@ class LSTM(RNNBase):
 
     def forward(self, input, hx=None):
         # TODO: resolve packed sequence
-
-        assert LibCall.guard.require_eq(input.ndim, 3, "input rank is not 3")
+        ndim = input.ndim
         input_shape = input.shape
 
-        if self.batch_first:
-            batch = input_shape[0]
-            seq_len = input_shape[1]
-            h_0_require = torch.Size(
-                (batch, self.num_layers * self.num_directions, self.hidden_size)
+        D_nl = self.num_directions * self.num_layers
+        D_h = self.num_directions * self.hidden_size
+        if ndim == 3:
+            input_size = input_shape[2]
+            assert LibCall.guard.require_eq(
+                input_size,
+                self.input_size,
+                "input.size(-1) must be equal to input_size",
             )
-            output_shape = (batch, seq_len, self.num_directions * self.hidden_size)
-            h_n_shape = (
-                batch,
-                self.num_layers * self.num_directions,
-                self.hidden_size,
-            )
-        else:
-            batch = input_shape[1]
+
+            if self.batch_first:
+                batch = input_shape[0]
+                seq_len = input_shape[1]
+                h_0_require = torch.Size((D_nl, batch, self.hidden_size))
+                output_shape = (batch, seq_len, D_h)
+                h_n_shape = (
+                    D_nl,
+                    batch,
+                    self.hidden_size,
+                )
+            else:
+                batch = input_shape[1]
+                seq_len = input_shape[0]
+                h_0_require = torch.Size((D_nl, batch, self.hidden_size))
+                output_shape = (seq_len, batch, D_h)
+                h_n_shape = (
+                    D_nl,
+                    batch,
+                    self.hidden_size,
+                )
+        elif ndim == 2:
             seq_len = input_shape[0]
-            h_0_require = torch.Size(
-                (self.num_layers * self.num_directions, batch, self.hidden_size)
+            input_size = input_shape[1]
+            assert LibCall.guard.require_eq(
+                input_size,
+                self.input_size,
+                "input.size(-1) must be equal to input_size",
             )
-            output_shape = (seq_len, batch, self.num_directions * self.hidden_size)
-            h_n_shape = (
-                self.num_layers * self.num_directions,
-                batch,
-                self.hidden_size,
-            )
+
+            h_0_require = torch.Size((D_nl, self.hidden_size))
+            output_shape = (seq_len, D_h)
+            h_n_shape = (D_nl, self.hidden_size)
+        else:
+            raise ValueError("input rank is not between 2 and 3")
 
         if hx is not None:
             h_0, c_0 = hx
@@ -139,33 +181,53 @@ class GRU(RNNBase):
     def forward(self, input, hx=None):
         # TODO: resolve packed sequence
 
-        assert LibCall.guard.require_eq(input.ndim, 3, "input rank is not 3")
+        ndim = input.ndim
         input_shape = input.shape
 
-        if self.batch_first:
-            batch = input_shape[0]
-            seq_len = input_shape[1]
-            h_0_require = torch.Size(
-                (batch, self.num_layers * self.num_directions, self.hidden_size)
+        D_nl = self.num_directions * self.num_layers
+        D_h = self.num_directions * self.hidden_size
+        if ndim == 3:
+            input_size = input_shape[2]
+            assert LibCall.guard.require_eq(
+                input_size,
+                self.input_size,
+                "input.size(-1) must be equal to input_size",
             )
-            output_shape = (batch, seq_len, self.num_directions * self.hidden_size)
-            h_n_shape = (
-                batch,
-                self.num_layers * self.num_directions,
-                self.hidden_size,
-            )
-        else:
-            batch = input_shape[1]
+
+            if self.batch_first:
+                batch = input_shape[0]
+                seq_len = input_shape[1]
+                h_0_require = torch.Size((D_nl, batch, self.hidden_size))
+                output_shape = (batch, seq_len, D_h)
+                h_n_shape = (
+                    D_nl,
+                    batch,
+                    self.hidden_size,
+                )
+            else:
+                batch = input_shape[1]
+                seq_len = input_shape[0]
+                h_0_require = torch.Size((D_nl, batch, self.hidden_size))
+                output_shape = (seq_len, batch, D_h)
+                h_n_shape = (
+                    D_nl,
+                    batch,
+                    self.hidden_size,
+                )
+        elif ndim == 2:
             seq_len = input_shape[0]
-            h_0_require = torch.Size(
-                (self.num_layers * self.num_directions, batch, self.hidden_size)
+            input_size = input_shape[1]
+            assert LibCall.guard.require_eq(
+                input_size,
+                self.input_size,
+                "input.size(-1) must be equal to input_size",
             )
-            output_shape = (seq_len, batch, self.num_directions * self.hidden_size)
-            h_n_shape = (
-                self.num_layers * self.num_directions,
-                batch,
-                self.hidden_size,
-            )
+
+            h_0_require = torch.Size((D_nl, self.hidden_size))
+            output_shape = (seq_len, D_h)
+            h_n_shape = (D_nl, self.hidden_size)
+        else:
+            raise ValueError("input rank is not between 2 and 3")
 
         if hx is not None:
             assert LibCall.guard.require_shape_eq(
